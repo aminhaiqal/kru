@@ -85,9 +85,15 @@ The CLI handles SIGINT and SIGTERM and stops its connections. Embedders can opt 
 with `installRpcSignalHandlers(connections)` from `src/rpc`; keep the returned
 handle until shutdown finishes, use its `exitCode`, and call `dispose()` afterwards.
 Pass an array or a live `Set` containing every active connection.
+The first signal stops gracefully. A second signal calls `forceStop()` on every
+tracked connection, sends SIGKILL to all process groups without waiting between
+them, skips the remaining shutdown waits, and exits the host after reaping children.
 
 Each child has a private ownership file in `.kru/processes` by default. It records
 the owner PID, child PID, process group, timestamp, and available OS start identity.
+The writer fsyncs a private temporary file, closes it, then atomically renames it
+to its final `.json` path. `readProcessRecords()` ignores temporary files,
+truncated JSON, and invalid records; it only returns recovery candidates.
 Normal cleanup removes the record; SIGKILL leaves it for M7 boot recovery.
 Recording does not yet implement orphan recovery. See the notes below for details.
 
@@ -95,7 +101,7 @@ See [M0 implementation notes](docs/m0.md) for lifecycle behavior and test covera
 
 ## Versioning
 
-The current release is **0.0.1**, tagged `v0.0.1`. `package.json` is the source
+The current release is **0.0.2**, tagged `v0.0.2`. `package.json` is the source
 of the version printed by `kru --version` (or `bun run dev -- --version`).
 Each release records its changes in [CHANGELOG.md](CHANGELOG.md) and receives
 an annotated Git tag matching the package version.
@@ -109,11 +115,17 @@ for M7. Within a release line, fixes increment the patch version.
 bun test            # all 14 acceptance cases, edge cases, and CLI tests
 bun run typecheck  # strict TypeScript
 bun run check      # both; also run in CI
+bun run test:codex # optional: requires the Codex CLI; initialize only, no model call
 ```
 
 `src/rpc/` contains only transport logic. The CLI lives in `src/cli/`, and
 `test/fakes/fake-agent.ts` provides the scripted protocol peer for this and later
 milestones. The runtime has no third-party dependencies.
+
+`src/providers/codex/transport.ts` is the connection factory for M1: it always sets
+`jsonrpcField: false`. The real-Codex smoke test uses that factory through a
+transparent stdio recorder and compares the exact request and notification bytes.
+CI runs it separately with Codex 0.165.0; the regular suite needs only the fake.
 
 Kru is inspired by OpenBot and is independently implemented. It contains no
 copied OpenBot code. Licensed under [MIT](LICENSE).

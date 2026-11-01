@@ -12,3 +12,17 @@ jobs:
       - run: bun run check
       - name: Repeat transport and CLI tests ten times on Linux
         run: bun test --rerun-each 10
+  codex-smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - run: bun install --frozen-lockfile
+      - run: npm install --global @openai/codex@0.165.0
+      - name: Check exact initialize bytes against real Codex
+        run: bun run test:codex

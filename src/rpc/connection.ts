@@ -74,6 +74,7 @@ interface Run {
   cause: Error | undefined;
   stopped: boolean;
   recordPath: string | undefined;
+  forceController: AbortController;
 }
 
 const MAX_LATE_IDS = 1_024;
@@ -142,6 +143,7 @@ export class RpcConnection extends EventEmitter<{
       done: new Promise<void>((resolve) => { finish = resolve; }),
       finish: () => finish(),
       code: null, signal: null, cause: undefined, stopped: false, recordPath: undefined,
+      forceController: new AbortController(),
     };
     this.run = run;
     child.stdout.on("data", (chunk: Buffer) => {
@@ -194,6 +196,16 @@ export class RpcConnection extends EventEmitter<{
     const run = this.run;
     if (!run || run.finalized) return;
     run.stopped = true;
+    this.close(run);
+    await run.done;
+  }
+
+  /** Escalate a running or already-stopping process tree immediately. */
+  async forceStop(): Promise<void> {
+    const run = this.run;
+    if (!run || run.finalized) return;
+    run.stopped = true;
+    run.forceController.abort();
     this.close(run);
     await run.done;
   }
@@ -370,12 +382,24 @@ export class RpcConnection extends EventEmitter<{
 
   private async finishRun(run: Run): Promise<void> {
     let treeTerminated = true;
-    try { await terminateTree(run.child, this.options.stopGraceMs ?? 3_000); }
+    try { await terminateTree(run.child, this.options.stopGraceMs ?? 3_000, run.forceController.signal); }
     catch (error) { treeTerminated = false; run.cause ??= asError(error); run.child.kill("SIGKILL"); }
     await run.exited;
     let timer: ReturnType<typeof setTimeout> | undefined;
-    await Promise.race([run.stderrEnded, new Promise<void>((resolve) => { timer = setTimeout(resolve, this.options.stderrDrainTimeoutMs ?? 500); })]);
+    const forceSignal = run.forceController.signal;
+    let onForce = () => {};
+    if (!forceSignal.aborted) {
+      await Promise.race([
+        run.stderrEnded,
+        new Promise<void>((resolve) => { timer = setTimeout(resolve, this.options.stderrDrainTimeoutMs ?? 500); }),
+        new Promise<void>((resolve) => {
+          onForce = resolve;
+          forceSignal.addEventListener("abort", onForce, { once: true });
+        }),
+      ]);
+    }
     clearTimeout(timer);
+    forceSignal.removeEventListener("abort", onForce);
     this.flushStderr(run);
     if (treeTerminated && run.recordPath) {
       try { removeProcessRecord(run.recordPath); }

@@ -27,7 +27,7 @@ async function signalGroup(pid: number, signal: NodeJS.Signals): Promise<void> {
 }
 
 /** Children inherit a dedicated process group, including their stdio helpers. */
-export async function terminateTree(child: ChildProcess, graceMs: number): Promise<void> {
+export async function terminateTree(child: ChildProcess, graceMs: number, forceSignal: AbortSignal): Promise<void> {
   if (!child.pid) return;
   if (process.platform === "win32") {
     await new Promise<void>((resolve, reject) => {
@@ -37,9 +37,23 @@ export async function terminateTree(child: ChildProcess, graceMs: number): Promi
     });
     return;
   }
-  await signalGroup(child.pid, "SIGTERM");
-  const deadline = performance.now() + graceMs;
-  while (groupExists(child.pid) && performance.now() < deadline) await delay(10);
-  // The parent may have exited while a grandchild ignores SIGTERM.
-  if (groupExists(child.pid)) await signalGroup(child.pid, "SIGKILL");
+  const pid = child.pid;
+  let forceResult: Promise<void> | undefined;
+  const force = () => {
+    // signalGroup sends synchronously before its first await, so all registered
+    // groups receive SIGKILL in the signal handler's turn, without serial waits.
+    forceResult ??= signalGroup(pid, "SIGKILL");
+    // Observe a rejection immediately; the shutdown path rethrows it below.
+    void forceResult.catch(() => {});
+  };
+  forceSignal.addEventListener("abort", force, { once: true });
+  try {
+    if (forceSignal.aborted) force();
+    else await signalGroup(pid, "SIGTERM");
+    const deadline = performance.now() + graceMs;
+    while (!forceSignal.aborted && groupExists(pid) && performance.now() < deadline) await delay(10);
+    if (forceSignal.aborted) await forceResult;
+    // The parent may have exited while a grandchild ignores SIGTERM.
+    else if (groupExists(pid)) await signalGroup(pid, "SIGKILL");
+  } finally { forceSignal.removeEventListener("abort", force); }
 }

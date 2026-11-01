@@ -7,10 +7,18 @@ export function installRpcSignalHandlers(connections: Iterable<RpcConnection>): 
 } {
   let exitCode: number | undefined;
   let stopping: Promise<PromiseSettledResult<void>[]> | undefined;
+  let forcing: Promise<PromiseSettledResult<void>[]> | undefined;
+  const tracked = new Set(connections);
   const interrupt = (signal: "SIGINT" | "SIGTERM") => {
     exitCode ??= signal === "SIGINT" ? 130 : 143;
-    // Keep listeners installed during shutdown so a second signal cannot bypass it.
-    stopping ??= Promise.allSettled(Array.from(connections, (connection) => connection.stop()));
+    for (const connection of connections) tracked.add(connection);
+    if (!stopping) stopping = Promise.allSettled(Array.from(tracked, (connection) => connection.stop()));
+    // Do not await one group before signalling the next. forceStop sends SIGKILL
+    // synchronously, interrupts its grace period, and then waits only for reaping.
+    else if (!forcing) {
+      forcing = Promise.allSettled(Array.from(tracked, (connection) => connection.forceStop()));
+      void forcing.then(() => process.exit(exitCode ?? 130));
+    }
   };
   const onInt = () => interrupt("SIGINT");
   const onTerm = () => interrupt("SIGTERM");

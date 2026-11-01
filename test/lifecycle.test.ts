@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, expect, test } from "bun:test";
+import { spawnSync } from "node:child_process";
 import { mkdtempSync, readFileSync, readdirSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -25,8 +26,8 @@ afterEach(async () => {
   rmSync(recordDir, { recursive: true, force: true });
 });
 
-async function startOwner() {
-  const owner = Bun.spawn([process.execPath, fileURLToPath(new URL("./fakes/connection-owner.ts", import.meta.url)), recordDir], { stdout: "pipe", stderr: "pipe" });
+async function startOwner(args: string[] = []) {
+  const owner = Bun.spawn([process.execPath, fileURLToPath(new URL("./fakes/connection-owner.ts", import.meta.url)), recordDir, ...args], { stdout: "pipe", stderr: "pipe" });
   owners.push(owner);
   const reader = owner.stdout.getReader();
   let bytes = "";
@@ -37,8 +38,8 @@ async function startOwner() {
       bytes += new TextDecoder().decode(part.value);
     }
   } finally { reader.releaseLock(); }
-  const ready = JSON.parse(bytes.split("\n")[0]!) as { pids: number[] };
-  pids.push(...ready.pids);
+  const ready = JSON.parse(bytes.split("\n")[0]!) as { pids: number[]; descendants: number[] };
+  pids.push(...ready.pids, ...ready.descendants);
   return owner;
 }
 
@@ -68,11 +69,20 @@ test("SIGKILL leaves durable ownership records for later boot recovery", async (
   }
 });
 
-test("a second terminal signal cannot bypass connection cleanup", async () => {
-  const owner = await startOwner();
-  owner.kill("SIGTERM");
-  await delay(10);
+test.each(["SIGINT", "SIGTERM"] as const)("a second Ctrl+C force-quits a %s shutdown and every resistant process group", async (firstSignal) => {
+  const owner = await startOwner(["--resistant"]);
+  expect(pids).toHaveLength(4);
+  owner.kill(firstSignal);
+  await delay(30);
+  expect(owner.exitCode).toBeNull();
+  const forcedAt = performance.now();
   owner.kill("SIGINT");
-  expect(await owner.exited).toBe(143);
+  expect(await owner.exited).toBe(firstSignal === "SIGINT" ? 130 : 143);
+  expect(performance.now() - forcedAt).toBeLessThan(1_500);
   expect(readdirSync(recordDir)).toEqual([]);
+  for (const pid of pids) {
+    // Killed orphaned grandchildren can briefly be zombies while the OS reaps them.
+    const status = spawnSync("ps", ["-o", "stat=", "-p", String(pid)], { encoding: "utf8" });
+    expect(status.stdout.trim() === "" || status.stdout.trim().startsWith("Z")).toBe(true);
+  }
 });

@@ -2,19 +2,24 @@
 import { fileURLToPath } from "node:url";
 import { RpcConnection, installRpcSignalHandlers } from "../../src/rpc";
 
+const resistant = process.argv.includes("--resistant");
+if (resistant) setInterval(() => {}, 1_000); // A forced second signal must exit the host too.
 const connections = Array.from({ length: 2 }, () => new RpcConnection({
   command: process.execPath,
   args: [fileURLToPath(new URL("./fake-agent.ts", import.meta.url))],
   requestTimeoutMs: 10_000, maxLineBytes: 1024 * 1024,
   maxQueuedWriteBytes: 1024 * 1024, maxBadLines: 3,
-  stopGraceMs: 100, stderrDrainTimeoutMs: 50, processRecordDir: process.argv[2]!,
+  stopGraceMs: resistant ? 3_000 : 100, stderrDrainTimeoutMs: 50, processRecordDir: process.argv[2]!,
 }));
 const shutdown = installRpcSignalHandlers(connections);
 try {
   for (const connection of connections) connection.start();
   await Promise.all(connections.map((connection) => connection.request("ping", {})));
-  await Promise.all(connections.map((connection) => connection.request("graceful-stop", { delayMs: 40 })));
-  console.log(JSON.stringify({ pids: connections.map((connection) => connection.pid) }));
+  const descendants = resistant
+    ? await Promise.all(connections.map((connection) => connection.request<{ pid: number }>("descendant", {})))
+    : [];
+  if (!resistant) await Promise.all(connections.map((connection) => connection.request("graceful-stop", { delayMs: 40 })));
+  console.log(JSON.stringify({ pids: connections.map((connection) => connection.pid), descendants: descendants.map((child) => child.pid) }));
   await Promise.allSettled(connections.map((connection) => connection.request("stall", {})));
   process.exitCode = shutdown.exitCode ?? 1;
 } finally {
