@@ -5,6 +5,7 @@ import { ByteLineFramer } from "./framing";
 import { ProcessExitError, RequestTimeoutError, RpcResponseError } from "./errors";
 import { terminateTree } from "./process-tree";
 import { WriteQueue } from "./write-queue";
+import { prepareProcessRecordDir, writeProcessRecord, removeProcessRecord } from "./process-record";
 
 export interface RpcConnectionOptions {
   command: string;
@@ -14,6 +15,10 @@ export interface RpcConnectionOptions {
   maxLineBytes: number;
   maxQueuedWriteBytes: number;
   maxBadLines: number;
+  jsonrpcField?: boolean;
+  stopGraceMs?: number;
+  stderrDrainTimeoutMs?: number;
+  processRecordDir?: string;
 }
 
 export type Diagnostic =
@@ -68,6 +73,7 @@ interface Run {
   signal: NodeJS.Signals | null;
   cause: Error | undefined;
   stopped: boolean;
+  recordPath: string | undefined;
 }
 
 const MAX_LATE_IDS = 1_024;
@@ -92,6 +98,13 @@ export class RpcConnection extends EventEmitter<{
     for (const key of ["requestTimeoutMs", "maxLineBytes", "maxQueuedWriteBytes", "maxBadLines"] as const) {
       if (!Number.isSafeInteger(options[key]) || options[key] <= 0) throw new RangeError(`${key} must be a positive safe integer`);
     }
+    for (const key of ["stopGraceMs", "stderrDrainTimeoutMs"] as const) {
+      const value = options[key];
+      if (value !== undefined && (!Number.isSafeInteger(value) || value < 0 || value > 2_147_483_647)) {
+        throw new RangeError(`${key} must be an integer between 0 and 2147483647`);
+      }
+    }
+    if (options.jsonrpcField !== undefined && typeof options.jsonrpcField !== "boolean") throw new TypeError("jsonrpcField must be a boolean");
     if (!options.command) throw new TypeError("command must not be empty");
     this.options = { ...options, args: [...options.args], ...(options.env ? { env: { ...options.env } } : {}) };
   }
@@ -103,6 +116,7 @@ export class RpcConnection extends EventEmitter<{
 
   start(): void {
     if (this.run && !this.run.finalized) throw new Error("RPC connection is already started or stopping");
+    const recordDir = prepareProcessRecordDir(this.options.processRecordDir);
     const child = spawn(this.options.command, this.options.args, {
       env: { ...process.env, ...this.options.env },
       stdio: ["pipe", "pipe", "pipe"],
@@ -127,7 +141,7 @@ export class RpcConnection extends EventEmitter<{
       markExited: () => markExited(),
       done: new Promise<void>((resolve) => { finish = resolve; }),
       finish: () => finish(),
-      code: null, signal: null, cause: undefined, stopped: false,
+      code: null, signal: null, cause: undefined, stopped: false, recordPath: undefined,
     };
     this.run = run;
     child.stdout.on("data", (chunk: Buffer) => {
@@ -170,6 +184,10 @@ export class RpcConnection extends EventEmitter<{
     });
     child.stdout.on("error", (error) => { if (this.isCurrent(run)) this.close(run, error); });
     child.stderr.on("error", () => run.endStderr());
+    if (child.pid) {
+      try { run.recordPath = writeProcessRecord(recordDir, child.pid); }
+      catch (error) { this.close(run, asError(error)); }
+    }
   }
 
   async stop(): Promise<void> {
@@ -188,7 +206,7 @@ export class RpcConnection extends EventEmitter<{
     if (!Number.isSafeInteger(timeoutMs) || timeoutMs <= 0) return Promise.reject(new RangeError("timeoutMs must be a positive safe integer"));
     const id = String(++this.nextId);
     let data: Buffer;
-    try { data = this.encode({ jsonrpc: "2.0", id, method, params }); }
+    try { data = this.encode({ id, method, params }); }
     catch (error) { return Promise.reject(error); }
     return new Promise<T>((resolve, reject) => {
       const writeController = new AbortController();
@@ -226,7 +244,7 @@ export class RpcConnection extends EventEmitter<{
   notify(method: string, params?: unknown): Promise<void> {
     const run = this.run;
     if (!run || run.closing || run.finalized) return Promise.reject(new Error("RPC connection is not running"));
-    try { return run.writer.send(this.encode({ jsonrpc: "2.0", method, ...(params === undefined ? {} : { params }) })); }
+    try { return run.writer.send(this.encode({ method, ...(params === undefined ? {} : { params }) })); }
     catch (error) { return Promise.reject(error); }
   }
 
@@ -237,7 +255,8 @@ export class RpcConnection extends EventEmitter<{
   private isCurrent(run: Run): boolean { return this.run === run && !run.finalized; }
 
   private encode(message: Message): Buffer {
-    const data = Buffer.from(JSON.stringify(message) + "\n");
+    const envelope = this.options.jsonrpcField === false ? message : { jsonrpc: "2.0", ...message };
+    const data = Buffer.from(JSON.stringify(envelope) + "\n");
     if (data.length - 1 > this.options.maxLineBytes) throw new Error(`outgoing line exceeds ${this.options.maxLineBytes} bytes`);
     return data;
   }
@@ -248,7 +267,7 @@ export class RpcConnection extends EventEmitter<{
       const value: unknown = JSON.parse(decoder.decode(line));
       if (!value || typeof value !== "object" || Array.isArray(value)) throw new Error("expected a JSON-RPC object");
       message = value as Message;
-      if (message.jsonrpc !== "2.0") throw new Error("expected jsonrpc: 2.0");
+      if ("jsonrpc" in message && message.jsonrpc !== "2.0") throw new Error("expected jsonrpc: 2.0 or an omitted field");
       if (typeof message.method === "string") {
         if ("id" in message && !isId(message.id)) throw new Error("invalid request id");
       } else {
@@ -302,13 +321,13 @@ export class RpcConnection extends EventEmitter<{
           const result = await handler({ id, method, params, signal: controller.signal });
           response = { result: result ?? null };
           // Serialization failures are handler failures too, not unhandled promises.
-          this.encode({ jsonrpc: "2.0", id, ...response });
+          this.encode({ id, ...response });
         } catch {
           response = { error: { code: -32603, message: "Internal error" } };
         }
       }
       if (!this.isCurrent(run) || run.closing || controller.signal.aborted) return;
-      await run.writer.send(this.encode({ jsonrpc: "2.0", id, ...response }));
+      await run.writer.send(this.encode({ id, ...response }));
     })().catch((error) => {
       // Losing a reply makes the peer wait forever: fail the connection explicitly.
       if (this.isCurrent(run) && !run.closing) this.close(run, asError(error));
@@ -350,13 +369,18 @@ export class RpcConnection extends EventEmitter<{
   }
 
   private async finishRun(run: Run): Promise<void> {
-    try { await terminateTree(run.child); }
-    catch (error) { run.cause ??= asError(error); run.child.kill("SIGKILL"); }
+    let treeTerminated = true;
+    try { await terminateTree(run.child, this.options.stopGraceMs ?? 3_000); }
+    catch (error) { treeTerminated = false; run.cause ??= asError(error); run.child.kill("SIGKILL"); }
     await run.exited;
     let timer: ReturnType<typeof setTimeout> | undefined;
-    await Promise.race([run.stderrEnded, new Promise<void>((resolve) => { timer = setTimeout(resolve, 50); })]);
+    await Promise.race([run.stderrEnded, new Promise<void>((resolve) => { timer = setTimeout(resolve, this.options.stderrDrainTimeoutMs ?? 500); })]);
     clearTimeout(timer);
     this.flushStderr(run);
+    if (treeTerminated && run.recordPath) {
+      try { removeProcessRecord(run.recordPath); }
+      catch (error) { run.cause ??= asError(error); }
+    }
     const exitSummary = `RPC process exited ${run.signal ? `with signal ${run.signal}` : `with code ${run.code}`}`;
     const reason = run.stopped ? "RPC process stopped" :
       run.cause ? `${run.cause.message} (${exitSummary})` : exitSummary;

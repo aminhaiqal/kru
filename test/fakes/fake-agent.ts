@@ -2,16 +2,29 @@
 import { spawn } from "node:child_process";
 import { ByteLineFramer } from "../../src/rpc/framing";
 
-type Message = { id?: string | number; method?: string; params?: Record<string, unknown>; result?: unknown; error?: unknown };
+type Message = { jsonrpc?: unknown; id?: string | number; method?: string; params?: Record<string, unknown> | null; result?: unknown; error?: unknown };
 const framer = new ByteLineFramer(64 * 1024 * 1024);
-const send = (message: unknown): void => { process.stdout.write(JSON.stringify(message) + "\n"); };
+const lite = process.argv.includes("--omit-jsonrpc");
+const encode = (message: Message): string => {
+  const { jsonrpc, ...body } = message;
+  return JSON.stringify(lite ? body : message) + "\n";
+};
+const send = (message: Message): void => { process.stdout.write(encode(message)); };
 const result = (id: string | number, value: unknown): void => send({ jsonrpc: "2.0", id, result: value });
-const notification = (method: string, params: unknown): string => JSON.stringify({ jsonrpc: "2.0", method, params }) + "\n";
+const notification = (method: string, params: Record<string, unknown>): string => encode({ jsonrpc: "2.0", method, params });
 const reverseRequests: Message[] = [];
 const callbacks = new Map<string | number, string | number>();
 let callbackId = 0;
 
 function handle(message: Message): void {
+  if (process.argv.includes("--require-omitted-jsonrpc") && "jsonrpc" in message) {
+    process.stderr.write("jsonrpc field must be omitted", () => process.exit(24));
+    return;
+  }
+  if (process.argv.includes("--require-jsonrpc") && message.jsonrpc !== "2.0") {
+    process.stderr.write("jsonrpc field is required", () => process.exit(24));
+    return;
+  }
   if (!message.method) {
     if (message.id === undefined) return;
     const original = callbacks.get(message.id);
@@ -23,13 +36,26 @@ function handle(message: Message): void {
   }
   const id = message.id;
   const params = message.params ?? {};
-  if (id === undefined) return;
+  if (id === undefined) {
+    if (message.method === "notify-echo") process.stdout.write(notification("notified", params));
+    return;
+  }
   switch (message.method) {
     case "ping":
       if (!process.argv.includes("--stall")) result(id, "pong");
       break;
     case "echo": result(id, message.params); break;
     case "request-id": result(id, id); break;
+    case "wrong-jsonrpc":
+      process.stdout.write(JSON.stringify({ jsonrpc: params.value, id, result: "wrong" }) + "\n");
+      result(id, "valid");
+      break;
+    case "graceful-stop":
+      process.on("SIGTERM", () => {
+        setTimeout(() => process.stderr.write("session saved", () => process.exit(0)), Number(params.delayMs ?? 200));
+      });
+      result(id, "ready");
+      break;
     case "reverse": {
       reverseRequests.push(message);
       if (reverseRequests.length === 100) {
@@ -64,13 +90,13 @@ function handle(message: Message): void {
         process.stdout.write(Buffer.concat([
           bytes.subarray(splitAt),
           Buffer.from(notification("merged", { index: 1 }) + notification("merged", { index: 2 })),
-          Buffer.from(JSON.stringify({ jsonrpc: "2.0", id, result: null }) + "\n"),
+          Buffer.from(encode({ jsonrpc: "2.0", id, result: null })),
         ]));
       }, 5);
       break;
     }
     case "bad-between":
-      process.stdout.write(notification("good", { index: 1 }) + "not-json\n" + notification("good", { index: 2 }) + JSON.stringify({ jsonrpc: "2.0", id, result: null }) + "\n");
+      process.stdout.write(notification("good", { index: 1 }) + "not-json\n" + notification("good", { index: 2 }) + encode({ jsonrpc: "2.0", id, result: null }));
       break;
     case "bad-lines": process.stdout.write("broken\n".repeat(Number(params.count ?? 3))); break;
     case "invalid-utf8":

@@ -1,7 +1,7 @@
 #!/usr/bin/env bun
 import { fileURLToPath } from "node:url";
 import packageJson from "../../package.json";
-import { RpcConnection } from "../rpc";
+import { RpcConnection, installRpcSignalHandlers } from "../rpc";
 
 export async function main(args = process.argv.slice(2)): Promise<number> {
   if (args.length === 1 && (args[0] === "--version" || args[0] === "-v")) {
@@ -35,9 +35,7 @@ export async function main(args = process.argv.slice(2)): Promise<number> {
     maxQueuedWriteBytes: 4 * 1024 * 1024,
     maxBadLines: 3,
   });
-  const interrupt = () => { void connection.stop(); };
-  process.once("SIGINT", interrupt);
-  process.once("SIGTERM", interrupt);
+  const shutdown = installRpcSignalHandlers([connection]);
   try {
     connection.start();
     const started = performance.now();
@@ -48,14 +46,14 @@ export async function main(args = process.argv.slice(2)): Promise<number> {
       },
     });
     console.log(`${result} (${(performance.now() - started).toFixed(1)} ms)`);
-    return 0;
+    return shutdown.exitCode ?? 0;
   } catch (error) {
+    if (shutdown.exitCode !== undefined) return shutdown.exitCode;
     console.error(`error: ${error instanceof Error ? error.message : String(error)}`);
     return 1;
   } finally {
     await connection.stop();
-    process.removeListener("SIGINT", interrupt);
-    process.removeListener("SIGTERM", interrupt);
+    shutdown.dispose();
   }
 }
 

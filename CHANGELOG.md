@@ -1,5 +1,24 @@
 # Changelog
 
+## Unreleased
+
+### Fixed
+
+- Accept Codex-style envelopes without a `jsonrpc` field, reject explicitly wrong
+  versions, and configure all outgoing frames with `jsonrpcField` (default `true`).
+- Give process trees a configurable 3-second shutdown grace and trailing stderr
+  a configurable 500-ms timeout; retain shorter values in tests.
+- Stop every registered connection on SIGINT/SIGTERM, retaining handlers until
+  cleanup finishes, and return conventional signal exit codes from the CLI.
+- Persist per-child PID/process-group ownership records with start identity for
+  future M7 recovery, removing them after completed tree cleanup.
+- Handle the transient macOS process-group permission error during child reaping.
+
+### Added
+
+- Compatibility, graceful-stop, process ownership, and signal lifecycle tests.
+- Ten repeated suite runs in Linux CI and manual workflow dispatch support.
+
 ## [0.0.1] - 2026-11-02
 
 First release: M0 — JSON-RPC over stdio.

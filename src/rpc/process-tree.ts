@@ -7,20 +7,27 @@ function groupExists(pid: number): boolean {
     return true;
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code === "ESRCH") return false;
+    if ((error as NodeJS.ErrnoException).code === "EPERM") return true;
     throw error;
   }
 }
 
-function signalGroup(pid: number, signal: NodeJS.Signals): void {
+async function signalGroup(pid: number, signal: NodeJS.Signals): Promise<void> {
   try {
     process.kill(-pid, signal);
   } catch (error) {
-    if ((error as NodeJS.ErrnoException).code !== "ESRCH") throw error;
+    if ((error as NodeJS.ErrnoException).code === "ESRCH") return;
+    if ((error as NodeJS.ErrnoException).code !== "EPERM") throw error;
+    // macOS can report EPERM for an exited group until the child is reaped.
+    // Yield once; persistent permission failures still preserve its ownership record.
+    await delay(10);
+    try { process.kill(-pid, signal); }
+    catch (retryError) { if ((retryError as NodeJS.ErrnoException).code !== "ESRCH") throw retryError; }
   }
 }
 
 /** Children inherit a dedicated process group, including their stdio helpers. */
-export async function terminateTree(child: ChildProcess): Promise<void> {
+export async function terminateTree(child: ChildProcess, graceMs: number): Promise<void> {
   if (!child.pid) return;
   if (process.platform === "win32") {
     await new Promise<void>((resolve, reject) => {
@@ -30,9 +37,9 @@ export async function terminateTree(child: ChildProcess): Promise<void> {
     });
     return;
   }
-  signalGroup(child.pid, "SIGTERM");
-  const deadline = performance.now() + 100;
+  await signalGroup(child.pid, "SIGTERM");
+  const deadline = performance.now() + graceMs;
   while (groupExists(child.pid) && performance.now() < deadline) await delay(10);
   // The parent may have exited while a grandchild ignores SIGTERM.
-  if (groupExists(child.pid)) signalGroup(child.pid, "SIGKILL");
+  if (groupExists(child.pid)) await signalGroup(child.pid, "SIGKILL");
 }

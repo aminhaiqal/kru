@@ -1,5 +1,8 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { spawnSync } from "node:child_process";
+import { mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
 import { fileURLToPath } from "node:url";
 import {
@@ -11,6 +14,7 @@ const fake = fileURLToPath(new URL("./fakes/fake-agent.ts", import.meta.url));
 const connections: RpcConnection[] = [];
 const pids: number[] = [];
 let unhandled: unknown[] = [];
+let recordDir: string;
 const recordUnhandled = (error: unknown) => { unhandled.push(error); };
 
 async function failure(promise: Promise<unknown>): Promise<Error> {
@@ -26,8 +30,17 @@ function running(pid: number): boolean {
     if ((error as NodeJS.ErrnoException).code === "ESRCH") return false;
     throw error;
   }
-  // Linux containers can leave killed orphaned descendants as zombies until PID 1
-  // reaps them. A zombie has no running code or open descriptors.
+  // Killed orphans may remain zombies until PID 1 reaps them. They have no
+  // running code or open descriptors. Read procfs without depending on ps.
+  if (process.platform === "linux") {
+    try {
+      const stat = readFileSync(`/proc/${pid}/stat`, "utf8");
+      return !stat.slice(stat.lastIndexOf(")") + 2).startsWith("Z ");
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === "ENOENT") return false;
+      throw error;
+    }
+  }
   const status = spawnSync("ps", ["-o", "stat=", "-p", String(pid)], { encoding: "utf8" });
   return !status.stdout.trim().startsWith("Z") && status.stdout.trim() !== "";
 }
@@ -36,7 +49,7 @@ function connection(overrides: Partial<RpcConnectionOptions> = {}, start = true)
   const rpc = new RpcConnection({
     command: process.execPath, args: [fake], requestTimeoutMs: 1_000,
     maxLineBytes: 2 * 1024 * 1024, maxQueuedWriteBytes: 4 * 1024 * 1024,
-    maxBadLines: 3, ...overrides,
+    maxBadLines: 3, stopGraceMs: 100, stderrDrainTimeoutMs: 50, processRecordDir: recordDir, ...overrides,
   });
   connections.push(rpc);
   if (start) {
@@ -64,6 +77,7 @@ function nextDiagnostic(rpc: RpcConnection, kind: Diagnostic["kind"]): Promise<D
 }
 
 beforeEach(() => {
+  recordDir = mkdtempSync(join(tmpdir(), "kru-rpc-"));
   unhandled = [];
   process.on("unhandledRejection", recordUnhandled);
 });
@@ -79,6 +93,8 @@ afterEach(async () => {
   await delay(0);
   process.removeListener("unhandledRejection", recordUnhandled);
   expect(unhandled).toEqual([]);
+  expect(readdirSync(recordDir)).toEqual([]);
+  rmSync(recordDir, { recursive: true, force: true });
   connections.length = 0;
   pids.length = 0;
 });
@@ -239,6 +255,72 @@ describe("M0 acceptance tests", () => {
 });
 
 describe("transport edge cases", () => {
+  test("omitted incoming jsonrpc works with the default outgoing format", async () => {
+    const rpc = connection({ args: [fake, "--omit-jsonrpc", "--require-jsonrpc"] });
+    expect(await rpc.request("ping", {})).toBe("pong");
+    const events = diagnostics(rpc);
+    await rpc.request("notifications", {});
+    expect(events.filter((event) => event.kind === "bad-line")).toHaveLength(0);
+  });
+
+  test.each([false, true])("all outbound message types honor jsonrpcField=%s", async (jsonrpcField) => {
+    const rpc = connection({ jsonrpcField, args: [fake, ...(jsonrpcField ? ["--require-jsonrpc"] : ["--omit-jsonrpc", "--require-omitted-jsonrpc"])] });
+    expect(await rpc.request("ping", {})).toBe("pong");
+    const notified = new Promise<unknown>((resolve) => rpc.once("notification", resolve));
+    await rpc.notify("notify-echo", { value: 42 });
+    expect(await notified).toEqual({ method: "notified", params: { value: 42 } });
+    await expect(rpc.request("error", {})).rejects.toBeInstanceOf(RpcResponseError);
+    expect(await rpc.request("ask", {})).toEqual({ error: { code: -32601, message: "Method not found: question" } });
+    rpc.onRequest(async () => "answer");
+    expect(await rpc.request("ask", {})).toEqual({ result: "answer" });
+    rpc.onRequest(async () => { throw new Error("failed"); });
+    expect(await rpc.request("ask", {})).toEqual({ error: { code: -32603, message: "Internal error" } });
+    await rpc.request("fragments", {});
+  });
+
+  test.each(["1.0", null, false, 2])("an explicit wrong jsonrpc value %s is rejected", async (value) => {
+    const rpc = connection();
+    const events = diagnostics(rpc);
+    expect(await rpc.request("wrong-jsonrpc", { value })).toBe("valid");
+    expect(events.filter((event) => event.kind === "bad-line")).toHaveLength(1);
+  });
+
+  test("stop allows a real shutdown longer than the old 100 ms grace", async () => {
+    const rpc = connection({ stopGraceMs: 500, stderrDrainTimeoutMs: 250 });
+    const exited = new Promise<ProcessExitError>((resolve) => rpc.once("exit", resolve));
+    await rpc.request("graceful-stop", { delayMs: 200 });
+    await rpc.stop();
+    const error = await exited;
+    expect(error.exitCode).toBe(0);
+    expect(error.signal).toBeNull();
+    expect(error.lastStderrLine).toBe("session saved");
+  });
+
+  test("running process records include the owner, group, and start identity", async () => {
+    const rpc = connection();
+    await rpc.request("ping", {});
+    const files = readdirSync(recordDir);
+    expect(files).toHaveLength(1);
+    const record = JSON.parse(readFileSync(join(recordDir, files[0]!), "utf8"));
+    expect(record.ownerPid).toBe(process.pid);
+    expect(record.childPid).toBe(rpc.pid);
+    expect(record.processGroupId).toBe(rpc.pid);
+    expect(record.childStartIdentity).toBeString();
+    expect(record.recordedAt).toBeString();
+    await rpc.stop();
+    expect(readdirSync(recordDir)).toEqual([]);
+  });
+
+  test("an unavailable record directory prevents spawning a child", () => {
+    const file = join(recordDir, "not-a-directory");
+    writeFileSync(file, "occupied");
+    const rpc = connection({ processRecordDir: file }, false);
+    try {
+      expect(() => rpc.start()).toThrow();
+      expect(rpc.pid).toBeUndefined();
+    } finally { rmSync(file); }
+  });
+
   test("writes resume after backpressure without losing or reordering frames", async () => {
     const rpc = connection();
     const events = diagnostics(rpc);
@@ -382,6 +464,8 @@ describe("transport edge cases", () => {
 
   test("lifecycle, configuration and outgoing serialization errors fail cleanly", async () => {
     expect(() => connection({ maxLineBytes: 0 })).toThrow("maxLineBytes");
+    expect(() => connection({ stopGraceMs: -1 })).toThrow("stopGraceMs");
+    expect(() => connection({ stderrDrainTimeoutMs: 0.5 })).toThrow("stderrDrainTimeoutMs");
     const rpc = connection({}, false);
     await expect(rpc.request("ping", {})).rejects.toThrow("not running");
     await rpc.stop();

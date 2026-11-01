@@ -38,6 +38,10 @@ const rpc = new RpcConnection({
   maxLineBytes: 256 * 1024 * 1024,
   maxQueuedWriteBytes: 4 * 1024 * 1024,
   maxBadLines: 3,
+  jsonrpcField: true,          // false for Codex's headerless wire format
+  stopGraceMs: 3_000,
+  stderrDrainTimeoutMs: 500,
+  processRecordDir: ".kru/processes",
 });
 
 rpc.on("diagnostic", (diagnostic) => console.error(diagnostic));
@@ -67,6 +71,25 @@ try {
 the frame to be written. `env` overrides entries in the inherited environment.
 `start()` spawns a child; a connection can restart after `stop()` resolves or
 its `exit` event fires. There are no automatic restarts or retries.
+
+Incoming messages accept an omitted `jsonrpc` field, or the value `"2.0"`.
+`jsonrpcField` controls all outgoing requests, notifications, results, and errors;
+it defaults to `true`. Set it to `false` for Codex app-server, whose
+[wire protocol omits the field](https://learn.chatgpt.com/docs/app-server).
+
+Shutdown gives the process tree 3 seconds before SIGKILL, then allows up to 500 ms
+for trailing stderr. Both timeouts are configurable. Tests use a 100-ms shutdown
+grace and a 50-ms stderr timeout.
+
+The CLI handles SIGINT and SIGTERM and stops its connections. Embedders can opt in
+with `installRpcSignalHandlers(connections)` from `src/rpc`; keep the returned
+handle until shutdown finishes, use its `exitCode`, and call `dispose()` afterwards.
+Pass an array or a live `Set` containing every active connection.
+
+Each child has a private ownership file in `.kru/processes` by default. It records
+the owner PID, child PID, process group, timestamp, and available OS start identity.
+Normal cleanup removes the record; SIGKILL leaves it for M7 boot recovery.
+Recording does not yet implement orphan recovery. See the notes below for details.
 
 See [M0 implementation notes](docs/m0.md) for lifecycle behavior and test coverage.
 
