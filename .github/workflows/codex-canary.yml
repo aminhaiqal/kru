@@ -1,0 +1,26 @@
+name: Latest Codex canary
+on:
+  schedule:
+    - cron: '17 3 * * *'
+  workflow_dispatch:
+jobs:
+  latest-codex:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - run: bun install --frozen-lockfile
+      - run: npm install --global @openai/codex@latest
+      - run: codex --version
+      - name: Generate current experimental protocol contracts
+        run: codex app-server generate-json-schema --experimental --out "$RUNNER_TEMP/codex-schema"
+      - name: Check tool-call method, parameter and result compatibility
+        run: KRU_CODEX_SCHEMA_DIR="$RUNNER_TEMP/codex-schema" bun test test/codex-schema.test.ts
+      - name: Check initialize bytes and experimental dynamic-tool registration
+        run: bun run test:codex

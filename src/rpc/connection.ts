@@ -334,8 +334,10 @@ export class RpcConnection extends EventEmitter<{
           response = { result: result ?? null };
           // Serialization failures are handler failures too, not unhandled promises.
           this.encode({ id, ...response });
-        } catch {
-          response = { error: { code: -32603, message: "Internal error" } };
+        } catch (error) {
+          response = { error: error instanceof RpcResponseError
+            ? { code: error.code, message: error.message, ...(error.data === undefined ? {} : { data: error.data }) }
+            : { code: -32603, message: "Internal error" } };
         }
       }
       if (!this.isCurrent(run) || run.closing || controller.signal.aborted) return;

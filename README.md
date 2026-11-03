@@ -1,10 +1,10 @@
 # Kru
 
 Kru is a headless, local-first engine for running AI agent CLIs as persistent
-teammates. **M0 is implemented:** a generic JSON-RPC 2.0 transport over stdio,
-a deterministic fake agent, and a CLI ping demo.
+teammates. **M0 and M1 are implemented:** a generic JSON-RPC transport, a typed
+provider port with fake, Codex and Claude adapters, and streaming terminal chat.
 
-Providers, persistence, mailboxes, and scheduling come in later milestones.
+Persistence, mailboxes, and scheduling come in later milestones.
 The roadmap is in [the project plan](docs/Kru%20-%20Project%20Plan%20%26%20Milestones.pdf).
 
 ## Try M0
@@ -25,6 +25,57 @@ bun run check
 No model, network connection, or API key is needed after dependency installation.
 For the literal `kru` command, run `bun link` once in this checkout. You can also
 run `bun src/cli/index.ts rpc ping --fake` directly. This package is not published.
+
+## Try M1
+
+```sh
+bun run dev -- chat --provider fake "hello"
+# Echo: hello
+
+bun run dev -- chat --provider codex "hello"
+bun run dev -- chat --provider claude "hello"
+# A streamed reply from your installed Codex CLI
+
+printf 'hello' | bun run dev -- chat --provider fake
+bun run dev -- chat --provider codex
+# Interactive chat in one thread; /quit or /exit finishes
+```
+
+Fake chat needs no credentials. Codex and Claude use the corresponding provider's
+existing login and model configuration. `--model <name>` overrides the model.
+`--idle-timeout-ms <ms>` sets the inactivity deadline (default 120 seconds);
+progress resets it. `--timeout-ms` is an alias. Usage prints to stderr each turn,
+including inclusive input totals, cache reads, cache writes and output. Cache
+counts are subsets of input, so they are never added to it twice.
+
+Agent configuration includes `promptProfile` (`minimal`, `coding` or Claude's `full`), sandbox
+(`read-only` or `workspace-write`) and approval policy (`on-request` or `never`).
+Defaults are minimal, read-only and on-request. Hosts answer typed approval
+requests; the CLI declines requests without an approval UI. Kru instructions must
+be under 8,000 bytes and there may be at most six Kru-declared tools. Claude's
+profile selects built-ins independently and reports their count separately in
+thread prompt metadata; they do not consume the Kru tool budget. Provider-owned
+context and native Codex tools are not included in that measurement.
+
+`workspace-write` permits Claude file tools inside `cwd` and extra roots supplied
+with repeatable `--writable-root <path>` flags, without a host approval listener.
+Outside writes and shell commands need approval; the CLI declines those requests.
+Codex receives the same roots in its native sandbox. Implicit temporary-directory
+write grants are disabled; add a temporary root explicitly if required. Idle
+timeouts pause during explicitly running native commands, even without output,
+and resume after command completion. Cancellation remains available.
+
+Claude's `full` profile uses the native Claude Code prompt and standard tools,
+loads project/local settings and CLAUDE.md, and retains native context attachments.
+It supplies the baseline for measuring the custom `coding` profile. Run
+`bun run benchmark:claude-profiles` for an opt-in comparison using the same model,
+task and tests in two fresh workspaces (uses the existing Claude login/quota).
+
+All three adapters use the same chat consumer and conformance suite, including
+explicit prefix-stability and context-budget tests. Default Codex views share one
+process and isolate thread events. Claude uses the official Agent SDK, a streaming
+input queue and in-process MCP tools. See [M1 implementation notes](docs/m1.md)
+for configuration, permissions, idle deadlines and failure isolation.
 
 ## Transport API
 
@@ -101,7 +152,7 @@ See [M0 implementation notes](docs/m0.md) for lifecycle behavior and test covera
 
 ## Versioning
 
-The current release is **0.0.2**, tagged `v0.0.2`. `package.json` is the source
+The current release is **0.0.3**, tagged `v0.0.3`. `package.json` is the source
 of the version printed by `kru --version` (or `bun run dev -- --version`).
 Each release records its changes in [CHANGELOG.md](CHANGELOG.md) and receives
 an annotated Git tag matching the package version.
@@ -112,20 +163,29 @@ for M7. Within a release line, fixes increment the patch version.
 ## Development
 
 ```sh
-bun test            # all 14 acceptance cases, edge cases, and CLI tests
+bun test            # transport, provider conformance, runtime and CLI tests
 bun run typecheck  # strict TypeScript
 bun run check      # both; also run in CI
-bun run test:codex # optional: requires the Codex CLI; initialize only, no model call
+bun run test:codex # optional: real initialize + tool registration, no model call
+bun run test:providers # fake, Codex and Claude conformance; no model or credentials
+bun run test:codex-chat # opt-in: real Codex model turns
+bun run test:claude-chat # opt-in: real Claude queue, MCP tool, usage and resume
 ```
 
 `src/rpc/` contains only transport logic. The CLI lives in `src/cli/`, and
 `test/fakes/fake-agent.ts` provides the scripted protocol peer for this and later
-milestones. The runtime has no third-party dependencies.
+milestones. The transport has no third-party dependencies; Claude uses the official
+Agent SDK and Zod.
 
-`src/providers/codex/transport.ts` is the connection factory for M1: it always sets
+`src/providers/codex/transport.ts` is the Codex adapter's connection factory: it always sets
 `jsonrpcField: false`. The real-Codex smoke test uses that factory through a
 transparent stdio recorder and compares the exact request and notification bytes.
-CI runs it separately with Codex 0.165.0; the regular suite needs only the fake.
+CI runs it separately with Codex 0.165.0. The regular suite uses scripted peers and
+SDK/MCP fixtures without model credentials.
+
+A separate [nightly canary](.github/workflows/codex-canary.yml) tests latest Codex
+initialize bytes, experimental tool registration and generated protocol schemas.
+Stable CI stays pinned; the canary needs no model credential.
 
 Kru is inspired by OpenBot and is independently implemented. It contains no
 copied OpenBot code. Licensed under [MIT](LICENSE).

@@ -1,15 +1,20 @@
 #!/usr/bin/env bun
 import { fileURLToPath } from "node:url";
+import { chat } from "./chat";
 import packageJson from "../../package.json";
 import { RpcConnection, installRpcSignalHandlers } from "../rpc";
 
 export async function main(args = process.argv.slice(2)): Promise<number> {
+  if (args[0] === "chat") {
+    try { return await chat(args.slice(1)); }
+    catch (error) { console.error(`error: ${error instanceof Error ? error.message : String(error)}`); return 1; }
+  }
   if (args.length === 1 && (args[0] === "--version" || args[0] === "-v")) {
     console.log(packageJson.version);
     return 0;
   }
   if (args.length === 0 || args.includes("--help") || args.includes("-h")) {
-    console.log("Usage: kru rpc ping --fake [--stall] [--timeout-ms <milliseconds>]\n       kru --version");
+    console.log("Usage: kru rpc ping --fake [--stall] [--timeout-ms <milliseconds>]\n       kru chat [--provider fake|codex|claude] [prompt]\n       kru --version");
     return 0;
   }
   if (args[0] !== "rpc" || args[1] !== "ping" || !args.includes("--fake")) {

@@ -1,11 +1,12 @@
 import { afterEach, beforeEach, expect, test } from "bun:test";
-import { mkdtempSync, readFileSync, readdirSync, rmSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import packageJson from "../package.json";
 import { createCodexRpcConnection } from "../src/providers/codex/transport";
 import type { RpcConnection } from "../src/rpc";
+import { CodexProvider } from '../src/providers/codex/adapter';
 
 let directory: string;
 let rpc: RpcConnection | undefined;
@@ -59,4 +60,25 @@ test.skipIf(process.env.KRU_TEST_CODEX !== "1")("real Codex initializes with the
   const initialize = `{"id":"1","method":"initialize","params":{"clientInfo":{"name":"kru","title":"Kru","version":"${packageJson.version}"}}}\n`;
   const repeated = `{"id":"2","method":"initialize","params":{"clientInfo":{"name":"kru","title":"Kru","version":"${packageJson.version}"}}}\n`;
   expect(readFileSync(capture)).toEqual(Buffer.from(initialize + '{"method":"initialized"}\n' + repeated));
+}, 20_000);
+
+test.skipIf(process.env.KRU_TEST_CODEX !== '1')('real Codex registers the experimental tool API without a model call', async () => {
+  const provider = new CodexProvider({ transport: { command: process.env.KRU_CODEX_COMMAND ?? 'codex', processRecordDir: join(directory, 'processes') } });
+  try {
+    await provider.start();
+    const { thread } = await provider.request('thread/start', { cwd: directory, tools: [{ name: 'kru_canary_echo', description: 'Echo a string.', inputSchema: { type: 'object', properties: { text: { type: 'string' } }, required: ['text'], additionalProperties: false } }] });
+    expect(thread.id).toBeString(); expect(thread.prompt?.toolCount).toBe(1);
+  } finally { await provider.stop(); }
+}, 20_000);
+
+test.skipIf(process.env.KRU_TEST_CODEX !== '1')('real Codex receives the configured workspace and additional writable roots', async () => {
+  const cwd = join(directory, 'workspace'); const extra = join(directory, 'extra');
+  mkdirSync(cwd); mkdirSync(extra);
+  const provider = new CodexProvider({ transport: { command: process.env.KRU_CODEX_COMMAND ?? 'codex', processRecordDir: join(directory, 'processes') } });
+  try {
+    await provider.start();
+    const native = await provider.request('thread/start', { cwd, permissions: { sandbox: 'workspace-write', approvalPolicy: 'on-request', writableRoots: [extra] } }) as unknown as { sandbox: { type: string; writableRoots: string[] } };
+    expect(native.sandbox.type).toBe('workspaceWrite');
+    expect(native.sandbox.writableRoots.map(path => realpathSync(path))).toContain(realpathSync(extra));
+  } finally { await provider.stop(); }
 }, 20_000);

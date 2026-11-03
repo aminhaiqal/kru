@@ -1,0 +1,36 @@
+export function parseDuration(text: string): number {
+  const MAX = Number.MAX_SAFE_INTEGER;
+  const mult: Record<string, number> = { h: 3600000, m: 60000, s: 1000, ms: 1 };
+  const rank: Record<string, number> = { h: 0, m: 1, s: 2, ms: 3 };
+
+  // ms before m so the alternation matches the longer unit first
+  const re = /\s*(\d+)(ms|h|m|s)/y;
+  let lastRank = -1;
+  let total = 0;
+  let hasComponent = false;
+
+  while (re.lastIndex < text.length) {
+    const pos = re.lastIndex;
+    const m = re.exec(text);
+    if (!m) {
+      // Only trailing whitespace is allowed after the last component
+      if (/^\s*$/.test(text.slice(pos))) break;
+      throw new RangeError('Invalid duration');
+    }
+
+    const value = Number(m[1]);
+    const unit = m[2];
+
+    if (value > MAX) throw new RangeError('Invalid duration');
+    if (rank[unit] <= lastRank) throw new RangeError('Invalid duration');
+    lastRank = rank[unit];
+
+    const contrib = value * mult[unit];
+    if (contrib > MAX || total + contrib > MAX) throw new RangeError('Invalid duration');
+    total += contrib;
+    hasComponent = true;
+  }
+
+  if (!hasComponent) throw new RangeError('Invalid duration');
+  return total;
+}

@@ -10,7 +10,7 @@ jobs:
           bun-version: latest
       - run: bun install --frozen-lockfile
       - run: bun run check
-      - name: Repeat transport and CLI tests ten times on Linux
+      - name: Repeat complete suite ten times on Linux
         run: bun test --rerun-each 10
   codex-smoke:
     runs-on: ubuntu-latest
@@ -24,5 +24,5 @@ jobs:
           node-version: 24
       - run: bun install --frozen-lockfile
       - run: npm install --global @openai/codex@0.165.0
-      - name: Check exact initialize bytes against real Codex
+      - name: Check exact initialize bytes and experimental tool registration
         run: bun run test:codex

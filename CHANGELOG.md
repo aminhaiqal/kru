@@ -1,5 +1,40 @@
 # Changelog
 
+## [0.0.3] - 2026-11-03
+
+M1 — one provider port with fake, Codex and Claude adapters.
+
+### Added
+
+- Typed thread/turn methods, notifications, tool calls, approval replies,
+  capabilities and lifecycle events shared by all adapters.
+- Claude Agent SDK adapter with generated turn IDs, streaming input queues,
+  end-of-turn usage and in-process MCP tools.
+- Codex app-server adapter with dynamic tools and one shared process for agents,
+  independent ownership/routing and malformed-turn fault isolation.
+- `kru chat --provider fake|codex|claude` for arguments, piped input and interactive
+  conversations, with per-turn usage and cancellation.
+- Minimal, coding and Claude full prompt profiles; stable prefixes, instructions
+  under 8,000 bytes and a maximum of six Kru-declared tools. Profile-selected
+  native tools are counted independently.
+- Reproducible full-versus-coding benchmark with raw usage, generated code and
+  independent acceptance results for the first real comparison.
+- Shared conformance, permission and liveness tests, opt-in real provider/CLI
+  checks, and a nightly latest-Codex schema/tool canary alongside pinned CI.
+
+### Changed
+
+- Normalize usage into inclusive input totals, cache reads, cache writes and
+  output, preserving per-turn and cumulative counts without double counting.
+- Configure permissions per agent with explicit writable roots. Claude permits
+  workspace file tools without an approval UI; outside writes and shell commands
+  use host approvals. Enforce path boundaries before native permission rules.
+- Use scoped idle timeouts, reset by command output and progress. Explicitly
+  executing commands suspend idle detection during silence; native command
+  timeouts and cancellation remain available.
+- Preserve explicit RPC response errors and apply graceful/forced signal shutdown
+  to the common provider lifecycle.
+
 ## [0.0.2] - 2026-11-02
 
 ### Fixed
@@ -42,3 +77,4 @@ First release: M0 — JSON-RPC over stdio.
 
 [0.0.1]: https://github.com/aminhaiqal/kru/tree/v0.0.1
 [0.0.2]: https://github.com/aminhaiqal/kru/compare/v0.0.1...v0.0.2
+[0.0.3]: https://github.com/aminhaiqal/kru/compare/v0.0.2...v0.0.3

@@ -1,7 +1,7 @@
-import type { RpcConnection } from "./connection";
+interface Stoppable { stop(): Promise<void>; forceStop(): Promise<void> }
 
 /** Opt in at the application boundary; the transport never takes global signals. */
-export function installRpcSignalHandlers(connections: Iterable<RpcConnection>): {
+export function installRpcSignalHandlers(connections: Iterable<Stoppable>): {
   readonly exitCode: number | undefined;
   dispose(): void;
 } {

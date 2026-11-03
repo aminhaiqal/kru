@@ -1,0 +1,40 @@
+export function parseDuration(text: string): number {
+  const MAX = Number.MAX_SAFE_INTEGER;
+
+  // Overall structure: optional whitespace, one or more <digits><unit> pairs with optional
+  // whitespace between them, optional trailing whitespace.  No space between digits and unit.
+  // Units tried longest-first so "ms" wins over "m".
+  if (!/^\s*\d+(ms|[hms])(\s*\d+(ms|[hms]))*\s*$/.test(text)) {
+    throw new RangeError('Invalid duration');
+  }
+
+  // Rank encodes required strictly-descending order: h(0) m(1) s(2) ms(3).
+  const rank: Record<string, number> = { h: 0, m: 1, s: 2, ms: 3 };
+  const mult: Record<string, number> = { h: 3_600_000, m: 60_000, s: 1_000, ms: 1 };
+
+  let lastRank = -1;
+  let total = 0;
+
+  for (const [, numStr, unit] of text.matchAll(/(\d+)(ms|[hms])/g)) {
+    const r = rank[unit];
+
+    // Strictly descending order (also rejects duplicates).
+    if (r <= lastRank) throw new RangeError('Invalid duration');
+    lastRank = r;
+
+    const value = Number(numStr);
+    const multiplier = mult[unit];
+
+    // Per-value check: value * multiplier must not exceed MAX.
+    // Use division to avoid imprecise large multiplication.
+    if (value > Math.floor(MAX / multiplier)) throw new RangeError('Invalid duration');
+
+    const contribution = value * multiplier;
+
+    // Running-total check: compare against remaining headroom to stay exact.
+    if (contribution > MAX - total) throw new RangeError('Invalid duration');
+    total += contribution;
+  }
+
+  return total;
+}
