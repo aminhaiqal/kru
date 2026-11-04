@@ -2,11 +2,16 @@ import { Database } from 'bun:sqlite';
 import { readFileSync, mkdirSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { resolveDatabasePath } from './location';
+import { randomUUID } from 'node:crypto';
+import { dispatch, emit, type Command } from './events';
+import { importGenesis } from './genesis';
+import type { EventType, Payloads } from './event-types';
 
 const migrations = [
   { version: 1, sql: readFileSync(new URL('./migrations/001-initial.sql', import.meta.url), 'utf8') },
   { version: 2, sql: readFileSync(new URL('./migrations/002-scheduler.sql', import.meta.url), 'utf8') },
   { version: 3, sql: readFileSync(new URL('./migrations/003-usage-ledger.sql', import.meta.url), 'utf8') },
+  { version: 4, sql: readFileSync(new URL('./migrations/004-events.sql', import.meta.url), 'utf8') },
 ];
 
 export interface StoreChange { topic: string; id: string; value?: unknown }
@@ -19,6 +24,8 @@ export class Store {
   private publishing = false;
   private composing = false;
   private stagedChanges: StoreChange[] = [];
+  commandId: string | undefined;
+  get inCommand(): boolean { return this.composing; }
 
   constructor(path = resolveDatabasePath(), options: { busyTimeoutMs?: number } = {}) {
     const timeout = options.busyTimeoutMs ?? 5_000;
@@ -39,6 +46,7 @@ export class Store {
         }
         for (const migration of migrations.slice(versions.length)) {
           this.db.exec(migration.sql);
+          if (migration.version === 4) importGenesis(this.db);
           this.db.query('INSERT INTO schema_migrations (version, applied_at) VALUES (?, ?)').run(migration.version, new Date().toISOString());
         }
       });
@@ -58,6 +66,15 @@ export class Store {
 
   /** Explicit M4 composition: nested writes use savepoints, events publish after the outer commit. */
   atomic<T>(operation: () => T): T {
+    return this.command('transaction', operation);
+  }
+  command<T>(name: string, operation: () => T, options?: { id?: string; input?: unknown }): T {
+    const command: Command = { id: options?.id ?? randomUUID(), name, input: options?.input };
+    return dispatch(this, command, operation);
+  }
+  emit<K extends EventType>(type: K, payload: Payloads[K]): void { emit(this, type, payload); }
+  /** Internal transaction boundary used only by dispatch; operational writes use write(). */
+  commandTransaction<T>(operation: () => T): T {
     if (this.db.inTransaction) throw new Error('Atomic commands must own their transaction');
     this.composing = true; this.stagedChanges = [];
     let value: T;

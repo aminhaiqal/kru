@@ -1,13 +1,18 @@
 # M4 — Implementation order
 
+Implemented in [M4 — Event log, conversation history and cost projections](m4.md).
+This document retains the original ordering behind the v0.0.5 foundation and
+the subsequent event/history work. M4's twelve acceptance cases now pass in ten
+repeated runs; the implementation record describes scope and migration details.
+
 ## First task: durable budget accounting
 
 The [durable usage/pricing foundation](usage-and-pricing.md) is implemented ahead
 of the broader history/projection work. It adds the schema-v3 turn ledger, dated
 model/cache-lifetime price snapshots, `kru cost` estimates and combined token/USD
 gates. Known spending survives restart, and submitted unknown outcomes remain
-held until reviewed. General event/receipt replay and full pipeline accounting
-are still further M4 work.
+held until reviewed. General event/receipt replay is now implemented in M4;
+complete native query-pipeline billing remains a separate accounting follow-up.
 
 The foundation implements these requirements; extend and retain them as M4 proceeds:
 
@@ -43,5 +48,5 @@ budget must remain held after restart; raising the limit must still resume work.
 Extend the transactional dispatcher, command receipts and projection replay;
 add durable messages and buffered delta flushing, then `kru log` and `kru cost`.
 The cost views and budget gates must agree with the same durable usage records.
-This is the remaining M4 plan; the complete event/projection milestone has not
-yet been implemented.
+These event/history tasks are now implemented in migration v4, following the
+already shipped v3 ledger. See the implementation record for verification.

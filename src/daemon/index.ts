@@ -7,6 +7,7 @@ import { DaemonLock } from './lock';
 import { SqliteUsageLedger } from '../usage/sqlite';
 import type { UsageLedger } from '../usage/ledger';
 import { SqliteSessions } from './sessions';
+import { SqliteTurnHistory } from '../turns/recorder';
 
 export interface DaemonOptions extends SchedulerOptions { pollMs?: number; heartbeatMs?: number; shutdownGraceMs?: number }
 export class Daemon {
@@ -16,6 +17,7 @@ export class Daemon {
   private readonly lock: DaemonLock;
   private readonly mailbox: SqliteMailbox;
   private readonly ledger: UsageLedger;
+  private readonly history: SqliteTurnHistory;
   private poll: ReturnType<typeof setInterval> | undefined;
   private heartbeat: ReturnType<typeof setInterval> | undefined;
   private version = 0;
@@ -34,9 +36,13 @@ export class Daemon {
     this.closed = new Promise(resolve => { this.resolveClosed = resolve; });
     this.lock = new DaemonLock(store); this.mailbox = new SqliteMailbox(store);
     this.ledger = options.ledger ?? new SqliteUsageLedger(store);
+    this.history = new SqliteTurnHistory(store, {
+      ...(options.now ? { now: options.now } : {}),
+      onError: error => { this.failure = error; void this.stop(0); },
+    });
     this.scheduler = new Scheduler(this.mailbox, new AgentRegistry(store), new SqliteSessions(store),
       factory ?? (agent => createProvider(agent.provider)), {
-        ...options, ledger: this.ledger,
+        ...options, ledger: this.ledger, turns: options.turns ?? this.history,
         onState: () => { options.onState?.(); this.queueSnapshot(); },
         onError: error => { this.failure = error; options.onError?.(error); void this.stop(0); },
       });
@@ -45,7 +51,7 @@ export class Daemon {
     if (this.started || this.stopping) throw new Error('Daemon has already started or stopped');
     this.lock.acquire(); this.started = true;
     try {
-      this.store.atomic(() => { this.ledger.recover(); this.mailbox.recoverInterrupted(); });
+      this.store.atomic(() => { this.history.recover(); this.ledger.recover(); this.mailbox.recoverInterrupted(); });
       this.version = this.dataVersion();
       this.scheduler.start(); this.writeSnapshot();
       this.poll = setInterval(() => {

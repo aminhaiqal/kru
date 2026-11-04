@@ -22,7 +22,7 @@ test('12. fresh and frozen version-1 databases migrate to the same schema withou
       id: 'fixture-delivery', text: 'retained work', seq: 1, chainId: 'fixture-chain', hop: 0,
     });
     expect(migrated.db.query('PRAGMA foreign_key_check').all()).toEqual([]);
-    expect(migrated.db.query('SELECT version FROM schema_migrations ORDER BY version').all()).toEqual([{ version: 1 }, { version: 2 }, { version: 3 }]);
+    expect(migrated.db.query('SELECT version FROM schema_migrations ORDER BY version').all()).toEqual([{ version: 1 }, { version: 2 }, { version: 3 }, { version: 4 }]);
   } finally { fresh.close(); migrated.close(); rmSync(dir, { recursive: true, force: true }); }
 });
 
@@ -113,7 +113,7 @@ test('version-2 migration failure rolls back DDL and its receipt while retaining
       inspect.exec('DROP TRIGGER reject_migration');
     } finally { inspect.close(); }
     const retried = new Store(path);
-    try { expect(retried.db.query('SELECT version FROM schema_migrations ORDER BY version').all()).toEqual([{ version: 1 }, { version: 2 }, { version: 3 }]); }
+    try { expect(retried.db.query('SELECT version FROM schema_migrations ORDER BY version').all()).toEqual([{ version: 1 }, { version: 2 }, { version: 3 }, { version: 4 }]); }
     finally { retried.close(); }
   } finally { rmSync(dir, { recursive: true, force: true }); }
 });
@@ -158,5 +158,17 @@ test('frozen version-3 schema preserves historical price snapshots and turn cost
     const cost = JSON.parse(String((migrated.db.query('SELECT cost_json FROM usage_records').get() as { cost_json: string }).cost_json));
     expect(cost.maximumNanoUsd).toBe(24000); expect(cost.price.verifiedAt).toBe('2026-11-04');
     expect(migrated.db.query('PRAGMA foreign_key_check').all()).toEqual([]);
+  } finally { migrated.close(); fresh.close(); rmSync(dir, { recursive: true, force: true }); }
+});
+
+test('frozen version-4 schema retains its event history and matches a fresh schema', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'kru-schema-v4-')), path = join(dir, 'v4.sqlite');
+  const db = new Database(path); db.exec(readFileSync(new URL('./fixtures/store/v4.sql', import.meta.url), 'utf8')); db.close();
+  const migrated = new Store(path), fresh = new Store(':memory:');
+  try {
+    expect(schema(migrated.db)).toEqual(schema(fresh.db));
+    expect(migrated.db.query('SELECT max(version) AS version FROM schema_migrations').get()).toEqual({ version: 4 });
+    expect(migrated.db.query('PRAGMA foreign_key_check').all()).toEqual([]);
+    expect(migrated.db.query('SELECT cost_usd FROM usage_records').get()).toEqual({ cost_usd: .000024 });
   } finally { migrated.close(); fresh.close(); rmSync(dir, { recursive: true, force: true }); }
 });

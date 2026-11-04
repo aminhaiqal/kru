@@ -1,9 +1,10 @@
 import type { Batch } from '../mailbox';
 import type { TokenUsage } from '../providers/protocol';
 import { BudgetCalendar } from '../scheduler/budget-day';
-import { estimateCost, type CostEstimate } from './pricing';
+import { estimateCost, modelPrices, type CostEstimate } from './pricing';
 
 export interface UsageRecord {
+  laneId?: string | null; priceId?: string | null; recordedAt?: string;
   batchId: string; agentId: string; provider: string; model: string; threadId: string | null; turnId: string | null;
   cause: string; deliveryIds: string[]; chainIds: string[]; phase: 'prepared' | 'submitted' | 'final';
   outcome: string | null; usage: TokenUsage | null; cost: CostEstimate | null; complete: boolean;
@@ -15,19 +16,21 @@ export interface UsageLedger {
   onChange(listener: () => void): () => void;
   begin(batch: Batch, provider: string, model: string, startedAt?: string): void;
   submitted(id: string): void;
-  started(id: string, threadId: string, turnId: string): void;
+  started(id: string, threadId: string, turnId: string, start?: () => void): void;
   observe(id: string, usage: TokenUsage): void;
   abandon(id: string, restore: () => void): void;
   settle(id: string, outcome: string, confirmed: boolean, finish: () => void): void;
   recover(): void;
   list(agentId?: string): UsageRecord[];
   totals(agentId: string, calendar: BudgetCalendar, now: number): UsageTotals;
+  isPriced(provider: string, model: string, at: string): boolean;
 }
 export function totals(records: UsageRecord[], agentId: string, calendar: BudgetCalendar, now: number): UsageTotals {
   const today = calendar.day(now);
   const total: UsageTotals = { tokens: 0, nanoUsd: 0, unknownTokens: false, unknownUsd: false };
   for (const r of records) {
-    if (r.agentId !== agentId || (calendar.day(Date.parse(r.startedAt)) !== today && r.phase === 'final')) continue;
+    const uncertain = !r.complete || r.usage === null || r.cost?.maximumNanoUsd == null;
+    if (r.agentId !== agentId || (calendar.day(Date.parse(r.recordedAt ?? r.startedAt)) !== today && r.phase === 'final' && (!uncertain || r.resolution))) continue;
     if (r.resolution) { total.tokens += r.resolution.tokens; total.nanoUsd += r.resolution.nanoUsd; continue; }
     total.tokens += r.usage?.last.totalTokens ?? 0;
     total.nanoUsd += r.cost?.maximumNanoUsd ?? 0;
@@ -38,6 +41,7 @@ export function totals(records: UsageRecord[], agentId: string, calendar: Budget
 }
 /** Standalone scheduler fixture; the daemon uses SQLite so limits survive restarts. */
 export class MemoryUsageLedger implements UsageLedger {
+  isPriced(_provider: string, model: string, _at: string): boolean { return Boolean(modelPrices[model]); }
   protected records = new Map<string, UsageRecord>();
   private readonly listeners = new Set<() => void>();
   onChange(listener: () => void): () => void { this.listeners.add(listener); return () => { this.listeners.delete(listener); }; }
@@ -46,6 +50,7 @@ export class MemoryUsageLedger implements UsageLedger {
     if (this.records.has(batch.id)) throw new Error('Usage batch already exists');
     const now = startedAt ?? new Date().toISOString();
     this.records.set(batch.id, { batchId: batch.id, agentId: batch.agentId, provider, model, threadId: null, turnId: null,
+      laneId: batch.laneId, priceId: null, recordedAt: now,
       cause: batch.deliveries[0]!.sender.kind, deliveryIds: batch.deliveries.map(d => d.id), chainIds: [...new Set(batch.deliveries.map(d => d.chainId))],
       phase: 'prepared', outcome: null, usage: null, cost: null, complete: false, resolution: null, startedAt: now, updatedAt: now });
     this.changed();
@@ -54,7 +59,7 @@ export class MemoryUsageLedger implements UsageLedger {
     const row = this.records.get(id); if (!row) throw new Error(`Unknown usage batch: ${id}`); return row;
   }
   submitted(id: string): void { const row = this.get(id); if (row.phase !== 'prepared') throw new Error('Usage already submitted'); row.phase = 'submitted'; this.changed(); }
-  started(id: string, threadId: string, turnId: string): void { Object.assign(this.get(id), { threadId, turnId }); this.changed(); }
+  started(id: string, threadId: string, turnId: string, start?: () => void): void { Object.assign(this.get(id), { threadId, turnId }); start?.(); this.changed(); }
   observe(id: string, usage: TokenUsage): void {
     const row = this.get(id); if (row.phase === 'final') throw new Error('Final usage cannot be changed'); row.model = usage.model ?? row.model; row.usage = structuredClone(usage); row.cost = estimateCost(row.model, usage.last); this.changed();
   }

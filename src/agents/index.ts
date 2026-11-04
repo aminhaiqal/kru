@@ -21,15 +21,16 @@ export class AgentRegistry {
     const config = JSON.stringify(input.config ?? {});
     if (!config || config[0] !== '{') throw new Error('Agent config must be a JSON object');
     const id = randomUUID();
-    this.store.write(() => this.store.db.query('INSERT INTO agents (id, name, provider, config_json, created_at) VALUES (?, ?, ?, ?, ?)')
-      .run(id, input.name, input.provider, config, new Date().toISOString()));
+    this.store.command('agent.create', () => this.store.emit('agent.configured', {
+      row: { id, name: input.name, provider: input.provider, config_json: config, created_at: new Date().toISOString() },
+    }));
     const agent = this.get(id)!;
     this.store.publishChanges([{ topic: 'agents', id }]);
     return agent;
   }
 
   update(id: string, patch: { provider?: string; config?: Record<string, unknown> }): Agent {
-    const agent = this.store.write(() => {
+    const agent = this.store.command('agent.update', () => {
       const current = this.get(id);
       if (!current) throw new Error(`Unknown agent: ${id}`);
       const provider = patch.provider ?? current.provider;
@@ -41,7 +42,7 @@ export class AgentRegistry {
         config.permissions = { ...(current.config.permissions as object ?? {}), ...permissions };
       }
       validateAgentConfig(config);
-      this.store.db.query('UPDATE agents SET provider = ?, config_json = ? WHERE id = ?').run(provider, JSON.stringify(config), id);
+      this.store.emit('agent.configured', { row: { id, name: current.name, provider, config_json: JSON.stringify(config), created_at: current.createdAt } });
       return this.get(id)!;
     });
     this.store.publishChanges([{ topic: 'agents', id }]);

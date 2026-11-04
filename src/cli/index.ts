@@ -4,10 +4,15 @@ import { chat } from "./chat";
 import { mailboxCommand } from "./mailbox";
 import { costCommand } from "./cost";
 import { daemonCommand } from "./daemon";
+import { historyCommand } from "./history";
 import packageJson from "../../package.json";
 import { RpcConnection, installRpcSignalHandlers } from "../rpc";
 
 export async function main(args = process.argv.slice(2)): Promise<number> {
+  if (args[0] === 'log' || args[0] === 'replay') {
+    try { return await historyCommand(args[0], args.slice(1)); }
+    catch (error) { console.error(`error: ${error instanceof Error ? error.message : String(error)}`); return 1; }
+  }
   if (args[0] === "cost") {
     try { return costCommand(args.slice(1)); }
     catch (error) { console.error(`error: ${error instanceof Error ? error.message : String(error)}`); return 1; }
@@ -29,7 +34,7 @@ export async function main(args = process.argv.slice(2)): Promise<number> {
     return 0;
   }
   if (args.length === 0 || args.includes("--help") || args.includes("-h")) {
-    console.log("Usage: kru rpc ping --fake [--stall] [--timeout-ms <milliseconds>]\n       kru chat [--provider fake|codex|claude] [prompt]\n       kru daemon [--max-turns <count>]\n       kru cost [--agent <agent>] [--json]\n       kru status [--json]\n       kru agent set <agent> --daily-tokens <count>\n       kru agent pause|resume <agent>\n       kru init\n       kru agent create <name> --provider fake|codex|claude\n       kru agent list\n       kru send <agent> <text>\n       kru queue <agent>\n       kru cancel <delivery>\n       kru retry <delivery>\n       kru --version");
+    console.log("Usage: kru rpc ping --fake [--stall] [--timeout-ms <milliseconds>]\n       kru chat [--provider fake|codex|claude] [prompt]\n       kru daemon [--max-turns <count>]\n       kru log <agent> [--follow] [--json]\n       kru replay --verify [--json]\n       kru cost [--agent <agent>] [--by agent|model|chain] [--since 7d] [--json]\n       kru status [--json]\n       kru agent set <agent> --daily-tokens <count>\n       kru agent pause|resume <agent>\n       kru init\n       kru agent create <name> --provider fake|codex|claude\n       kru agent list\n       kru send <agent> <text>\n       kru queue <agent>\n       kru cancel <delivery>\n       kru retry <delivery>\n       kru --version");
     return 0;
   }
   if (args[0] !== "rpc" || args[1] !== "ping" || !args.includes("--fake")) {

@@ -2,7 +2,8 @@
 
 The first M4 foundation is implemented: daemon turn usage and estimated token
 costs survive restarts, with token and USD gates backed by the same ledger.
-General event replay, durable assistant messages and `kru log` remain later M4 work.
+The subsequent [M4 implementation](m4.md) adds event replay, durable assistant
+messages, `kru log` and grouped cost reports.
 Standalone scheduler consumers must inject a persistent `UsageLedger`; its default
 in-memory implementation is for fixtures. The daemon supplies SQLite by default.
 
@@ -49,11 +50,13 @@ These are **estimated main-agent token costs**, using the same per-turn scope as
 model calls, subagents, tool/service fees, negotiated prices, fast-mode premiums
 and partner/cloud pricing are not included. The scope is explicit in stored
 estimates and CLI output. Full query-pipeline accounting requires per-model native
-counter baselines, including across resumed sessions, and remains further M4 work.
+counter baselines, including across resumed sessions, and remains a separate
+accounting follow-up.
 Do not present this estimated USD limit as a hard cap on all account charges.
 
 Every stored estimate includes its original model/rate snapshot and verification
-date. Updating the code's rate table does not reprice historical finalized turns.
+date. Migration v4 adds the immutable `prices` projection and per-turn `price_id`;
+`PriceBook` adds new effective rates without repricing historical finalized turns.
 Missing prices or usage are visible in `kru cost`; partial totals are labeled.
 
 ## Ledger lifecycle
@@ -65,9 +68,10 @@ bounds, completion state and optional person-supplied resolution bounds.
 A prepared row exists before execution. `submitted` is persisted before sending
 `turn/start`; each usage update replaces the latest snapshot rather than adding
 cumulative snapshots. On confirmed completion, usage finalization and every
-batch member's final transition share one transaction. Rollbacks publish no events.
-`Store.atomic` explicitly composes writes using nested savepoints and staged
-notifications; ordinary nested `Store.write` calls remain refused.
+batch member's final transition share one transaction. M4 includes final items,
+turn metadata and lane release in that same dispatch. A rollback appends no
+events and publishes no notifications. `Store.atomic` now routes through dispatch;
+nested commands use savepoints, while ordinary nested `Store.write` calls remain refused.
 
 Boot recovery discards prepared rows whose turn was never submitted, and preserves
 submitted unknown outcomes as interrupted/incomplete. Known usage and price
@@ -86,20 +90,23 @@ scheduler through the Store bus; another CLI connection wakes it through
 
 Daily windows use the configured budget timezone and include DST. Finalized turns
 are attributed to their start day. Pending turns remain reservations even across
-midnight until settled. The query uses indexed per-agent day ranges rather than
-reading all history on every drain.
+midnight until settled. Interrupted consumption that is still unresolved also
+keeps its conservative hold across midnight and restarts. Accounting timestamps
+remain UTC; changing the selected timezone changes calendar query boundaries,
+not the stored timestamp or historical estimate.
 
-## Evidence and remaining M4 work
+## Evidence and M4 integration
 
 `test/usage-ledger.test.ts` covers restart persistence, both budget gates,
 repeated-restart unknown holds, missing prices, atomic rollback, duplicate usage
 snapshots and explicit resolution. `test/pricing.test.ts` covers cache lifetimes,
-missing-lifetime bounds and the archived comparison. Frozen v1/v2/v3 fixtures
+missing-lifetime bounds and the archived comparison. Frozen v1/v2/v3/v4 fixtures
 cover schema parity and preserved price snapshots.
 
-The remainder of [M4](m4-plan.md) adds the general event/command-receipt system,
-projection replay, durable messages, broader per-model accounting and richer cost
-views. This foundation is not a claim that the entire M4 milestone is complete.
+The completed [M4](m4.md) adds the general event/command-receipt system,
+projection replay, durable messages, immutable effective price rows and grouped
+cost views. Its twelve acceptance cases pass in ten repeated runs. Main-agent
+token estimates still carry the scope limitations described above.
 
 Verified with Bun 1.4.4 on 2026-11-04: `bun run check` passed TypeScript and
 228 tests (9 opt-in tests skipped); `bun run test:scheduler:repeat` passed all

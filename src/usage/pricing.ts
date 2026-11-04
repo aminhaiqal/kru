@@ -25,8 +25,7 @@ export function nanoUsd(dollars: number): number {
   if (!Number.isFinite(dollars) || dollars < 0 || !Number.isSafeInteger(value)) throw new Error('Invalid USD amount');
   return value;
 }
-export function estimateCost(model: string, count: TokenCount): CostEstimate {
-  const p = modelPrices[model] ?? null;
+export function estimateCost(model: string, count: TokenCount, p: ModelPrice | null = modelPrices[model] ?? null): CostEstimate {
   const writes5m = count.cacheWriteByLifetime?.fiveMinutes ?? 0, writes1h = count.cacheWriteByLifetime?.oneHour ?? 0;
   const unknown = count.cacheWrite - writes5m - writes1h;
   if (![count.inputTotal, count.cachedRead, count.cacheWrite, count.output, writes5m, writes1h].every(n => Number.isSafeInteger(n) && n >= 0)

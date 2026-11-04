@@ -4,6 +4,7 @@ export interface TurnOutcome { status: 'completed' | 'failed' | 'interrupted'; e
 export interface RunnerOptions {
   idleTimeoutMs?: number; startTimeoutMs?: number; startGraceMs?: number;
   onSubmitting?: () => void;
+  onNotification?: (notification: Notification) => void;
   signal: AbortSignal; onStarted(id: string): void; onUsage(usage: TokenUsage): void;
 }
 const message = (e: unknown) => e instanceof Error ? e.message : String(e);
@@ -51,6 +52,7 @@ export function runScheduledTurn(provider: ProviderClient, threadId: string, tex
       if (done) return;
       const id = 'turn' in n.params ? n.params.turn.id : n.params.turnId;
       if (id !== turnId) return;
+      options.onNotification?.(n);
       if (n.method === 'item/started' && n.params.item.type === 'commandExecution') commands.add(n.params.item.id);
       if (n.method === 'item/completed') commands.delete(n.params.item.id);
       idle();

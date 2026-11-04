@@ -1,5 +1,20 @@
 # Changelog
 
+## Unreleased
+
+### Added
+
+- M4 append-only, versioned domain events and durable command receipts, with
+  deterministic projectors and atomic end-of-turn answer/accounting commits.
+- Migration v4 genesis imports for existing agents, messages, delivery seq order
+  and usage, preserving shipped v1–v3 migrations and historical price snapshots.
+- Durable daemon conversation items, turn metadata and two-second partial scratch
+  snapshots; `log [--follow]`, `replay --verify` and cost grouping/time filters.
+- Immutable effective model-price rows and per-turn price ids; unknown prices
+  remain NULL and unresolved consumption keeps its budget hold across midnight.
+- All twelve M4 acceptance cases, ten repeated runs, cross-process command
+  deduplication, completion/migration fault injection and a frozen v4 fixture.
+
 ## [0.0.5] - 2026-11-04
 
 M3 — lanes and the drain scheduler, with lifecycle follow-ups, the first M4

@@ -1,5 +1,7 @@
 import { createHash, randomUUID } from 'node:crypto';
 import type { Store } from '../store';
+import { nextSequence } from '../store/events';
+import type { DeliveryRow } from '../store/event-types';
 import { allowedTransitions, DeliveryTransitionError, IdempotencyConflictError } from './state';
 import type { Delivery, DeliveryStatus, EnqueueInput, EnqueueReceipt, FinalStatus, Mailbox, MailboxChange, Sender, Batch, LaneHead, ActiveLane } from './types';
 
@@ -53,7 +55,7 @@ export class SqliteMailbox implements Mailbox {
       replyTo: input.replyTo ?? null, expectsReply: input.expectsReply ?? false,
       chain: input.chain ? { id: input.chain.id, hop: input.chain.hop } : null,
     })).digest('hex');
-    const receipt = this.store.write(() => {
+    const receipt = this.store.command('mailbox.enqueue', () => {
       if (input.idempotencyKey !== undefined) {
         const existing = this.store.db.query<{ id: string; request_hash: string }, [string]>(
           'SELECT id, request_hash FROM messages WHERE idempotency_key = ?').get(input.idempotencyKey);
@@ -67,18 +69,18 @@ export class SqliteMailbox implements Mailbox {
       if (sender.kind === 'agent') this.requireAgent(sender.agentId);
       const messageId = randomUUID();
       const now = new Date().toISOString();
-      this.store.db.query(`INSERT INTO messages (id, sender_kind, sender_agent_id, sender_routine_id, text, reply_to,
-        expects_reply, idempotency_key, request_hash, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(
-        messageId, sender.kind, sender.kind === 'agent' ? sender.agentId : null,
-        sender.kind === 'routine' ? sender.routineId : null, input.text, input.replyTo ?? null,
-        Number(input.expectsReply ?? false), input.idempotencyKey ?? null, input.idempotencyKey === undefined ? null : hash, now);
       const chainId = input.chain?.id ?? randomUUID();
-      const deliveryIds = recipients.map(recipient => {
-        const id = randomUUID();
-        this.store.db.query(`INSERT INTO deliveries (id, message_id, recipient_id, lane_id, status, chain_id, hop, updated_at)
-          VALUES (?, ?, ?, ?, 'queued', ?, ?, ?)`).run(id, messageId, recipient, input.laneId ?? null, chainId, input.chain?.hop ?? 0, now);
-        return id;
-      });
+      const seq = nextSequence(this.store.db, 'deliveries');
+      const deliveries = recipients.map((recipient, index): DeliveryRow => ({ seq: seq + index, id: randomUUID(),
+        message_id: messageId, recipient_id: recipient, lane_id: input.laneId ?? null, status: 'queued',
+        chain_id: chainId, hop: input.chain?.hop ?? 0, updated_at: now, turn_id: null, batch_id: null, error: null, retry_of: null }));
+      this.store.emit('message.enqueued', { row: {
+        id: messageId, sender_kind: sender.kind, sender_agent_id: sender.kind === 'agent' ? sender.agentId : null,
+        sender_routine_id: sender.kind === 'routine' ? sender.routineId : null, text: input.text, reply_to: input.replyTo ?? null,
+        expects_reply: Number(input.expectsReply ?? false), idempotency_key: input.idempotencyKey ?? null,
+        request_hash: input.idempotencyKey === undefined ? null : hash, created_at: now,
+      }, deliveries });
+      const deliveryIds = deliveries.map(row => row.id);
       return { messageId, deliveryIds, duplicate: false };
     });
     if (!receipt.duplicate) this.publish(receipt.deliveryIds.map(deliveryId => ({ deliveryId, status: 'queued' })));
@@ -86,7 +88,7 @@ export class SqliteMailbox implements Mailbox {
   }
 
   claimNext(agentId: string, laneId: string | null): Delivery | null {
-    const delivery = this.store.write(() => {
+    const delivery = this.store.command('mailbox.claim', () => {
       this.requireAgent(agentId);
       if (this.store.db.query('SELECT 1 FROM active_lanes WHERE agent_id = ? AND lane_key = ?').get(agentId, laneId ?? '')) return null;
       const row = this.store.db.query<Row, [string, string | null]>(`${select}
@@ -100,7 +102,7 @@ export class SqliteMailbox implements Mailbox {
   }
 
   claimBatch(agentId: string, laneId: string | null): Batch | null {
-    const batch = this.store.write(() => {
+    const batch = this.store.command('mailbox.claimBatch', () => {
       this.requireAgent(agentId);
       if (this.laneBusy(agentId, laneId)) return null;
       const rows = this.store.db.query<Row, [string, string | null]>(`${select}
@@ -120,8 +122,7 @@ export class SqliteMailbox implements Mailbox {
       this.store.db.query('INSERT INTO active_lanes (agent_id, lane_key, batch_id, started_at) VALUES (?, ?, ?, ?)')
         .run(agentId, laneId ?? '', id, new Date().toISOString());
       for (const row of selected) {
-        this.transition(row.id, 'queued', 'starting');
-        this.store.db.query('UPDATE deliveries SET batch_id = ? WHERE id = ?').run(id, row.id);
+        this.transition(row.id, 'queued', 'starting', undefined, undefined, id);
       }
       return { id, agentId, laneId, deliveries: selected.map(row => this.get(row.id)!) };
     });
@@ -157,7 +158,7 @@ export class SqliteMailbox implements Mailbox {
   }
   /** Only the owner daemon calls this before any provider starts. */
   recoverInterrupted(): number {
-    const ids = this.store.write(() => {
+    const ids = this.store.command('mailbox.recover', () => {
       const rows = this.store.db.query<{ id: string; status: DeliveryStatus }, []>(
         "SELECT id, status FROM deliveries WHERE status IN ('starting','running') ORDER BY seq").all();
       for (const row of rows) this.transition(row.id, row.status, 'interrupted', undefined, 'daemon restarted');
@@ -170,16 +171,15 @@ export class SqliteMailbox implements Mailbox {
   }
 
   private changeBatch(batchId: string, status: DeliveryStatus, error?: string, turnId?: string): void {
-    const ids = this.store.write(() => {
+    const ids = this.store.command('mailbox.changeBatch', () => {
       if (!this.store.db.query('SELECT 1 FROM active_lanes WHERE batch_id = ?').get(batchId)) throw new Error(`Unknown active batch: ${batchId}`);
       const rows = this.store.db.query<{ id: string; status: DeliveryStatus }, [string]>(
         "SELECT id, status FROM deliveries WHERE batch_id = ? AND status IN ('starting','running') ORDER BY seq").all(batchId);
       if (!rows.length) throw new Error('Active batch has no deliveries');
-      for (const row of rows) this.transition(row.id, row.status, status, turnId, error);
+      for (const row of rows) this.transition(row.id, row.status, status, turnId, error, status === 'queued' ? null : undefined);
       if (status === 'running') this.store.db.query('UPDATE active_lanes SET turn_id = ? WHERE batch_id = ?').run(turnId!, batchId);
       else {
         this.store.db.query('DELETE FROM active_lanes WHERE batch_id = ?').run(batchId);
-        if (status === 'queued') this.store.db.query('UPDATE deliveries SET batch_id = NULL, turn_id = NULL WHERE batch_id = ?').run(batchId);
       }
       return rows.map(r => r.id);
     });
@@ -199,13 +199,14 @@ export class SqliteMailbox implements Mailbox {
   cancel(deliveryId: string): void { this.change(deliveryId, 'cancelled', ['queued']); }
 
   retry(deliveryId: string): EnqueueReceipt {
-    const receipt = this.store.write(() => {
+    const receipt = this.store.command('mailbox.retry', () => {
       const old = this.get(deliveryId);
       if (!old) throw new Error(`Unknown delivery: ${deliveryId}`);
       if (allowedTransitions[old.status].length) throw new Error('Only a final delivery can be retried');
       const id = randomUUID();
-      this.store.db.query(`INSERT INTO deliveries (id, message_id, recipient_id, lane_id, status, retry_of, chain_id, hop, updated_at)
-        VALUES (?, ?, ?, ?, 'queued', ?, ?, ?, ?)`).run(id, old.messageId, old.recipientAgentId, old.laneId, old.id, old.chainId, old.hop, new Date().toISOString());
+      this.store.emit('delivery.retried', { row: { seq: nextSequence(this.store.db, 'deliveries'), id, message_id: old.messageId,
+        recipient_id: old.recipientAgentId, lane_id: old.laneId, status: 'queued', retry_of: old.id,
+        chain_id: old.chainId, hop: old.hop, updated_at: new Date().toISOString(), turn_id: null, batch_id: null, error: null } });
       return { messageId: old.messageId, deliveryIds: [id], duplicate: false };
     });
     this.publish(receipt.deliveryIds.map(id => ({ deliveryId: id, status: 'queued' })));
@@ -235,7 +236,7 @@ export class SqliteMailbox implements Mailbox {
     if (!this.store.db.query('SELECT id FROM agents WHERE id = ?').get(id)) throw new Error(`Unknown agent: ${id}`);
   }
   private change(id: string, status: DeliveryStatus, from: DeliveryStatus[], turnId?: string, error?: string): void {
-    this.store.write(() => {
+    this.store.command('mailbox.change', () => {
       const row = this.get(id);
       if (!row) throw new Error(`Unknown delivery: ${id}`);
       if (row.batchId) throw new Error('Use batch operations for a batched delivery');
@@ -244,11 +245,14 @@ export class SqliteMailbox implements Mailbox {
     });
     this.publish([{ deliveryId: id, status }]);
   }
-  private transition(id: string, from: DeliveryStatus, to: DeliveryStatus, turnId?: string, error?: string): void {
+  private transition(id: string, from: DeliveryStatus, to: DeliveryStatus, turnId?: string, error?: string, batchId?: string | null): void {
     if (!allowedTransitions[from].includes(to)) throw new DeliveryTransitionError(id, from, to);
-    const result = this.store.db.query(`UPDATE deliveries SET status = ?, turn_id = ?, error = ?, updated_at = ?
-      WHERE id = ? AND status = ?`).run(to, turnId ?? this.get(id)?.turnId ?? null, error ?? null, new Date().toISOString(), id, from);
-    if (result.changes !== 1) throw new Error(`Delivery ${id} changed concurrently`);
+    const row = this.store.db.query<DeliveryRow, [string]>('SELECT * FROM deliveries WHERE id = ?').get(id);
+    if (!row || row.status !== from) throw new Error(`Delivery ${id} changed concurrently`);
+    const type = to === 'starting' ? 'delivery.claimed' : to === 'running' ? 'delivery.running'
+      : to === 'queued' ? 'delivery.restored' : to === 'cancelled' ? 'delivery.cancelled' : 'delivery.finished';
+    this.store.emit(type, { row: { ...row, status: to, turn_id: to === 'queued' ? null : turnId ?? row.turn_id,
+      batch_id: batchId === undefined ? row.batch_id : batchId, error: error ?? null, updated_at: new Date().toISOString() } });
   }
   private publish(changes: MailboxChange[]): void {
     this.store.publishChanges(changes.map(change => ({ topic: 'mailbox', id: change.deliveryId, value: change.status })));

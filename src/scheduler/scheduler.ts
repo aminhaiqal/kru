@@ -11,7 +11,8 @@ import { abortable } from './abortable';
 import { BudgetCalendar } from './budget-day';
 import { MemoryUsageLedger, type UsageLedger } from '../usage/ledger';
 import { zeroTokens } from '../providers/token-usage';
-import { modelPrices, nanoUsd } from '../usage/pricing';
+import { nanoUsd } from '../usage/pricing';
+import type { TurnHistory } from '../turns/ports';
 
 export interface LaneStatus {
   agentId: string; laneId: string | null; state: 'held' | 'starting' | 'running';
@@ -23,6 +24,7 @@ interface Runtime {
   error?: string; threadId?: string;
 }
 export interface SchedulerOptions {
+  turns?: TurnHistory;
   budgetTimezone?: string; ledger?: UsageLedger;
   maxTurns?: number; idleTimeoutMs?: number; startTimeoutMs?: number; startGraceMs?: number;
   providerRetryMs?: number; now?: () => number;
@@ -216,11 +218,12 @@ export class Scheduler {
       const total = this.ledger.totals(agent.id, this.calendar, this.now());
       const dollars = agent.config.dailyUsd as number | undefined;
       const model = String(agent.config.model ?? (agent.provider === 'fake' ? 'fake' : 'unknown'));
+      const priced = this.ledger.isPriced(agent.provider, model, new Date(this.now()).toISOString());
       const budgetDetail = total.unknownTokens && agent.config.dailyTokens !== undefined ? 'unknown usage'
-        : dollars !== undefined && (total.unknownUsd || !modelPrices[model]) ? 'unknown or unpriced USD usage'
+        : dollars !== undefined && (total.unknownUsd || !priced) ? 'unknown or unpriced USD usage'
         : dollars !== undefined && total.nanoUsd >= nanoUsd(dollars) ? 'USD limit' : 'token limit';
       const budgetBlocked = (agent.config.dailyTokens !== undefined && total.unknownTokens)
-        || (dollars !== undefined && (total.unknownUsd || !modelPrices[model] || total.nanoUsd >= nanoUsd(dollars)));
+        || (dollars !== undefined && (total.unknownUsd || !priced || total.nanoUsd >= nanoUsd(dollars)));
       const reason = holdReason({ paused: agent.config.paused === true, ready: runtime?.ready ?? false,
         busy: this.mailbox.laneBusy(agent.id, lane.laneId), used: this.used(agent.id),
         limit: agent.config.dailyTokens as number | undefined, budgetBlocked, slots: this.slots.available });
@@ -270,6 +273,8 @@ export class Scheduler {
       this.ledger.abandon(batch.id, () => this.mailbox.restoreBatch(batch.id)); return;
     }
     if (this.stopped || controller.signal.aborted) { this.ledger.abandon(batch.id, () => this.mailbox.restoreBatch(batch.id)); return; }
+    const recording = this.options.turns?.prepare(batch, agent, runtime.threadId,
+      this.sessions.get(agent.id, batch.laneId, agent.provider)?.promptHash ?? 'unknown');
     const outcome = await runScheduledTurn(runtime.provider, runtime.threadId, prompt, {
       signal: controller.signal,
       onSubmitting: () => this.ledger.submitted(batch.id),
@@ -277,12 +282,15 @@ export class Scheduler {
       ...(this.options.startTimeoutMs !== undefined ? { startTimeoutMs: this.options.startTimeoutMs } : {}),
       ...(this.options.startGraceMs !== undefined ? { startGraceMs: this.options.startGraceMs } : {}),
       onStarted: turnId => {
-        this.ledger.started(batch.id, runtime.threadId!, turnId);
-        this.mailbox.markBatchRunning(batch.id, turnId);
+        this.ledger.started(batch.id, runtime.threadId!, turnId, () => {
+          recording?.started(turnId);
+          this.mailbox.markBatchRunning(batch.id, turnId);
+        });
         const state = this.states.get(keyOf(agent.id, batch.laneId));
         if (state) { state.state = 'running'; state.turnId = turnId; this.changed(); }
       },
       onUsage: value => this.account(batch, value),
+      onNotification: notification => recording?.observe(notification),
     });
     if (outcome.retireSession) {
       const threadId = runtime.threadId;
@@ -293,7 +301,10 @@ export class Scheduler {
     }
     if (outcome.noExecution) this.ledger.observe(batch.id, { last: zeroTokens(), total: zeroTokens() });
     this.ledger.settle(batch.id, outcome.status, !outcome.retireSession,
-      () => this.mailbox.finishBatch(batch.id, outcome.status, outcome.error));
+      () => {
+        recording?.finish(outcome);
+        this.mailbox.finishBatch(batch.id, outcome.status, outcome.error);
+      });
   }
   async stop(graceMs = 5_000): Promise<void> {
     this.stopped = true; this.setupAbort.abort(); this.unsubscribe?.(); this.unsubscribeAgents?.(); this.unsubscribeUsage?.(); this.scheduled.clear();

@@ -1,9 +1,10 @@
 # Kru
 
 Kru is a headless, local-first engine for running AI agent CLIs as persistent
-teammates. **M0–M3 are implemented:** a generic JSON-RPC transport, a typed
+teammates. **M0–M4 are implemented:** a generic JSON-RPC transport, a typed
 provider port with fake, Codex and Claude adapters, streaming terminal chat,
-a durable SQLite mailbox, and a daemon with lane scheduling and batching.
+a durable SQLite mailbox, a daemon with lane scheduling and batching, and
+replayable conversation history with token and dollar accounting.
 The roadmap is in [the project plan](docs/Kru%20%E2%80%94%20Project%20Plan%20%26%20Milestones.pdf).
 
 ## Try M0
@@ -158,6 +159,22 @@ interrupted and require an explicit retry. Stop the daemon with Ctrl+C.
 
 See [M3 implementation notes](docs/m3.md) for session bindings, atomic batches,
 shutdown, crash recovery, command options and acceptance tests.
+
+## Try M4
+
+```sh
+bun run dev -- log reviewer
+bun run dev -- log reviewer --follow
+bun run dev -- cost --by agent --since 7d
+bun run dev -- replay --verify
+```
+
+Daemon inputs, assistant answers, tool/command details, turns and usage survive
+restart. Domain writes append versioned events and update projections in the
+same transaction. Replay verification rebuilds seven projection tables in an
+isolated database and reports drift without changing live state. Existing v1–v3
+databases upgrade through migration v4 with genesis events preserving queue order.
+See [M4 implementation notes](docs/m4.md) and `bun run test:history:repeat`.
 
 ## Cost and dollar budgets
 

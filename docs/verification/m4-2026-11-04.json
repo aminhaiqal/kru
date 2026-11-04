@@ -1,0 +1,111 @@
+{
+  "verifiedAt": "2026-11-04T15:08:34Z",
+  "baseCommit": "a7ffecd16095f5718c0027fe6d352f9d0d1fb657",
+  "workingTreeImplementation": true,
+  "schemaVersion": 4,
+  "planSha256": "5ff11912dfc863681ad2cc48ad45430692f2038682db4b606780dd11dfadafae",
+  "checks": {
+    "typecheck": "passed",
+    "testsPassed": 250,
+    "testsSkipped": 9,
+    "testsFailed": 0,
+    "m4RepeatedChecksPassed": 210,
+    "m4Repetitions": 10,
+    "m4NumberedAcceptanceCases": 12
+  },
+  "demo": {
+    "provider": "fake",
+    "log": [
+      {
+        "id": "message:3e397833-69aa-431d-9e5a-7402bb690283:",
+        "agentId": "e86b5015-cc3d-4aa4-a96b-ee407aee028d",
+        "laneId": null,
+        "role": "user",
+        "text": "Remember the M4 demo",
+        "timestamp": "2026-11-04T15:08:34.038Z",
+        "partial": false
+      },
+      {
+        "id": "item:1311d3c0-00b2-45c0-b445-2052b7c8bc1c:55a0dac5-837d-4ebd-a76e-5f510326a611",
+        "agentId": "e86b5015-cc3d-4aa4-a96b-ee407aee028d",
+        "laneId": null,
+        "role": "assistant",
+        "text": "Echo: Remember the M4 demo",
+        "turnId": "1311d3c0-00b2-45c0-b445-2052b7c8bc1c",
+        "timestamp": "2026-11-04T15:08:34.092Z",
+        "partial": false
+      }
+    ],
+    "cost": {
+      "currency": "USD",
+      "estimated": true,
+      "minimumUsd": 0,
+      "maximumUsd": 0,
+      "unknown": 0,
+      "turns": [
+        {
+          "batchId": "1311d3c0-00b2-45c0-b445-2052b7c8bc1c",
+          "agent": "reviewer",
+          "model": "fake",
+          "tokens": 46,
+          "minimumUsd": 0,
+          "maximumUsd": 0,
+          "complete": true,
+          "scope": "main-agent token estimate",
+          "outcome": "completed",
+          "input": 20,
+          "cached": 0,
+          "cacheWrite": 0,
+          "output": 26,
+          "agentId": "e86b5015-cc3d-4aa4-a96b-ee407aee028d",
+          "laneId": null,
+          "chainIds": [
+            "405b21ed-e6e5-4616-86eb-4e92dd5417ad"
+          ],
+          "cause": "user",
+          "recordedAt": "2026-11-04T15:08:34.084Z",
+          "priceId": "42a1a53df582d390f1ba2592efbb1ce027722c9016de7ef492f8ec49222907a4",
+          "price": {
+            "cacheRead": 0,
+            "cacheWrite1h": 0,
+            "cacheWrite5m": 0,
+            "currency": "USD",
+            "input": 0,
+            "model": "fake",
+            "output": 0,
+            "source": "Kru deterministic fake: no model calls",
+            "unit": "million-tokens",
+            "verifiedAt": "2026-11-04"
+          },
+          "resolution": null
+        }
+      ],
+      "by": "agent",
+      "groups": [
+        {
+          "key": "reviewer",
+          "turns": 1,
+          "input": 20,
+          "cached": 0,
+          "output": 26,
+          "minimumUsd": 0,
+          "maximumUsd": 0,
+          "unknown": 0
+        }
+      ]
+    },
+    "replay": {
+      "events": 19,
+      "projections": 7,
+      "matches": true,
+      "differences": []
+    },
+    "turn": {
+      "provider": "fake",
+      "model": "fake",
+      "profile": "minimal",
+      "prefixHashLength": 64,
+      "status": "completed"
+    }
+  }
+}
