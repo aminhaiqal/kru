@@ -1,6 +1,8 @@
 # Changelog
 
-## Unreleased
+## [0.0.6] - 2026-11-04
+
+M4 — event log, replayable projections, durable conversation history and cost accounting.
 
 ### Added
 
