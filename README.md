@@ -283,13 +283,13 @@ See [M0 implementation notes](docs/m0.md) for lifecycle behavior and test covera
 
 ## Versioning
 
-The current release is **0.0.6**, tagged `v0.0.6`. `package.json` is the source
+The current release is **0.1.0**, tagged `v0.1.0`. `package.json` is the source
 of the version printed by `kru --version` (or `bun run dev -- --version`).
 Each release records its changes in [CHANGELOG.md](CHANGELOG.md) and receives
 an annotated Git tag matching the package version.
 
-M0–M4 use `0.0.x` versions. The roadmap reserves `0.1.0` for M5 and `0.2.0`
-for M7. Within a release line, fixes increment the patch version.
+M0–M4 use `0.0.x` versions. M5 starts the `0.1.x` line; the roadmap reserves
+`0.2.0` for M7. Within a release line, fixes increment the patch version.
 
 ## Development
 

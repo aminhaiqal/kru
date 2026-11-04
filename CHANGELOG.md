@@ -1,6 +1,9 @@
 # Changelog
 
-## Unreleased
+## [0.1.0] - 2026-11-04
+
+M5 — bounded agent-to-agent messages, opt-in answers and visible chain cost,
+with the pre-v0.1 retention, input-size and stored-error checks completed.
 
 ### Added
 
