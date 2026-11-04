@@ -5,7 +5,7 @@ import { canonical, readEvent, type StoredEvent } from './events';
 import { columns, project, type ProjectionTable } from './projectors';
 
 export const projectionTables = Object.keys(columns) as ProjectionTable[];
-const ordering: Record<ProjectionTable, string> = { message_routes: 'message_id', delivery_replies: 'delivery_id', agents: 'id', messages: 'id', deliveries: 'seq', prices: 'id', usage_records: 'batch_id', turns: 'id', thread_messages: 'seq' };
+const ordering: Record<ProjectionTable, string> = { threads: 'id', turn_threads: 'turn_id', message_routes: 'message_id', delivery_replies: 'delivery_id', agents: 'id', messages: 'id', deliveries: 'seq', prices: 'id', usage_records: 'batch_id', turns: 'id', thread_messages: 'seq' };
 export function snapshot(db: Database): Record<string, unknown[]> {
   return Object.fromEntries(projectionTables.map(table => [table, db.query(`SELECT ${columns[table]} FROM ${table} ORDER BY ${ordering[table]}`).all()]));
 }
@@ -14,7 +14,7 @@ export function replay(events: StoredEvent[]): Database {
   const db = new Database(':memory:');
   try {
     db.exec('PRAGMA foreign_keys = ON');
-    for (const file of ['001-initial.sql', '002-scheduler.sql', '003-usage-ledger.sql', '004-events.sql', '005-tools.sql', '006-key-retention.sql']) db.exec(readFileSync(new URL(`./migrations/${file}`, import.meta.url), 'utf8'));
+    for (const file of ['001-initial.sql', '002-scheduler.sql', '003-usage-ledger.sql', '004-events.sql', '005-tools.sql', '006-key-retention.sql', '007-threads.sql']) db.exec(readFileSync(new URL(`./migrations/${file}`, import.meta.url), 'utf8'));
     db.transaction(() => {
       for (const row of events) {
         db.query('INSERT INTO events VALUES (?, ?, ?, ?, ?, ?, ?)').run(row.seq, row.id, row.command_id, row.type, row.version, row.payload_json, row.occurred_at);

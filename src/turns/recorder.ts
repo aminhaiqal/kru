@@ -7,6 +7,7 @@ import type { TurnRow } from '../store/event-types';
 import { nextSequence } from '../store/events';
 import type { TurnHistory, TurnRecording } from './ports';
 import { storedError } from '../store/errors';
+import { ThreadStore } from '../threads/store';
 
 interface BufferedItem { item: AgentItem; completed: boolean }
 export interface RecorderOptions { flushMs?: number; now?: () => number; onError?: (error: unknown) => void }
@@ -58,7 +59,11 @@ export class TurnRecorder implements TurnRecording {
       profile: String(agent.config.promptProfile ?? 'minimal'), prefix_hash: prefixHash, status: 'starting', error: null,
       started_at: new Date(this.now()).toISOString(), completed_at: null, duration_ms: null,
       deliveries_json: JSON.stringify(batch.deliveries.map(d => d.id)), chains_json: JSON.stringify([...new Set(batch.deliveries.map(d => d.chainId))]) };
-    store.command('turn.prepare', () => store.emit('turn.prepared', { row: this.row }));
+    store.command('turn.prepare', () => {
+      const thread = new ThreadStore(store).ensure(agent.id, batch.laneId);
+      store.emit('turn.prepared', { row: this.row });
+      store.emit('turn.thread_linked', { row: { turn_id: batch.id, thread_id: thread.id } });
+    });
     this.timer = setInterval(() => {
       try { this.flush(); } catch (error) { this.flushError = error; options.onError?.(error); }
     }, options.flushMs ?? 2_000);

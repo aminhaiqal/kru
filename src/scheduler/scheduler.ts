@@ -28,6 +28,7 @@ interface Runtime {
   error?: string; threadId?: string;
 }
 export interface SchedulerOptions {
+  handoffChars?: number;
   tools?: AgentTools; maxHops?: number;
   turns?: TurnHistory;
   budgetTimezone?: string; ledger?: UsageLedger;
@@ -71,6 +72,7 @@ export class Scheduler {
     this.calendar = new BudgetCalendar(options.budgetTimezone);
     this.budgetTimezone = this.calendar.timeZone;
     this.day = this.today();
+    if (options.handoffChars !== undefined && (!Number.isSafeInteger(options.handoffChars) || options.handoffChars < 512 || options.handoffChars > 16000)) throw new Error('handoffChars must be between 512 and 16000');
     for (const value of [options.idleTimeoutMs, options.startTimeoutMs, options.startGraceMs, options.providerRetryMs]) {
       if (value !== undefined && (!Number.isSafeInteger(value) || value < 1 || value > 2_147_483_647)) throw new Error('Scheduler deadlines must be positive timer durations');
     }
@@ -273,7 +275,7 @@ export class Scheduler {
     this.changed();
   }
   private async execute(runtime: Runtime, agent: Agent, batch: Batch, controller: AbortController): Promise<void> {
-    const prompt = this.options.tools?.render(batch) ?? batchPrompt(batch);
+    let prompt = this.options.tools?.render(batch) ?? batchPrompt(batch);
     if (Buffer.byteLength(prompt) > 32 * 1024) {
       this.ledger.abandon(batch.id, () => this.mailbox.finishBatch(batch.id, 'failed', 'Message exceeds the 32 KB turn input limit; send smaller messages'));
       return;
@@ -290,6 +292,13 @@ export class Scheduler {
       this.ledger.abandon(batch.id, () => this.mailbox.restoreBatch(batch.id)); return;
     }
     if (this.stopped || controller.signal.aborted) { this.ledger.abandon(batch.id, () => this.mailbox.restoreBatch(batch.id)); return; }
+    const binding = this.sessions.get(agent.id,batch.laneId,agent.provider);
+    const handoff = binding ? this.sessions.handoff?.(binding,batch.deliveries.map(d => d.messageId),this.options.handoffChars ?? 6000,32768 - Buffer.byteLength(prompt) - 2) : undefined;
+    if (handoff?.blocked) {
+      this.ledger.abandon(batch.id, () => this.mailbox.finishBatch(batch.id,'failed','Current request leaves no room for the conversation handoff; send a smaller message'));
+      return;
+    }
+    if (handoff?.text) prompt = handoff.text + '\n\n' + prompt;
     const recording = this.options.turns?.prepare(batch, agent, runtime.threadId,
       this.sessions.get(agent.id, batch.laneId, agent.provider)?.promptHash ?? 'unknown');
     const answer = new TurnAnswer();
@@ -304,6 +313,7 @@ export class Scheduler {
         this.ledger.started(batch.id, runtime.threadId!, turnId, () => {
           recording?.started(turnId);
           this.mailbox.markBatchRunning(batch.id, turnId);
+          if (binding) this.sessions.acknowledgeHandoff?.(binding);
         });
         context = { agent, batch, threadId: runtime.threadId!, turnId };
         runtime.active = context;

@@ -1,6 +1,6 @@
 {
   "name": "kru",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "private": true,
   "description": "A local-first engine for persistent AI agent teammates",
   "license": "MIT",
@@ -20,7 +20,8 @@
     "./usage": "./src/usage/index.ts",
     "./turns": "./src/turns/index.ts",
     "./cost": "./src/cost/prices.ts",
-    "./tools": "./src/tools/index.ts"
+    "./tools": "./src/tools/index.ts",
+    "./threads": "./src/threads/index.ts"
   },
   "scripts": {
     "dev": "bun src/cli/index.ts",
@@ -44,6 +45,9 @@
     "test:messaging": "bun test test/messaging.test.ts test/messaging-providers.test.ts",
     "test:messaging:repeat": "bun test --rerun-each 10 test/messaging.test.ts test/messaging-providers.test.ts",
     "demo:messaging": "bun scripts/demo-messaging.ts",
+    "test:threads": "bun test test/threads.test.ts test/threads-providers.test.ts",
+    "test:threads:repeat": "bun test --rerun-each 10 test/threads.test.ts test/threads-providers.test.ts",
+    "demo:handoff": "bun scripts/demo-handoff.ts",
     "test:release:repeat": "bun test --rerun-each 10 test/release.test.ts test/messaging.test.ts test/messaging-providers.test.ts"
   },
   "engines": {

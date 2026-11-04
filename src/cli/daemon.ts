@@ -8,13 +8,13 @@ import type { LaneStatus } from '../scheduler';
 
 export const daemonUsage = `Usage: kru daemon [--db <path>] [--max-turns <count>] [--poll-ms <ms>]
                   [--idle-timeout-ms <ms>] [--start-timeout-ms <ms>] [--start-grace-ms <ms>]
-                  [--shutdown-grace-ms <ms>] [--budget-timezone <IANA-zone>] [--max-hops <count>]
+                  [--shutdown-grace-ms <ms>] [--budget-timezone <IANA-zone>] [--max-hops <count>] [--handoff-chars <count>]
        kru status [--db <path>] [--json]`;
 function parse(args: string[]): { path: string | undefined; values: Map<string, number>; json: boolean; budgetTimezone: string | undefined } {
   let path: string | undefined, json = false;
   let budgetTimezone: string | undefined;
   const values = new Map<string, number>();
-  const allowed = args[0] === 'daemon' ? ['--max-turns', '--poll-ms', '--idle-timeout-ms', '--start-timeout-ms', '--start-grace-ms', '--shutdown-grace-ms', '--max-hops'] : [];
+  const allowed = args[0] === 'daemon' ? ['--max-turns', '--poll-ms', '--idle-timeout-ms', '--start-timeout-ms', '--start-grace-ms', '--shutdown-grace-ms', '--max-hops', '--handoff-chars'] : [];
   for (let i = 1; i < args.length; i++) {
     const arg = args[i]!;
     if (arg === '--db') {
@@ -41,7 +41,7 @@ export async function daemonCommand(args: string[]): Promise<number> {
     if (args[0] === 'status') { printStatus(store, parsed.json); return 0; }
     const options: DaemonOptions = { ...(parsed.budgetTimezone !== undefined ? { budgetTimezone: parsed.budgetTimezone } : {}) };
     for (const [flag, key] of [['--max-turns', 'maxTurns'], ['--poll-ms', 'pollMs'], ['--idle-timeout-ms', 'idleTimeoutMs'],
-      ['--start-timeout-ms', 'startTimeoutMs'], ['--start-grace-ms', 'startGraceMs'], ['--shutdown-grace-ms', 'shutdownGraceMs'], ['--max-hops', 'maxHops']] as const) {
+      ['--start-timeout-ms', 'startTimeoutMs'], ['--start-grace-ms', 'startGraceMs'], ['--shutdown-grace-ms', 'shutdownGraceMs'], ['--max-hops', 'maxHops'], ['--handoff-chars', 'handoffChars']] as const) {
       if (parsed.values.has(flag)) options[key] = parsed.values.get(flag)!;
     }
     const daemon = new Daemon(store, options);

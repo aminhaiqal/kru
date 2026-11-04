@@ -36,6 +36,10 @@ export class AgentRegistry {
       const provider = patch.provider ?? current.provider;
       if (!provider.trim()) throw new Error('Agent provider must not be empty');
       const config = { ...current.config, ...patch.config };
+      if (provider !== current.provider) {
+        if (patch.config?.model === undefined) delete config.model;
+        if (provider !== 'claude' && config.promptProfile === 'full' && patch.config?.promptProfile === undefined) config.promptProfile = 'minimal';
+      }
       if (patch.config?.permissions !== undefined) {
         const permissions = patch.config.permissions;
         if (!permissions || typeof permissions !== 'object' || Array.isArray(permissions)) throw new Error('Invalid agent permissions');

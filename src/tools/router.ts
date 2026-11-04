@@ -2,7 +2,8 @@ import type { Mailbox, Delivery } from '../mailbox';
 import type { AgentSource } from '../scheduler/ports';
 import type { ToolCall, ToolResult } from '../providers/protocol';
 import type { AgentTools, ToolContext, ToolState } from './ports';
-import { agentToolDefinitions, agentToolInstructions } from './definitions';
+import { agentToolDefinitions, agentToolInstructions, historyToolDefinition, historyToolInstructions } from './definitions';
+import { HistoryInputError, type HistorySearch } from '../threads/types';
 import { deliveryContent } from './delivery-content';
 import { toolCallKey } from './idempotency';
 
@@ -16,10 +17,12 @@ function text(value: unknown, name: string): asserts value is string {
   if (typeof value !== 'string' || !value.trim()) throw new ToolInputError(`${name} must be a nonempty string`);
 }
 export class ToolRouter implements AgentTools {
-  readonly definitions = agentToolDefinitions;
-  readonly instructions = agentToolInstructions;
+  readonly definitions;
+  readonly instructions: string;
   readonly maxHops: number;
-  constructor(private readonly mailbox: Mailbox, private readonly agents: AgentSource, private readonly state: ToolState, options: { maxHops?: number } = {}) {
+  constructor(private readonly mailbox: Mailbox, private readonly agents: AgentSource, private readonly state: ToolState, private readonly options: { maxHops?: number; history?: HistorySearch } = {}) {
+    this.definitions = options.history ? [...agentToolDefinitions, historyToolDefinition] : agentToolDefinitions;
+    this.instructions = [agentToolInstructions, options.history ? historyToolInstructions : ''].filter(Boolean).join('\n\n');
     this.maxHops = options.maxHops ?? 4;
     if (!Number.isSafeInteger(this.maxHops) || this.maxHops < 0) throw new Error('maxHops must be a nonnegative safe integer');
   }
@@ -31,13 +34,26 @@ export class ToolRouter implements AgentTools {
       return this.state.command(id, { agentId: context.agent.id, laneId: context.batch.laneId, batchId: context.batch.id, threadId: call.threadId, turnId: call.turnId, callId: call.callId, tool: call.tool, arguments: call.arguments }, () => {
         try {
           const args = object(call.arguments);
+          if (call.tool === 'history_search' && this.options.history) {
+            if (Object.keys(args).some(key => !['query','limit','cursor','entryId','offset'].includes(key))) throw new ToolInputError('history_search accepts only query, limit, cursor, entryId and offset');
+            if (args.entryId !== undefined) {
+              text(args.entryId,'entryId');
+              if (args.query !== undefined || args.cursor !== undefined || args.limit !== undefined || (args.offset !== undefined && (!Number.isSafeInteger(args.offset) || Number(args.offset) < 0))) throw new ToolInputError('Use entryId/offset separately from query/cursor/limit');
+              return result(true,this.options.history.read(context.agent.id,context.batch.laneId,args.entryId,args.offset as number | undefined));
+            }
+            if (args.offset !== undefined) throw new ToolInputError('offset requires entryId');
+            text(args.query, 'query');
+            if (args.limit !== undefined && (!Number.isSafeInteger(args.limit) || Number(args.limit) < 1 || Number(args.limit) > 5)) throw new ToolInputError('limit must be between 1 and 5');
+            if (args.cursor !== undefined && typeof args.cursor !== 'string') throw new ToolInputError('cursor must be a string');
+            return result(true, this.options.history.search(context.agent.id,context.batch.laneId,args.query,args.limit as number | undefined,args.cursor as string | undefined));
+          }
           if (call.tool === 'list_agents') {
             if (Object.keys(args).length) throw new ToolInputError('list_agents accepts no arguments');
             return result(true, { agents: this.agents.list().map(a => ({ id: a.id, name: a.name, provider: a.provider, paused: a.config.paused === true })) });
           }
           if (call.tool !== 'send_message') throw new ToolInputError(`Unknown Kru tool: ${call.tool}`);
           return this.send(context, args, id);
-        } catch (error) { if (error instanceof ToolInputError) return fail(error.message); throw error; }
+        } catch (error) { if (error instanceof ToolInputError || error instanceof HistoryInputError) return fail(error.message); throw error; }
       });
     } catch (error) {
       if (error instanceof Error && error.message === 'Command id reused with different input') return fail('Tool call id reused with different arguments');

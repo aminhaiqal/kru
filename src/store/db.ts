@@ -5,6 +5,7 @@ import { resolveDatabasePath } from './location';
 import { randomUUID } from 'node:crypto';
 import { dispatch, emit, type Command } from './events';
 import { importGenesis } from './genesis';
+import { importThreads } from '../threads/migrate';
 import type { EventType, Payloads } from './event-types';
 
 const migrations = [
@@ -14,6 +15,7 @@ const migrations = [
   { version: 4, sql: readFileSync(new URL('./migrations/004-events.sql', import.meta.url), 'utf8') },
   { version: 5, sql: readFileSync(new URL('./migrations/005-tools.sql', import.meta.url), 'utf8') },
   { version: 6, sql: readFileSync(new URL('./migrations/006-key-retention.sql', import.meta.url), 'utf8') },
+  { version: 7, sql: readFileSync(new URL('./migrations/007-threads.sql', import.meta.url), 'utf8') },
 ];
 
 export interface StoreChange { topic: string; id: string; value?: unknown }
@@ -35,6 +37,7 @@ export class Store {
     if (path !== ':memory:') mkdirSync(dirname(resolve(path)), { recursive: true });
     this.db = new Database(path, { create: true, strict: true });
     try {
+      this.db.function('kru_fold', { deterministic: true }, (value: unknown) => typeof value === 'string' ? value.toLowerCase() : '');
       this.db.exec(`PRAGMA busy_timeout = ${timeout}; PRAGMA foreign_keys = ON; PRAGMA journal_mode = WAL; PRAGMA synchronous = FULL;`);
       const { version } = this.db.query<{ version: string }, []>('SELECT sqlite_version() AS version').get()!;
       const [major = 0, minor = 0] = version.split('.').map(Number);
@@ -49,6 +52,7 @@ export class Store {
         for (const migration of migrations.slice(versions.length)) {
           this.db.exec(migration.sql);
           if (migration.version === 4) importGenesis(this.db);
+          if (migration.version === 7) importThreads(this.db);
           this.db.query('INSERT INTO schema_migrations (version, applied_at) VALUES (?, ?)').run(migration.version, new Date().toISOString());
         }
       });

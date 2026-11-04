@@ -1,0 +1,38 @@
+{
+  "verifiedAt": "2026-11-05T00:29:43+08:00",
+  "timezone": "Asia/Kuala_Lumpur",
+  "baseCommit": "3ee6ab2be731d47c38fad23fa9e6e8fcaf967cba",
+  "workingTreeImplementation": true,
+  "schemaVersion": 7,
+  "planSha256": "5ff11912dfc863681ad2cc48ad45430692f2038682db4b606780dd11dfadafae",
+  "runtime": "Bun 1.4.4",
+  "checks": {
+    "typecheck": "passed",
+    "testsPassed": 295,
+    "testsSkipped": 9,
+    "testsFailed": 0,
+    "threadTests": 18,
+    "threadRepeatPassed": 180,
+    "threadRepetitions": 10,
+    "diffCheck": "passed"
+  },
+  "adapterCoverage": {
+    "codex": "real adapter over scripted native stdio peer",
+    "claude": "real adapter and SDK MCP server with in-memory transport and scripted model events",
+    "liveModelCalls": 0,
+    "liveRecallQualityVerified": false
+  },
+  "acceptance": {
+    "completedClaudeTurns": 10,
+    "providerSwitch": "actual agent set teammate --provider codex CLI in a separate process",
+    "completedCodexTurns": 1,
+    "stableLogicalThread": true,
+    "linkedTurns": 11,
+    "firstTurnFactInHandoff": true,
+    "firstTurnFactRetrievedByHistoryTool": true,
+    "replayEvents": 163,
+    "replayProjections": 11,
+    "replayMatches": true
+  },
+  "demoEvidence": "m6-demo-2026-11-05.json"
+}

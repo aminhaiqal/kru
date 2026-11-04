@@ -9,6 +9,7 @@ import type { UsageLedger } from '../usage/ledger';
 import { SqliteSessions } from './sessions';
 import { SqliteTurnHistory } from '../turns/recorder';
 import { ToolRouter, SqliteToolState } from '../tools';
+import { SqliteHistory } from '../threads/history';
 
 export interface DaemonOptions extends SchedulerOptions { pollMs?: number; heartbeatMs?: number; shutdownGraceMs?: number }
 export class Daemon {
@@ -43,6 +44,7 @@ export class Daemon {
     });
     const agents = new AgentRegistry(store);
     const tools = options.tools ?? new ToolRouter(this.mailbox, agents, new SqliteToolState(store), {
+      history: new SqliteHistory(store),
       ...(options.maxHops === undefined ? {} : { maxHops: options.maxHops }),
     });
     this.scheduler = new Scheduler(this.mailbox, agents, new SqliteSessions(store),

@@ -3,6 +3,8 @@ import type { DomainEvent } from '../event-types';
 
 /** Fixed columns, never payload-derived SQL. Projectors have no clocks or transaction ownership. */
 export const columns = {
+  threads: 'id,agent_id,lane_key,created_at',
+  turn_threads: 'turn_id,thread_id',
   message_routes: 'message_id,sender_lane_key',
   delivery_replies: 'delivery_id,message_id,outcome,reason,created_at',
   agents: 'id,name,provider,config_json,created_at',
@@ -14,7 +16,7 @@ export const columns = {
   thread_messages: 'seq,turn_id,item_id,agent_id,lane_key,type,text,details_json,completed_at',
 } as const;
 export type ProjectionTable = keyof typeof columns;
-const keys: Record<ProjectionTable, string> = { message_routes: 'message_id', delivery_replies: 'delivery_id', agents: 'id', messages: 'id', deliveries: 'id', prices: 'id', usage_records: 'batch_id', turns: 'id', thread_messages: 'turn_id,item_id' };
+const keys: Record<ProjectionTable, string> = { threads: 'id', turn_threads: 'turn_id', message_routes: 'message_id', delivery_replies: 'delivery_id', agents: 'id', messages: 'id', deliveries: 'id', prices: 'id', usage_records: 'batch_id', turns: 'id', thread_messages: 'turn_id,item_id' };
 function put(db: Database, table: ProjectionTable, value: object): void {
   const names = columns[table].split(','), row = value as Record<string, SQLQueryBindings>;
   if (names.some(name => row[name] === undefined)) throw new Error(`Incomplete ${table} event payload`);
@@ -29,6 +31,8 @@ function put(db: Database, table: ProjectionTable, value: object): void {
 }
 export function project(db: Database, event: DomainEvent): void {
   switch (event.type) {
+    case 'thread.created': put(db, 'threads', event.payload.row); break;
+    case 'turn.thread_linked': put(db, 'turn_threads', event.payload.row); break;
     case 'message.key_expired':
       if (db.query('UPDATE messages SET idempotency_key=NULL, request_hash=NULL WHERE id=? AND idempotency_key IS NOT NULL').run(event.payload.messageId).changes !== 1) throw new Error('Invalid key expiry event');
       break;

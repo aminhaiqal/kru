@@ -60,16 +60,16 @@ test('frozen v4 upgrades to tool routing without changing old events; failed v5 
   expect(() => new Store(old)).toThrow('reject v5'); const inspect = new Database(old);
   expect(inspect.query("SELECT name FROM sqlite_master WHERE name='message_routes'").all()).toEqual([]);
   inspect.exec('DROP TRIGGER reject_v5'); inspect.close(); const migrated = new Store(old);
-  try { expect(migrated.db.query('SELECT * FROM events ORDER BY seq').all()).toEqual(events); expect(verifyReplay(migrated).matches).toBe(true); expect(migrated.db.query('PRAGMA foreign_key_check').all()).toEqual([]); }
+  try { expect(migrated.db.query('SELECT * FROM events ORDER BY seq LIMIT ?').all(events.length)).toEqual(events); expect(verifyReplay(migrated).matches).toBe(true); expect(migrated.db.query('PRAGMA foreign_key_check').all()).toEqual([]); }
   finally { migrated.close(); }
 });
 
-test('frozen v5 preserves routed request and reply rows and replays all nine projections', () => {
+test('frozen v5 preserves routed request and reply rows and replays all eleven projections', () => {
   const path = join(dir, 'v5.sqlite'), db = new Database(path);
   db.exec(readFileSync(new URL('./fixtures/store/v5.sql', import.meta.url), 'utf8')); db.close();
   const migrated = new Store(path);
   try {
-    expect(verifyReplay(migrated)).toMatchObject({ matches: true, projections: 9 });
+    expect(verifyReplay(migrated)).toMatchObject({ matches: true, projections: 11 });
     expect(migrated.db.query('SELECT * FROM message_routes').all()).toHaveLength(2);
     expect(migrated.db.query('SELECT outcome FROM delivery_replies').get()).toEqual({ outcome: 'sent' });
     expect(migrated.db.query('PRAGMA foreign_key_check').all()).toEqual([]);

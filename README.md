@@ -1,11 +1,12 @@
 # Kru
 
 Kru is a headless, local-first engine for running AI agent CLIs as persistent
-teammates. **M0–M5 are implemented:** a generic JSON-RPC transport, a typed
+teammates. **M0–M6 are implemented:** a generic JSON-RPC transport, a typed
 provider port with fake, Codex and Claude adapters, streaming terminal chat,
 a durable SQLite mailbox, a daemon with lane scheduling and batching, and
-replayable conversation history with token and dollar accounting, and bounded
-agent-to-agent messaging through two Kru tools.
+replayable conversation history with token and dollar accounting, bounded
+agent-to-agent messaging, and durable threads with cross-provider handoff and
+scoped history retrieval through three Kru tools.
 The roadmap is in [the project plan](docs/Kru%20%E2%80%94%20Project%20Plan%20%26%20Milestones.pdf).
 
 ## Try M0
@@ -172,7 +173,7 @@ bun run dev -- replay --verify
 
 Daemon inputs, assistant answers, tool/command details, turns and usage survive
 restart. Domain writes append versioned events and update projections in the
-same transaction. Replay verification now rebuilds nine projection tables in an
+same transaction. Replay verification now rebuilds eleven projection tables in an
 isolated database and reports drift without changing live state. Existing v1–v3
 databases upgrade through migration v4 with genesis events preserving queue order.
 See [M4 implementation notes](docs/m4.md) and `bun run test:history:repeat`.
@@ -192,6 +193,24 @@ answer back; the default four-hop limit stops repeated forwarding.
 Use `daemon --max-hops <count>` to configure the limit and `cost --by chain`
 to inspect an exchange. See [M5 implementation notes](docs/m5.md) for tool arguments,
 return lanes, idempotency, atomic replies, and acceptance tests.
+
+## Try M6
+
+```sh
+bun run demo:handoff
+# 10 Claude turns → provider-only CLI switch → 1 Codex turn (scripted, no model calls)
+
+bun run dev -- agent set reviewer --provider codex
+bun run dev -- send reviewer "What did we decide in our first conversation?"
+```
+
+Each agent lane keeps a stable Kru thread while its native sessions change.
+Kru resumes an available session first. A replacement receives a bounded history
+packet; `history_search` retrieves omitted text from that same lane. A provider
+switch clears the previous provider's model unless you supply a replacement,
+and changes an inherited Claude `full` profile to `minimal` for Codex.
+Configure the packet with `daemon --handoff-chars 6000` (512–16000).
+See [M6 implementation notes](docs/m6.md) for recovery, limits and verification.
 
 ## Cost and dollar budgets
 
@@ -283,7 +302,7 @@ See [M0 implementation notes](docs/m0.md) for lifecycle behavior and test covera
 
 ## Versioning
 
-The current release is **0.1.0**, tagged `v0.1.0`. `package.json` is the source
+The current release is **0.1.1**, tagged `v0.1.1`. `package.json` is the source
 of the version printed by `kru --version` (or `bun run dev -- --version`).
 Each release records its changes in [CHANGELOG.md](CHANGELOG.md) and receives
 an annotated Git tag matching the package version.

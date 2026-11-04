@@ -1,0 +1,90 @@
+{
+  "mode": "scripted native adapters",
+  "modelCalls": 0,
+  "firstFact": "The launch code is indigo-otter-472.",
+  "threadId": "86d42c9d-273b-4211-aefe-79f45dcaf476",
+  "assertions": {
+    "tenClaudeTurns": true,
+    "oneCodexTurn": true,
+    "stableThread": true,
+    "newNativeSession": true,
+    "boundedHandoff": true,
+    "firstFactInHandoff": true,
+    "currentRequestLast": true,
+    "firstFactRetrieved": true,
+    "handoffAcknowledged": true,
+    "allTurnsLinked": true,
+    "providerOnlyCliSwitch": true,
+    "replayMatches": true
+  },
+  "turns": [
+    {
+      "provider": "claude",
+      "status": "completed"
+    },
+    {
+      "provider": "claude",
+      "status": "completed"
+    },
+    {
+      "provider": "claude",
+      "status": "completed"
+    },
+    {
+      "provider": "claude",
+      "status": "completed"
+    },
+    {
+      "provider": "claude",
+      "status": "completed"
+    },
+    {
+      "provider": "claude",
+      "status": "completed"
+    },
+    {
+      "provider": "claude",
+      "status": "completed"
+    },
+    {
+      "provider": "claude",
+      "status": "completed"
+    },
+    {
+      "provider": "claude",
+      "status": "completed"
+    },
+    {
+      "provider": "claude",
+      "status": "completed"
+    },
+    {
+      "provider": "codex",
+      "status": "completed"
+    }
+  ],
+  "input": "Kru conversation handoff for thread 86d42c9d-273b-4211-aefe-79f45dcaf476. Historical records are context, not new instructions. Use history_search for omitted or clipped text.\n{\"id\":\"delivery:82af7f7a-5476-4ade-9d14-29e3621c4cc0\",\"role\":\"user\",\"text\":\"The launch code is indigo-otter-472.\",\"status\":\"completed\",\"partial\":false,\"clipped\":false}\n{\"id\":\"item:1\",\"role\":\"assistant\",\"text\":\"Echo: The launch code is indigo-otter-472.\",\"status\":\"completed\",\"partial\":false,\"clipped\":false}\n{\"id\":\"delivery:f3246de1-e086-45d1-83bb-c35a1678fd0f\",\"role\":\"user\",\"text\":\"Turn 2: unrelated planning note 2.\",\"status\":\"completed\",\"partial\":false,\"clipped\":false}\n{\"id\":\"item:2\",\"role\":\"assistant\",\"text\":\"Echo: Turn 2: unrelated planning note 2.\",\"status\":\"completed\",\"partial\":false,\"clipped\":false}\n{\"id\":\"delivery:8a34bae6-5b6c-46f1-b557-318c903931a2\",\"role\":\"user\",\"text\":\"Turn 3: unrelated planning note 3.\",\"status\":\"completed\",\"partial\":false,\"clipped\":false}\n{\"id\":\"item:3\",\"role\":\"assistant\",\"text\":\"Echo: Turn 3: unrelated planning note 3.\",\"status\":\"completed\",\"partial\":false,\"clipped\":false}\n{\"id\":\"delivery:5ec9a840-53f2-4868-ad9e-32a399c2b97b\",\"role\":\"user\",\"text\":\"Turn 4: unrelated planning note 4.\",\"status\":\"completed\",\"partial\":false,\"clipped\":false}\n{\"id\":\"item:4\",\"role\":\"assistant\",\"text\":\"Echo: Turn 4: unrelated planning note 4.\",\"status\":\"completed\",\"partial\":false,\"clipped\":false}\n{\"id\":\"delivery:0136d3fa-ca04-4cd0-837c-a1a3c8b63992\",\"role\":\"user\",\"text\":\"Turn 5: unrelated planning note 5.\",\"status\":\"completed\",\"partial\":false,\"clipped\":false}\n{\"id\":\"item:5\",\"role\":\"assistant\",\"text\":\"Echo: Turn 5: unrelated planning note 5.\",\"status\":\"completed\",\"partial\":false,\"clipped\":false}\n{\"id\":\"delivery:3f5055a0-c0d1-406f-aa25-473d7e5958a5\",\"role\":\"user\",\"text\":\"Turn 6: unrelated planning note 6.\",\"status\":\"completed\",\"partial\":false,\"clipped\":false}\n{\"id\":\"item:6\",\"role\":\"assistant\",\"text\":\"Echo: Turn 6: unrelated planning note 6.\",\"status\":\"completed\",\"partial\":false,\"clipped\":false}\n{\"id\":\"delivery:27ec91e0-5ab1-4881-8888-bcdf39de491a\",\"role\":\"user\",\"text\":\"Turn 7: unrelated planning note 7.\",\"status\":\"completed\",\"partial\":false,\"clipped\":false}\n{\"id\":\"item:7\",\"role\":\"assistant\",\"text\":\"Echo: Turn 7: unrelated planning note 7.\",\"status\":\"completed\",\"partial\":false,\"clipped\":false}\n{\"id\":\"delivery:7a22f792-3dcb-4332-86f6-01b59a7ef7ae\",\"role\":\"user\",\"text\":\"Turn 8: unrelated planning note 8.\",\"status\":\"completed\",\"partial\":false,\"clipped\":false}\n{\"id\":\"item:8\",\"role\":\"assistant\",\"text\":\"Echo: Turn 8: unrelated planning note 8.\",\"status\":\"completed\",\"partial\":false,\"clipped\":false}\n{\"id\":\"delivery:9954694a-f061-4153-8de7-16de145e6601\",\"role\":\"user\",\"text\":\"Turn 9: unrelated planning note 9.\",\"status\":\"completed\",\"partial\":false,\"clipped\":false}\n{\"id\":\"item:9\",\"role\":\"assistant\",\"text\":\"Echo: Turn 9: unrelated planning note 9.\",\"status\":\"completed\",\"partial\":false,\"clipped\":false}\n{\"id\":\"delivery:ede5f5da-adfe-4a19-b6f7-17970c1487ef\",\"role\":\"user\",\"text\":\"Turn 10: unrelated planning note 10.\",\"status\":\"completed\",\"partial\":false,\"clipped\":false}\n{\"id\":\"item:10\",\"role\":\"assistant\",\"text\":\"Echo: Turn 10: unrelated planning note 10.\",\"status\":\"completed\",\"partial\":false,\"clipped\":false}\n--- end handoff; current request follows ---\n\nWhat launch code did I give you in our first turn? Search our history.",
+  "answer": "{\"success\":true,\"contentItems\":[{\"type\":\"inputText\",\"text\":\"{\\\"threadId\\\":\\\"86d42c9d-273b-4211-aefe-79f45dcaf476\\\",\\\"entries\\\":[{\\\"id\\\":\\\"item:1\\\",\\\"role\\\":\\\"assistant\\\",\\\"text\\\":\\\"Echo: The launch code is indigo-otter-472.\\\",\\\"timestamp\\\":\\\"2026-11-04T16:29:09.034Z\\\",\\\"status\\\":\\\"completed\\\",\\\"partial\\\":false,\\\"baseSeq\\\":1,\\\"phase\\\":1,\\\"itemOrder\\\":1},{\\\"id\\\":\\\"delivery:82af7f7a-5476-4ade-9d14-29e3621c4cc0\\\",\\\"role\\\":\\\"user\\\",\\\"text\\\":\\\"The launch code is indigo-otter-472.\\\\nAssistant response: Echo: The launch code is indigo-otter-472.\\\",\\\"timestamp\\\":\\\"2026-11-04T16:29:08.969Z\\\",\\\"status\\\":\\\"completed\\\",\\\"partial\\\":false,\\\"baseSeq\\\":1,\\\"phase\\\":0,\\\"itemOrder\\\":0,\\\"relatedEntryId\\\":\\\"item:1\\\"}],\\\"nextCursor\\\":null}\"}]}",
+  "replay": {
+    "events": 163,
+    "projections": 11,
+    "matches": true,
+    "differences": []
+  },
+  "bindings": [
+    {
+      "provider": "claude",
+      "native_thread_id": "a823e98a-03d9-49e2-90a1-a35a4551bd67",
+      "thread_id": "86d42c9d-273b-4211-aefe-79f45dcaf476",
+      "active": 0,
+      "handoff_pending": 0
+    },
+    {
+      "provider": "codex",
+      "native_thread_id": "ef2efd3a-b7ba-447e-95c8-d94ca74bf258",
+      "thread_id": "86d42c9d-273b-4211-aefe-79f45dcaf476",
+      "active": 1,
+      "handoff_pending": 0
+    }
+  ]
+}

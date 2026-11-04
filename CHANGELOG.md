@@ -1,5 +1,27 @@
 # Changelog
 
+## [0.1.1] - 2026-11-05
+
+M6 — durable Kru threads apart from provider sessions.
+
+### Added
+
+- Stable per-agent/lane thread identities, replayable turn links and migration v7
+  preserving native bindings and old event payloads.
+- Bounded history handoff on provider/configuration changes or missing native
+  sessions, with a persistent pending marker acknowledged on confirmed turn start.
+- Scoped `history_search` with literal Unicode search, pagination and complete
+  entry retrieval through offsets; default daemon tools now include three tools.
+- `daemon --handoff-chars`, thread storage exports, a ten-turn Claude-to-Codex
+  scripted adapter demo and migration/recovery/history tests.
+
+### Changed
+
+- Provider-only agent switches clear the inherited model and adapt Claude's
+  inherited `full` profile for other providers. Explicit replacements are kept.
+- Replay verification covers eleven projections; native `provider_sessions`
+  remain operational caches outside replay.
+
 ## [0.1.0] - 2026-11-04
 
 M5 — bounded agent-to-agent messages, opt-in answers and visible chain cost,

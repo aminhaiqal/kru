@@ -30,7 +30,7 @@ export async function bindSession(provider: ProviderClient, agent: Agent, laneId
     } catch (error) {
       // A missing native cache is disposable. Other failures keep work queued.
       if (!(error instanceof Error) || error.name !== 'RpcResponseError' ||
-          !/unknown|not found|missing|retired|no .*session|no rollout/i.test(error.message)) throw error;
+          !/unknown (?:thread|session)|(?:thread|session|rollout).*(?:not found|missing|does not exist|retired)|no (?:saved )?(?:thread|session|rollout)|no conversation found/i.test(error.message)) throw error;
       sessions.remove(agent.id, laneId, agent.provider);
     }
   }
