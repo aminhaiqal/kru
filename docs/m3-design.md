@@ -89,7 +89,9 @@ or retry remains queued, starting or running; pending work must not duplicate
 because it aged out. Once expired and all attempts are final, the key may be
 reused for a new command and receipt.
 
-A later migration adds an explicit expiry timestamp and an index. Clear the
+Migration v6 implements this policy with an index over original creation time;
+expiry is derived as `created_at + 30 days`, so no mutable expiry timestamp can
+be extended by replay. Clear the
 expired key and request hash together, without deleting messages, deliveries
 or retry history. The enqueue transaction checks expiry for the requested key
 before duplicate/conflict handling, so reuse does not depend on when background
@@ -98,10 +100,12 @@ Pruning and enqueue share the writer lock; concurrent reuse must still produce
 one receipt. Message-history retention is a separate policy: pruning keys alone
 does not remove historical messages.
 
-Expiry remains disabled in M2. Ship the migration, lookup/pruning logic,
-documentation and boundary/concurrency tests before v0.1. Tests must include the
-30-day boundary, no expiry extension on replay, pinned open attempts, retained
-history, and concurrent reuse after expiry.
+Expiry was disabled in M2; the v0.1 implementation now enforces it during enqueue
+and prunes at most 100 eligible keys on each ten-second daemon heartbeat.
+`test/release.test.ts` covers the exact 30-day boundary, no extension on replay,
+pinned open attempts/retries, retained history, rollback and concurrent reuse.
+Durable native tool command receipts remain retained, independently of mailbox-key
+expiry, so an old call cannot accidentally execute twice.
 
 
 ## Follow-up lifecycle decisions

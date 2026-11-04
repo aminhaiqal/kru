@@ -2,6 +2,7 @@ import { createHash, randomUUID } from 'node:crypto';
 import type { Store } from '../store';
 import { nextSequence } from '../store/events';
 import type { DeliveryRow } from '../store/event-types';
+import { storedError } from '../store/errors';
 import { allowedTransitions, DeliveryTransitionError, IdempotencyConflictError } from './state';
 import type { Delivery, DeliveryStatus, EnqueueInput, EnqueueReceipt, FinalStatus, Mailbox, MailboxChange, Sender, Batch, LaneHead, ActiveLane } from './types';
 
@@ -27,7 +28,22 @@ function nonempty(value: unknown, name: string): asserts value is string {
 }
 
 export class SqliteMailbox implements Mailbox {
-  constructor(private readonly store: Store) {}
+  constructor(private readonly store: Store, private readonly options: { now?: () => number } = {}) {}
+  private cutoff(): string { return new Date((this.options.now ?? Date.now)() - 30 * 86400_000).toISOString(); }
+  private expireKey(id: string, createdAt: string): boolean {
+    if (createdAt > this.cutoff() || this.store.db.query("SELECT 1 FROM deliveries WHERE message_id=? AND status IN ('queued','starting','running') LIMIT 1").get(id)) return false;
+    this.store.emit('message.key_expired', { messageId: id }); return true;
+  }
+  pruneIdempotencyKeys(limit = 100): number {
+    if (!Number.isSafeInteger(limit) || limit < 1 || limit > 1000) throw new Error('Invalid key maintenance limit');
+    const select = () => this.store.db.query<{ id: string; created_at: string }, [string, number]>(`SELECT id, created_at FROM messages
+      WHERE idempotency_key IS NOT NULL AND created_at<=? AND NOT EXISTS
+      (SELECT 1 FROM deliveries WHERE message_id=messages.id AND status IN ('queued','starting','running')) ORDER BY created_at,id LIMIT ?`).all(this.cutoff(), limit);
+    if (!select().length) return 0;
+    return this.store.command('mailbox.expireKeys', () => {
+      const rows = select(); for (const row of rows) this.expireKey(row.id, row.created_at); return rows.length;
+    });
+  }
 
   enqueue(input: EnqueueInput): EnqueueReceipt {
     const sender = input.sender;
@@ -38,6 +54,7 @@ export class SqliteMailbox implements Mailbox {
     for (const id of input.recipientIds) nonempty(id, 'Recipient id');
     if (new Set(input.recipientIds).size !== input.recipientIds.length) throw new Error('Duplicate recipients are not allowed');
     nonempty(input.text, 'Message text');
+    if (Buffer.byteLength(input.text) > 1024 * 1024) throw new Error('Mailbox text exceeds the 1 MiB storage input limit');
     if (input.laneId != null) nonempty(input.laneId, 'Lane id');
     if (input.replyTo != null) nonempty(input.replyTo, 'Reply message id');
     if (input.idempotencyKey !== undefined) nonempty(input.idempotencyKey, 'Idempotency key');
@@ -57,9 +74,9 @@ export class SqliteMailbox implements Mailbox {
     })).digest('hex');
     const receipt = this.store.command('mailbox.enqueue', () => {
       if (input.idempotencyKey !== undefined) {
-        const existing = this.store.db.query<{ id: string; request_hash: string }, [string]>(
-          'SELECT id, request_hash FROM messages WHERE idempotency_key = ?').get(input.idempotencyKey);
-        if (existing) {
+        const existing = this.store.db.query<{ id: string; request_hash: string; created_at: string }, [string]>(
+          'SELECT id, request_hash, created_at FROM messages WHERE idempotency_key = ?').get(input.idempotencyKey);
+        if (existing && !this.expireKey(existing.id, existing.created_at)) {
           if (existing.request_hash !== hash) throw new IdempotencyConflictError();
           return { messageId: existing.id, deliveryIds: this.store.db.query<{ id: string }, [string]>(
             'SELECT id FROM deliveries WHERE message_id = ? AND retry_of IS NULL ORDER BY seq').all(existing.id).map(r => r.id), duplicate: true };
@@ -68,7 +85,7 @@ export class SqliteMailbox implements Mailbox {
       for (const id of recipients) this.requireAgent(id);
       if (sender.kind === 'agent') this.requireAgent(sender.agentId);
       const messageId = randomUUID();
-      const now = new Date().toISOString();
+      const now = new Date((this.options.now ?? Date.now)()).toISOString();
       const chainId = input.chain?.id ?? randomUUID();
       const seq = nextSequence(this.store.db, 'deliveries');
       const deliveries = recipients.map((recipient, index): DeliveryRow => ({ seq: seq + index, id: randomUUID(),
@@ -252,7 +269,7 @@ export class SqliteMailbox implements Mailbox {
     const type = to === 'starting' ? 'delivery.claimed' : to === 'running' ? 'delivery.running'
       : to === 'queued' ? 'delivery.restored' : to === 'cancelled' ? 'delivery.cancelled' : 'delivery.finished';
     this.store.emit(type, { row: { ...row, status: to, turn_id: to === 'queued' ? null : turnId ?? row.turn_id,
-      batch_id: batchId === undefined ? row.batch_id : batchId, error: error ?? null, updated_at: new Date().toISOString() } });
+      batch_id: batchId === undefined ? row.batch_id : batchId, error: storedError(error) ?? null, updated_at: new Date().toISOString() } });
   }
   private publish(changes: MailboxChange[]): void {
     this.store.publishChanges(changes.map(change => ({ topic: 'mailbox', id: change.deliveryId, value: change.status })));

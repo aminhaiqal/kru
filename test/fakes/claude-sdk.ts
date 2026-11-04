@@ -6,7 +6,7 @@ import type { ClaudeQueryFactory } from '../../src/providers/claude/adapter';
 import type { FakeMode } from '../../src/providers/fake/adapter';
 
 /** Native SDK event fixture, including actual MCP transport, not Kru notifications. */
-export function scriptedClaude(mode: FakeMode = 'echo', inspect?: (args: Parameters<ClaudeQueryFactory>[0]) => void): ClaudeQueryFactory {
+export function scriptedClaude(mode: FakeMode = 'echo', inspect?: (args: Parameters<ClaudeQueryFactory>[0]) => void, toolRequest?: { name: string; arguments: Record<string, unknown> }): ClaudeQueryFactory {
   return args => {
     inspect?.(args);
     const output = new InputQueue<SDKMessage>();
@@ -79,10 +79,10 @@ export function scriptedClaude(mode: FakeMode = 'echo', inspect?: (args: Paramet
         let failed = mode === 'failure';
         if (mode === 'tool') {
           const tools = await client?.listTools();
-          const tool = tools?.tools[0];
+          const tool = toolRequest ? tools?.tools.find(t => t.name === toolRequest.name) : tools?.tools[0];
           if (!tool) throw new Error('No tool registered');
           try {
-            const returned = await client!.callTool({ name: tool.name, arguments: { text } });
+            const returned = await client!.callTool({ name: tool.name, arguments: toolRequest?.arguments ?? { text } });
             const content = returned.content as { type: string; text: string }[];
             reply = content.map(c => c.text).join(''); failed = returned.isError === true;
           } catch (error) { reply = error instanceof Error ? error.message : String(error); failed = true; }

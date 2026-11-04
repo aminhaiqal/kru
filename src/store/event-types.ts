@@ -36,6 +36,9 @@ export interface ItemRow {
 }
 type DeliveryEvent = 'delivery.imported' | 'delivery.claimed' | 'delivery.running' | 'delivery.restored' | 'delivery.finished' | 'delivery.cancelled' | 'delivery.retried';
 export type Payloads = {
+  'message.key_expired': { messageId: string };
+  'message.routed': { row: { message_id: string; sender_lane_key: string } };
+  'delivery.replied': { row: { delivery_id: string; message_id: string | null; outcome: 'sent' | 'suppressed'; reason: string | null; created_at: string } };
   'agent.configured': { row: AgentRow };
   'message.enqueued': { row: MessageRow; deliveries: DeliveryRow[] };
   'message.imported': { row: MessageRow };

@@ -5,6 +5,7 @@ export interface RunnerOptions {
   idleTimeoutMs?: number; startTimeoutMs?: number; startGraceMs?: number;
   onSubmitting?: () => void;
   onNotification?: (notification: Notification) => void;
+  onFinished?: () => void;
   signal: AbortSignal; onStarted(id: string): void; onUsage(usage: TokenUsage): void;
 }
 const message = (e: unknown) => e instanceof Error ? e.message : String(e);
@@ -25,6 +26,7 @@ export function runScheduledTurn(provider: ProviderClient, threadId: string, tex
     const finish = (outcome: TurnOutcome) => {
       if (done) return;
       done = true;
+      options.onFinished?.();
       clearTimeout(startTimer); clearTimeout(idleTimer); clearTimeout(graceTimer);
       provider.off('notification', notification); provider.off('exit', exit); provider.off('activity', activity);
       options.signal.removeEventListener('abort', abort);

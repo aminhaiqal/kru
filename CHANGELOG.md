@@ -1,5 +1,27 @@
 # Changelog
 
+## Unreleased
+
+### Added
+
+- M5 daemon tool routing for `list_agents` and `send_message`, with durable
+  namespaced native-call receipts and no waiting for recipient turns.
+- Opt-in automatic answers returning to the sender lane, manual-answer
+  deduplication and forced reply-off behavior on answers.
+- Default four-hop chain limit with `--max-hops`, preserving chain cost attribution
+  and reserving a hop for a requested answer.
+- Migration v5 routing/reply events and projections, frozen upgrade fixtures,
+  scripted Codex/Claude integration tests and a deterministic two-agent demo.
+- Migration v6 indexed 30-day mailbox-key retention, pinned while any original
+  or retry attempt is open, with bounded maintenance and safe concurrent reuse.
+- A 1 MiB mailbox storage input limit and bounded, redacted provider error strings
+  in new delivery/turn events, daemon status and command receipt fingerprints.
+
+### Changed
+
+- Claude tool ids use MCP request ids where available, enabling repeat callbacks
+  to find the same durable receipt.
+
 ## [0.0.6] - 2026-11-04
 
 M4 — event log, replayable projections, durable conversation history and cost accounting.

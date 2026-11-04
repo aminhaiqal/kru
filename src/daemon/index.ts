@@ -8,6 +8,7 @@ import { SqliteUsageLedger } from '../usage/sqlite';
 import type { UsageLedger } from '../usage/ledger';
 import { SqliteSessions } from './sessions';
 import { SqliteTurnHistory } from '../turns/recorder';
+import { ToolRouter, SqliteToolState } from '../tools';
 
 export interface DaemonOptions extends SchedulerOptions { pollMs?: number; heartbeatMs?: number; shutdownGraceMs?: number }
 export class Daemon {
@@ -40,9 +41,13 @@ export class Daemon {
       ...(options.now ? { now: options.now } : {}),
       onError: error => { this.failure = error; void this.stop(0); },
     });
-    this.scheduler = new Scheduler(this.mailbox, new AgentRegistry(store), new SqliteSessions(store),
+    const agents = new AgentRegistry(store);
+    const tools = options.tools ?? new ToolRouter(this.mailbox, agents, new SqliteToolState(store), {
+      ...(options.maxHops === undefined ? {} : { maxHops: options.maxHops }),
+    });
+    this.scheduler = new Scheduler(this.mailbox, agents, new SqliteSessions(store),
       factory ?? (agent => createProvider(agent.provider)), {
-        ...options, ledger: this.ledger, turns: options.turns ?? this.history,
+        ...options, tools, ledger: this.ledger, turns: options.turns ?? this.history,
         onState: () => { options.onState?.(); this.queueSnapshot(); },
         onError: error => { this.failure = error; options.onError?.(error); void this.stop(0); },
       });
@@ -63,7 +68,8 @@ export class Daemon {
         } catch (error) { this.failure = error; void this.stop(0); }
       }, this.options.pollMs ?? 100);
       this.heartbeat = setInterval(() => {
-        try { this.lock.heartbeat(); } catch (error) { this.failure = error; void this.stop(0); }
+        try { this.lock.heartbeat(); this.mailbox.pruneIdempotencyKeys(); }
+        catch (error) { this.failure = error; void this.stop(0); }
       }, this.options.heartbeatMs ?? 10_000);
     } catch (error) { this.failure = error; void this.stop(0); throw error; }
   }

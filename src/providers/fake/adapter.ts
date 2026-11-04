@@ -4,10 +4,11 @@ import { ProviderBase } from '../base';
 import { RpcResponseError } from '../../rpc';
 import { resolve } from 'node:path';
 import { fileDecision } from '../permissions';
-import type { Methods, ThreadParams, ToolDefinition, Turn, TokenCount } from '../protocol';
+import type { Methods, ThreadParams, ToolDefinition, Turn, TokenCount, ToolResult } from '../protocol';
 
 export type FakeMode = 'echo' | 'stall' | 'crash' | 'failure' | 'tool' | 'permissions';
-export interface FakeProviderOptions { mode?: FakeMode; deltaBeforeItem?: boolean; delayMs?: number; toolTimeoutMs?: number }
+export type FakeTurnScript = (input: string, call: (tool: string, args: unknown, callId?: string) => Promise<ToolResult>) => Promise<string>;
+export interface FakeProviderOptions { mode?: FakeMode; deltaBeforeItem?: boolean; delayMs?: number; toolTimeoutMs?: number; script?: FakeTurnScript }
 interface Active { id: string; controller: AbortController; timer?: ReturnType<typeof setTimeout>; text: string; itemId: string }
 interface Session { id: string; params: ThreadParams; profile: PreparedThread; tools: ToolDefinition[]; total: TokenCount; active?: Active }
 export class FakeProvider extends ProviderBase {
@@ -65,6 +66,24 @@ export class FakeProvider extends ProviderBase {
     if (mode === 'stall') return;
     if (mode === 'crash') { this.clearTurns(); this.ended(new Error('Scripted fake crash')); return; }
     let text = `Echo: ${prompt}`;
+    if (this.options.script) {
+      try {
+        text = await this.options.script(prompt, async (name, args, callId = crypto.randomUUID()) => {
+          if (!session.tools.some(t => t.name === name)) throw new Error(`Unregistered scripted tool: ${name}`);
+          const item = { id: callId, type: 'dynamicToolCall', details: { name, input: args } };
+          this.emit('notification', { method: 'item/started', params: { threadId: session.id, turnId: active.id, item } });
+          const result = await this.callTool({ threadId: session.id, turnId: active.id, callId, tool: name, arguments: args }, active.controller.signal);
+          if (session.active === active) this.emit('notification', { method: 'item/completed', params: {
+            threadId: session.id, turnId: active.id, item: { ...item, details: { ...item.details, result } },
+          } });
+          return result;
+        });
+        if (session.active !== active) return;
+      } catch (error) {
+        if (session.active === active) this.complete(session, active, 'failed', error instanceof Error ? error.message : String(error));
+        return;
+      }
+    }
     if (mode === 'permissions') {
       const action = JSON.parse(prompt) as { name: string; input: Record<string, unknown> };
       const file = ['Write', 'Edit', 'NotebookEdit'].includes(action.name);

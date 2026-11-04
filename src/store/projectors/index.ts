@@ -3,6 +3,8 @@ import type { DomainEvent } from '../event-types';
 
 /** Fixed columns, never payload-derived SQL. Projectors have no clocks or transaction ownership. */
 export const columns = {
+  message_routes: 'message_id,sender_lane_key',
+  delivery_replies: 'delivery_id,message_id,outcome,reason,created_at',
   agents: 'id,name,provider,config_json,created_at',
   messages: 'id,sender_kind,sender_agent_id,sender_routine_id,text,reply_to,expects_reply,idempotency_key,request_hash,created_at',
   deliveries: 'seq,id,message_id,recipient_id,lane_id,status,turn_id,error,retry_of,chain_id,hop,updated_at,batch_id',
@@ -12,7 +14,7 @@ export const columns = {
   thread_messages: 'seq,turn_id,item_id,agent_id,lane_key,type,text,details_json,completed_at',
 } as const;
 export type ProjectionTable = keyof typeof columns;
-const keys: Record<ProjectionTable, string> = { agents: 'id', messages: 'id', deliveries: 'id', prices: 'id', usage_records: 'batch_id', turns: 'id', thread_messages: 'turn_id,item_id' };
+const keys: Record<ProjectionTable, string> = { message_routes: 'message_id', delivery_replies: 'delivery_id', agents: 'id', messages: 'id', deliveries: 'id', prices: 'id', usage_records: 'batch_id', turns: 'id', thread_messages: 'turn_id,item_id' };
 function put(db: Database, table: ProjectionTable, value: object): void {
   const names = columns[table].split(','), row = value as Record<string, SQLQueryBindings>;
   if (names.some(name => row[name] === undefined)) throw new Error(`Incomplete ${table} event payload`);
@@ -27,6 +29,11 @@ function put(db: Database, table: ProjectionTable, value: object): void {
 }
 export function project(db: Database, event: DomainEvent): void {
   switch (event.type) {
+    case 'message.key_expired':
+      if (db.query('UPDATE messages SET idempotency_key=NULL, request_hash=NULL WHERE id=? AND idempotency_key IS NOT NULL').run(event.payload.messageId).changes !== 1) throw new Error('Invalid key expiry event');
+      break;
+    case 'message.routed': put(db, 'message_routes', event.payload.row); break;
+    case 'delivery.replied': put(db, 'delivery_replies', event.payload.row); break;
     case 'agent.configured': put(db, 'agents', event.payload.row); break;
     case 'message.imported': put(db, 'messages', event.payload.row); break;
     case 'message.enqueued':

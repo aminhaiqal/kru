@@ -19,7 +19,8 @@
     "./daemon": "./src/daemon/index.ts",
     "./usage": "./src/usage/index.ts",
     "./turns": "./src/turns/index.ts",
-    "./cost": "./src/cost/prices.ts"
+    "./cost": "./src/cost/prices.ts",
+    "./tools": "./src/tools/index.ts"
   },
   "scripts": {
     "dev": "bun src/cli/index.ts",
@@ -39,7 +40,11 @@
     "test:scheduler:repeat": "bun test --rerun-each 10 test/scheduler.test.ts test/mailbox-batch.test.ts test/scheduler-cli.test.ts test/store.test.ts test/codex-retirement.test.ts test/budget-day.test.ts test/pricing.test.ts test/usage-ledger.test.ts",
     "test:usage": "bun test test/pricing.test.ts test/usage-ledger.test.ts test/token-usage.test.ts",
     "test:history": "bun test test/events.test.ts test/history-cli.test.ts",
-    "test:history:repeat": "bun test --rerun-each 10 test/events.test.ts test/history-cli.test.ts"
+    "test:history:repeat": "bun test --rerun-each 10 test/events.test.ts test/history-cli.test.ts",
+    "test:messaging": "bun test test/messaging.test.ts test/messaging-providers.test.ts",
+    "test:messaging:repeat": "bun test --rerun-each 10 test/messaging.test.ts test/messaging-providers.test.ts",
+    "demo:messaging": "bun scripts/demo-messaging.ts",
+    "test:release:repeat": "bun test --rerun-each 10 test/release.test.ts test/messaging.test.ts test/messaging-providers.test.ts"
   },
   "engines": {
     "bun": ">=1.3.0"

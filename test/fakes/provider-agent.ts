@@ -1,12 +1,14 @@
 // Scripted native Codex peer: exercises the real adapter and stdio, without a model.
 import { appendFileSync } from 'node:fs';
-import { FakeProvider, type FakeMode } from '../../src/providers/fake/adapter';
+import { FakeProvider, type FakeMode, type FakeTurnScript } from '../../src/providers/fake/adapter';
 import type { Methods, ToolResult, ApprovalResult } from '../../src/providers/protocol';
 import { ByteLineFramer } from '../../src/rpc/framing';
 import { RpcResponseError } from '../../src/rpc';
 
 const mode = (process.env.KRU_FAKE_MODE ?? 'echo') as FakeMode;
-const provider = new FakeProvider({ mode, toolTimeoutMs: 500 });
+const script: FakeTurnScript | undefined = process.env.KRU_SCRIPTED_TOOL ? async (_input, call) =>
+  JSON.stringify(await call(process.env.KRU_SCRIPTED_TOOL!, JSON.parse(process.env.KRU_SCRIPTED_TOOL_ARGS ?? '{}'))) : undefined;
+const provider = new FakeProvider({ mode, toolTimeoutMs: 500, ...(script ? { script } : {}) });
 await provider.start();
 let initialized = false;
 let acknowledged = false;

@@ -1,0 +1,283 @@
+{
+  "provider": "fake",
+  "modelCalls": 0,
+  "maxHops": 4,
+  "deliveries": [
+    {
+      "seq": 1,
+      "recipient": "coder",
+      "status": "completed",
+      "hop": 0,
+      "chain_id": "78c80a45-d9ec-4752-abc6-562075d413e6",
+      "expects_reply": 0,
+      "text": "Ask the reviewer to check the parser."
+    },
+    {
+      "seq": 2,
+      "recipient": "reviewer",
+      "status": "completed",
+      "hop": 1,
+      "chain_id": "78c80a45-d9ec-4752-abc6-562075d413e6",
+      "expects_reply": 1,
+      "text": "Please review the parser change."
+    },
+    {
+      "seq": 3,
+      "recipient": "coder",
+      "status": "completed",
+      "hop": 2,
+      "chain_id": "78c80a45-d9ec-4752-abc6-562075d413e6",
+      "expects_reply": 0,
+      "text": "Review complete: the parser validates the whole input."
+    }
+  ],
+  "coderLog": [
+    {
+      "id": "message:fa6d1802-1d89-42f7-9c2c-1c532745d841:",
+      "agentId": "dc44008f-17a5-42de-9486-53d9a4b66a35",
+      "laneId": null,
+      "role": "user",
+      "text": "Ask the reviewer to check the parser.",
+      "timestamp": "2026-11-04T15:35:49.182Z",
+      "partial": false
+    },
+    {
+      "id": "item:e100e6b4-f4f6-4024-8b9c-8d864e0ba679:d7799dcf-876c-43a0-94aa-3c09f83d3dcf",
+      "agentId": "dc44008f-17a5-42de-9486-53d9a4b66a35",
+      "laneId": null,
+      "role": "dynamicToolCall",
+      "text": null,
+      "details": {
+        "name": "list_agents",
+        "input": {},
+        "result": {
+          "success": true,
+          "contentItems": [
+            {
+              "type": "inputText",
+              "text": "{\"agents\":[{\"id\":\"b2632c9d-e97e-408a-8461-9ae2600cfb4a\",\"name\":\"reviewer\",\"provider\":\"fake\",\"paused\":false},{\"id\":\"dc44008f-17a5-42de-9486-53d9a4b66a35\",\"name\":\"coder\",\"provider\":\"fake\",\"paused\":false}]}"
+            }
+          ]
+        }
+      },
+      "turnId": "e100e6b4-f4f6-4024-8b9c-8d864e0ba679",
+      "timestamp": "2026-11-04T15:35:49.202Z",
+      "partial": false
+    },
+    {
+      "id": "item:e100e6b4-f4f6-4024-8b9c-8d864e0ba679:2b5be0c0-0806-44f7-9575-32bcd4b87129",
+      "agentId": "dc44008f-17a5-42de-9486-53d9a4b66a35",
+      "laneId": null,
+      "role": "dynamicToolCall",
+      "text": null,
+      "details": {
+        "name": "send_message",
+        "input": {
+          "to": [
+            "reviewer"
+          ],
+          "text": "Please review the parser change.",
+          "expectsReply": true
+        },
+        "result": {
+          "success": true,
+          "contentItems": [
+            {
+              "type": "inputText",
+              "text": "{\"messageId\":\"dbf6b82c-15d3-445f-ab1a-ce88ded927fd\",\"deliveryIds\":[\"b5eb1f7b-fac1-4292-a2a0-75a6bf153e64\"],\"queued\":true,\"expectsReply\":true,\"chainId\":\"78c80a45-d9ec-4752-abc6-562075d413e6\",\"hop\":1}"
+            }
+          ]
+        }
+      },
+      "turnId": "e100e6b4-f4f6-4024-8b9c-8d864e0ba679",
+      "timestamp": "2026-11-04T15:35:49.202Z",
+      "partial": false
+    },
+    {
+      "id": "item:e100e6b4-f4f6-4024-8b9c-8d864e0ba679:bd6c2a8e-2f98-4dd8-8941-0f64b3911b76",
+      "agentId": "dc44008f-17a5-42de-9486-53d9a4b66a35",
+      "laneId": null,
+      "role": "assistant",
+      "text": "Review queued. This turn ends without waiting.",
+      "turnId": "e100e6b4-f4f6-4024-8b9c-8d864e0ba679",
+      "timestamp": "2026-11-04T15:35:49.202Z",
+      "partial": false
+    },
+    {
+      "id": "message:d9c269ac-d003-4825-b399-065fa1660e18:",
+      "agentId": "dc44008f-17a5-42de-9486-53d9a4b66a35",
+      "laneId": null,
+      "role": "agent",
+      "text": "Review complete: the parser validates the whole input.",
+      "timestamp": "2026-11-04T15:35:49.210Z",
+      "partial": false
+    },
+    {
+      "id": "item:8233e519-b802-4894-8c31-d7b4f58ebd29:03d004fb-d519-4b15-b9d7-b34bbebd25df",
+      "agentId": "dc44008f-17a5-42de-9486-53d9a4b66a35",
+      "laneId": null,
+      "role": "assistant",
+      "text": "Review received. I can finish the change.",
+      "turnId": "8233e519-b802-4894-8c31-d7b4f58ebd29",
+      "timestamp": "2026-11-04T15:35:49.215Z",
+      "partial": false
+    }
+  ],
+  "reviewerLog": [
+    {
+      "id": "message:dbf6b82c-15d3-445f-ab1a-ce88ded927fd:",
+      "agentId": "b2632c9d-e97e-408a-8461-9ae2600cfb4a",
+      "laneId": null,
+      "role": "agent",
+      "text": "Please review the parser change.",
+      "timestamp": "2026-11-04T15:35:49.198Z",
+      "partial": false
+    },
+    {
+      "id": "item:977a64f1-872b-4ff2-b47f-e5d5f88457b5:c82a4130-2513-484d-b244-97bd3f721bf9",
+      "agentId": "b2632c9d-e97e-408a-8461-9ae2600cfb4a",
+      "laneId": null,
+      "role": "assistant",
+      "text": "Review complete: the parser validates the whole input.",
+      "turnId": "977a64f1-872b-4ff2-b47f-e5d5f88457b5",
+      "timestamp": "2026-11-04T15:35:49.210Z",
+      "partial": false
+    }
+  ],
+  "cost": {
+    "currency": "USD",
+    "estimated": true,
+    "minimumUsd": 0,
+    "maximumUsd": 0,
+    "unknown": 0,
+    "turns": [
+      {
+        "batchId": "e100e6b4-f4f6-4024-8b9c-8d864e0ba679",
+        "agent": "coder",
+        "model": "fake",
+        "tokens": 83,
+        "minimumUsd": 0,
+        "maximumUsd": 0,
+        "complete": true,
+        "scope": "main-agent token estimate",
+        "outcome": "completed",
+        "input": 37,
+        "cached": 0,
+        "cacheWrite": 0,
+        "output": 46,
+        "agentId": "dc44008f-17a5-42de-9486-53d9a4b66a35",
+        "laneId": null,
+        "chainIds": [
+          "78c80a45-d9ec-4752-abc6-562075d413e6"
+        ],
+        "cause": "user",
+        "recordedAt": "2026-11-04T15:35:49.193Z",
+        "priceId": "42a1a53df582d390f1ba2592efbb1ce027722c9016de7ef492f8ec49222907a4",
+        "price": {
+          "cacheRead": 0,
+          "cacheWrite1h": 0,
+          "cacheWrite5m": 0,
+          "currency": "USD",
+          "input": 0,
+          "model": "fake",
+          "output": 0,
+          "source": "Kru deterministic fake: no model calls",
+          "unit": "million-tokens",
+          "verifiedAt": "2026-11-04"
+        },
+        "resolution": null
+      },
+      {
+        "batchId": "977a64f1-872b-4ff2-b47f-e5d5f88457b5",
+        "agent": "reviewer",
+        "model": "fake",
+        "tokens": 329,
+        "minimumUsd": 0,
+        "maximumUsd": 0,
+        "complete": true,
+        "scope": "main-agent token estimate",
+        "outcome": "completed",
+        "input": 275,
+        "cached": 0,
+        "cacheWrite": 0,
+        "output": 54,
+        "agentId": "b2632c9d-e97e-408a-8461-9ae2600cfb4a",
+        "laneId": null,
+        "chainIds": [
+          "78c80a45-d9ec-4752-abc6-562075d413e6"
+        ],
+        "cause": "agent",
+        "recordedAt": "2026-11-04T15:35:49.204Z",
+        "priceId": "42a1a53df582d390f1ba2592efbb1ce027722c9016de7ef492f8ec49222907a4",
+        "price": {
+          "cacheRead": 0,
+          "cacheWrite1h": 0,
+          "cacheWrite5m": 0,
+          "currency": "USD",
+          "input": 0,
+          "model": "fake",
+          "output": 0,
+          "source": "Kru deterministic fake: no model calls",
+          "unit": "million-tokens",
+          "verifiedAt": "2026-11-04"
+        },
+        "resolution": null
+      },
+      {
+        "batchId": "8233e519-b802-4894-8c31-d7b4f58ebd29",
+        "agent": "coder",
+        "model": "fake",
+        "tokens": 373,
+        "minimumUsd": 0,
+        "maximumUsd": 0,
+        "complete": true,
+        "scope": "main-agent token estimate",
+        "outcome": "completed",
+        "input": 332,
+        "cached": 0,
+        "cacheWrite": 0,
+        "output": 41,
+        "agentId": "dc44008f-17a5-42de-9486-53d9a4b66a35",
+        "laneId": null,
+        "chainIds": [
+          "78c80a45-d9ec-4752-abc6-562075d413e6"
+        ],
+        "cause": "agent",
+        "recordedAt": "2026-11-04T15:35:49.212Z",
+        "priceId": "42a1a53df582d390f1ba2592efbb1ce027722c9016de7ef492f8ec49222907a4",
+        "price": {
+          "cacheRead": 0,
+          "cacheWrite1h": 0,
+          "cacheWrite5m": 0,
+          "currency": "USD",
+          "input": 0,
+          "model": "fake",
+          "output": 0,
+          "source": "Kru deterministic fake: no model calls",
+          "unit": "million-tokens",
+          "verifiedAt": "2026-11-04"
+        },
+        "resolution": null
+      }
+    ],
+    "by": "chain",
+    "groups": [
+      {
+        "key": "[\"78c80a45-d9ec-4752-abc6-562075d413e6\"]",
+        "turns": 3,
+        "input": 644,
+        "cached": 0,
+        "output": 141,
+        "minimumUsd": 0,
+        "maximumUsd": 0,
+        "unknown": 0
+      }
+    ]
+  },
+  "replay": {
+    "events": 51,
+    "projections": 9,
+    "matches": true,
+    "differences": []
+  }
+}

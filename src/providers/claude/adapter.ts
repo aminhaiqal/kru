@@ -124,10 +124,11 @@ export class ClaudeProvider extends ProviderBase {
     const definitions = session.profile.tools.map(def => {
       const schema = z.fromJSONSchema(def.inputSchema);
       if (!(schema instanceof z.ZodObject)) throw new TypeError('MCP tools require object schemas');
-      return sdk.tool(def.name, def.description, schema.shape, async args => {
+      return sdk.tool(def.name, def.description, schema.shape, async (args, extra) => {
         const active = session.active;
         if (!active) throw new Error('No active turn for tool call');
-        const callId = crypto.randomUUID();
+        const requestId = extra && typeof extra === 'object' ? (extra as { requestId?: unknown }).requestId : undefined;
+        const callId = typeof requestId === 'string' || typeof requestId === 'number' ? `mcp:${JSON.stringify(requestId)}` : crypto.randomUUID();
         this.emit('notification', { method: 'item/started', params: { threadId: session.id, turnId: active.id, item: { id: callId, type: 'dynamicToolCall' } } });
         try {
           const result = await this.callTool({ threadId: session.id, turnId: active.id, callId, tool: def.name, arguments: args }, active.controller.signal);

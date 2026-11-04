@@ -6,6 +6,7 @@ import type { TurnOutcome } from '../scheduler/runner';
 import type { TurnRow } from '../store/event-types';
 import { nextSequence } from '../store/events';
 import type { TurnHistory, TurnRecording } from './ports';
+import { storedError } from '../store/errors';
 
 interface BufferedItem { item: AgentItem; completed: boolean }
 export interface RecorderOptions { flushMs?: number; now?: () => number; onError?: (error: unknown) => void }
@@ -94,13 +95,14 @@ export class TurnRecorder implements TurnRecording {
     this.closed = true;
     if (this.flushError) throw this.flushError;
     const timestamp = new Date(this.now()).toISOString();
+    const safeOutcome = { ...outcome, ...(outcome.error === undefined ? {} : { error: storedError(outcome.error)! }) };
     this.store.command('turn.finish', () => {
       writeItems(this.store, this.row, [...this.items.values()], timestamp);
       const model = this.store.db.query<{ model: string }, [string]>('SELECT model FROM usage_records WHERE batch_id = ?').get(this.row.id)?.model ?? this.row.model;
-      this.store.emit('turn.completed', { row: { ...this.row, model, status: outcome.status, error: outcome.error ?? null,
+      this.store.emit('turn.completed', { row: { ...this.row, model, status: outcome.status, error: storedError(outcome.error) ?? null,
         completed_at: timestamp, duration_ms: Math.max(0, Date.parse(timestamp) - Date.parse(this.row.started_at)) } });
       this.store.db.query('DELETE FROM turn_scratch WHERE turn_id = ?').run(this.row.id);
       this.store.publishChanges([{ topic: 'conversation', id: this.row.id }]);
-    }, { id: `turn:${this.row.id}:finish`, input: outcome });
+    }, { id: `turn:${this.row.id}:finish`, input: safeOutcome });
   }
 }

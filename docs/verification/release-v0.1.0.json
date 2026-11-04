@@ -1,0 +1,23 @@
+{
+  "verifiedAt": "2026-11-04T15:55:31.390397+00:00",
+  "baseCommit": "12e7b7a0badc2890eb0e6bfb0507dbbfdfc3ee6e",
+  "workingTreeImplementation": true,
+  "releaseVersion": "0.1.0",
+  "schemaVersion": 6,
+  "checks": {
+    "typecheck": "passed",
+    "testsPassed": 277,
+    "testsSkipped": 9,
+    "testsFailed": 0,
+    "releaseRepeatedChecksPassed": 270,
+    "repetitions": 10
+  },
+  "coverage": [
+    "M5 messaging and scripted native adapters",
+    "exact 30-day key expiry and open-retry pinning",
+    "concurrent key reuse and transaction rollback",
+    "bounded key maintenance and mailbox input size",
+    "provider error redaction before events and receipt persistence",
+    "v6 migration rollback and replay"
+  ]
+}

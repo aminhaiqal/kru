@@ -4,17 +4,23 @@ import { threadParams } from '../agents/config';
 import { prepareThread, promptMetadata } from '../providers/prompt-profile';
 import type { ProviderClient, Thread } from '../providers/protocol';
 import type { SessionStore } from './ports';
+import type { AgentTools } from '../tools/ports';
+
+function parameters(agent: Agent, tools?: AgentTools) {
+  const params = threadParams(agent.config);
+  return tools ? { ...params, tools: [...tools.definitions], instructions: [params.instructions, tools.instructions].filter(Boolean).join('\n\n') } : params;
+}
 
 /** Configuration, not delivery text, controls session continuity. */
-export function sessionConfigHash(agent: Agent): string {
-  const params = threadParams(agent.config);
+export function sessionConfigHash(agent: Agent, tools?: AgentTools): string {
+  const params = parameters(agent, tools);
   const prepared = prepareThread(params);
   return createHash('sha256').update(JSON.stringify({ provider: agent.provider, cwd: params.cwd ?? process.cwd(),
     model: params.model ?? null, prefix: promptMetadata(prepared).prefixHash, permissions: prepared.permissions })).digest('hex');
 }
-export async function bindSession(provider: ProviderClient, agent: Agent, laneId: string | null, sessions: SessionStore, signal?: AbortSignal): Promise<string> {
-  const params = threadParams(agent.config);
-  const configHash = sessionConfigHash(agent);
+export async function bindSession(provider: ProviderClient, agent: Agent, laneId: string | null, sessions: SessionStore, signal?: AbortSignal, tools?: AgentTools): Promise<string> {
+  const params = parameters(agent, tools);
+  const configHash = sessionConfigHash(agent, tools);
   const previous = sessions.get(agent.id, laneId, agent.provider);
   let thread: Thread | undefined;
   if (previous?.configHash === configHash) {

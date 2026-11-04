@@ -14,7 +14,7 @@ import { FakeProvider } from '../src/providers/fake/adapter';
 import { PriceBook } from '../src/cost/prices';
 import { SqliteTurnHistory, TurnRecorder } from '../src/turns/recorder';
 import { readLog } from '../src/turns/log';
-import { replay, snapshot, verifyReplay } from '../src/store/replay';
+import { replay, snapshot, verifyReplay, projectionTables } from '../src/store/replay';
 import { tokenCount } from '../src/providers/token-usage';
 import type { AgentItem } from '../src/providers/protocol';
 
@@ -51,7 +51,7 @@ test('M4 acceptance > 1. replay --verify matches a busy database and detects pro
   await until(() => d.scheduler.status().some(s => s.reason === 'paused'));
   const lock = store.db.query('SELECT * FROM daemon_lock').get();
   const check = await cli('replay', '--verify', '--json'); expect(check.code).toBe(0);
-  expect(JSON.parse(check.stdout)).toMatchObject({ matches: true, projections: 7 });
+  expect(JSON.parse(check.stdout)).toMatchObject({ matches: true, projections: projectionTables.length });
   expect(store.db.query('SELECT * FROM daemon_lock').get()).toEqual(lock);
   store.write(() => store.db.query("UPDATE messages SET text='corrupt' WHERE id = ?").run(mailbox().get(ids[0]!)!.messageId));
   const broken = await cli('replay', '--verify', '--json'); expect(broken.code).toBe(1);

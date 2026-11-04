@@ -13,6 +13,9 @@ import { MemoryUsageLedger, type UsageLedger } from '../usage/ledger';
 import { zeroTokens } from '../providers/token-usage';
 import { nanoUsd } from '../usage/pricing';
 import type { TurnHistory } from '../turns/ports';
+import type { AgentTools, ToolContext } from '../tools/ports';
+import { TurnAnswer } from '../tools/delivery-content';
+import { storedError } from '../store/errors';
 
 export interface LaneStatus {
   agentId: string; laneId: string | null; state: 'held' | 'starting' | 'running';
@@ -20,10 +23,12 @@ export interface LaneStatus {
   usedTokens: number; dailyTokens?: number; usedUsd?: number; dailyUsd?: number; budgetDetail?: string;
 }
 interface Runtime {
+  active?: ToolContext;
   provider: ProviderClient; configHash: string; ready: boolean; starting: boolean; retryAt: number;
   error?: string; threadId?: string;
 }
 export interface SchedulerOptions {
+  tools?: AgentTools; maxHops?: number;
   turns?: TurnHistory;
   budgetTimezone?: string; ledger?: UsageLedger;
   maxTurns?: number; idleTimeoutMs?: number; startTimeoutMs?: number; startGraceMs?: number;
@@ -33,7 +38,7 @@ export interface SchedulerOptions {
   beforeRelease?: (agentId: string, laneId: string | null) => void;
 }
 const keyOf = (agentId: string, laneId: string | null) => JSON.stringify([agentId, laneId]);
-const errorText = (e: unknown) => e instanceof Error ? e.message : String(e);
+const errorText = (e: unknown) => storedError(e instanceof Error ? e.message : String(e))!;
 
 export class Scheduler {
   private readonly scheduled = new Set<string>();
@@ -150,7 +155,7 @@ export class Scheduler {
     });
   }
   private runtime(key: string, agent: Agent, laneId: string | null): Runtime | undefined {
-    const hash = sessionConfigHash(agent);
+    const hash = sessionConfigHash(agent, this.options.tools);
     const old = this.runtimes.get(key);
     if (old && old.configHash === hash) {
       if (!old.ready && !old.starting && this.now() >= old.retryAt) this.beginProvider(old, key);
@@ -165,15 +170,27 @@ export class Scheduler {
     const runtime: Runtime = { provider, configHash: hash, ready: false, starting: false, retryAt: 0 };
     this.runtimes.set(key, runtime);
     provider.on('exit', error => {
-      runtime.ready = false; delete runtime.threadId; runtime.error = error.message;
+      runtime.ready = false; delete runtime.threadId; runtime.error = errorText(error);
       runtime.retryAt = this.now() + (this.options.providerRetryMs ?? 1_000);
       if (!this.stopped) this.scheduleLane(agent.id, laneId);
     });
-    // A headless daemon cannot ask terminal questions or execute M5 tools yet.
+    // Bind calls to this provider view's confirmed active turn, never a model-supplied sender.
     provider.on('request', request => {
       if (request.signal.aborted) return;
       if (request.method === 'approval/request') provider.respond(request.id, { decision: 'decline' });
-      else provider.respondError(request.id, { code: -32601, message: 'No Kru tool handler is installed' });
+      else {
+        const context = runtime.active;
+        if (!this.options.tools || !context || this.stopped || context.threadId !== request.params.threadId || context.turnId !== request.params.turnId) {
+          provider.respondError(request.id, { code: -32602, message: 'No matching active Kru tool turn' }); return;
+        }
+        let result;
+        try { result = this.options.tools.handle(context, request.params); }
+        catch (error) {
+          if (!request.signal.aborted) provider.respondError(request.id, { code: -32603, message: 'Kru tool transaction failed' });
+          this.fail(error); return;
+        }
+        if (!request.signal.aborted) provider.respond(request.id, result);
+      }
     });
     this.beginProvider(runtime, key);
     return runtime;
@@ -256,13 +273,13 @@ export class Scheduler {
     this.changed();
   }
   private async execute(runtime: Runtime, agent: Agent, batch: Batch, controller: AbortController): Promise<void> {
-    const prompt = batchPrompt(batch);
+    const prompt = this.options.tools?.render(batch) ?? batchPrompt(batch);
     if (Buffer.byteLength(prompt) > 32 * 1024) {
       this.ledger.abandon(batch.id, () => this.mailbox.finishBatch(batch.id, 'failed', 'Message exceeds the 32 KB turn input limit; send smaller messages'));
       return;
     }
     try {
-      runtime.threadId ??= await abortable(bindSession(runtime.provider, agent, batch.laneId, this.sessions, controller.signal),
+      runtime.threadId ??= await abortable(bindSession(runtime.provider, agent, batch.laneId, this.sessions, controller.signal, this.options.tools),
         controller.signal, this.options.startTimeoutMs ?? 30_000);
     } catch (error) {
       // No turn/start was sent: preserve order and hold until the provider recovers.
@@ -275,6 +292,8 @@ export class Scheduler {
     if (this.stopped || controller.signal.aborted) { this.ledger.abandon(batch.id, () => this.mailbox.restoreBatch(batch.id)); return; }
     const recording = this.options.turns?.prepare(batch, agent, runtime.threadId,
       this.sessions.get(agent.id, batch.laneId, agent.provider)?.promptHash ?? 'unknown');
+    const answer = new TurnAnswer();
+    let context: ToolContext | undefined;
     const outcome = await runScheduledTurn(runtime.provider, runtime.threadId, prompt, {
       signal: controller.signal,
       onSubmitting: () => this.ledger.submitted(batch.id),
@@ -286,11 +305,14 @@ export class Scheduler {
           recording?.started(turnId);
           this.mailbox.markBatchRunning(batch.id, turnId);
         });
+        context = { agent, batch, threadId: runtime.threadId!, turnId };
+        runtime.active = context;
         const state = this.states.get(keyOf(agent.id, batch.laneId));
         if (state) { state.state = 'running'; state.turnId = turnId; this.changed(); }
       },
       onUsage: value => this.account(batch, value),
-      onNotification: notification => recording?.observe(notification),
+      onNotification: notification => { recording?.observe(notification); answer.observe(notification); },
+      onFinished: () => { delete runtime.active; },
     });
     if (outcome.retireSession) {
       const threadId = runtime.threadId;
@@ -303,6 +325,7 @@ export class Scheduler {
     this.ledger.settle(batch.id, outcome.status, !outcome.retireSession,
       () => {
         recording?.finish(outcome);
+        if (context) this.options.tools?.finish(context, answer.text(), outcome.status);
         this.mailbox.finishBatch(batch.id, outcome.status, outcome.error);
       });
   }

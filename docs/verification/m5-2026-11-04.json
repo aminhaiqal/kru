@@ -1,0 +1,24 @@
+{
+  "verifiedAt": "2026-11-04T15:43:05.167826+00:00",
+  "baseCommit": "12e7b7a0badc2890eb0e6bfb0507dbbfdfc3ee6e",
+  "workingTreeImplementation": true,
+  "schemaVersion": 5,
+  "planSha256": "5ff11912dfc863681ad2cc48ad45430692f2038682db4b606780dd11dfadafae",
+  "checks": {
+    "typecheck": "passed",
+    "testsPassed": 270,
+    "testsSkipped": 9,
+    "testsFailed": 0,
+    "messagingRepeatPassed": 200,
+    "messagingRepetitions": 10,
+    "numberedAcceptanceCases": 4
+  },
+  "adapterCoverage": {
+    "fake": "scripted turns",
+    "codex": "real adapter over scripted native stdio peer",
+    "claude": "real adapter and SDK MCP server with in-memory transport and scripted model events",
+    "liveModelCalls": 0
+  },
+  "demoEvidence": "m5-demo-2026-11-04.json",
+  "releaseTarget": "0.1.0"
+}
