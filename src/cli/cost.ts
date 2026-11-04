@@ -49,6 +49,14 @@ export function costCommand(args: string[]): number {
     const minimumUsd = records.reduce((n, r) => n + (r.resolution?.nanoUsd ?? r.cost?.minimumNanoUsd ?? 0), 0) / 1e9;
     const maximumUsd = records.reduce((n, r) => n + (r.resolution?.nanoUsd ?? r.cost?.maximumNanoUsd ?? 0), 0) / 1e9;
     const unknown = rows.filter(r => !r.complete || r.maximumUsd === null).length;
+    const recovered=ledger.recoveryList(agent?.id).filter(r=>sinceTime===undefined||Date.parse(r.recorded_at)>=sinceTime).map(r=>{
+      const usage=r.usage_json?JSON.parse(r.usage_json):null,cost=r.cost_json?JSON.parse(r.cost_json):null;
+      return {executionId:r.execution_id,agentId:r.agent_id,model:r.model,laneId:r.lane_key||null,chainIds:JSON.parse(r.chains_json),recordedAt:r.recorded_at,status:r.status,
+        tokens:usage?.last.totalTokens??null,usage,cost,minimumUsd:cost?.minimumNanoUsd==null?null:cost.minimumNanoUsd/1e9,maximumUsd:cost?.maximumNanoUsd==null?null:cost.maximumNanoUsd/1e9,
+        complete:false,estimated:true,resolution:r.resolution_json?JSON.parse(r.resolution_json):null};
+    });
+    const recovery={entries:recovered,observedTokens:recovered.reduce((n,r)=>n+(r.tokens??0),0),observedMinimumUsd:recovered.reduce((n,r)=>n+(r.minimumUsd??0),0),observedMaximumUsd:recovered.reduce((n,r)=>n+(r.maximumUsd??0),0),
+      missing:recovered.filter(r=>r.status==='missing').length,unpriced:recovered.filter(r=>r.tokens!==null&&r.maximumUsd===null).length,unresolved:recovered.filter(r=>!r.resolution).length};
     const groups = new Map<string, { key: string; turns: number; input: number; cached: number; output: number; minimumUsd: number; maximumUsd: number; unknown: number }>();
     if (by) for (const row of rows) {
       // A multi-chain user batch is one shared chain-set bucket, never charged once per member.
@@ -59,7 +67,7 @@ export function costCommand(args: string[]): number {
       if (!row.complete || row.maximumUsd === null) group.unknown++;
       groups.set(key, group);
     }
-    if (json) console.log(JSON.stringify({ currency: 'USD', estimated: true, minimumUsd, maximumUsd, unknown, turns: rows, ...(by ? { by, groups: [...groups.values()] } : {}) }));
+    if (json) console.log(JSON.stringify({ currency: 'USD', estimated: true, minimumUsd, maximumUsd, unknown, turns: rows,recovery, ...(by ? { by, groups: [...groups.values()] } : {}) }));
     else {
       if (by) {
         console.log(`${by}\tturns\tinput\tcached\toutput\testimated USD`);
@@ -67,6 +75,7 @@ export function costCommand(args: string[]): number {
         if (unknown) console.log(`unpriced/incomplete\t${unknown}\tn/a (excluded unknown cost; never free)`);
       } else for (const row of rows) console.log(`${row.batchId} ${JSON.stringify(row.agent)} ${row.model} ${row.maximumUsd === null ? 'unpriced' : `$${row.minimumUsd!.toFixed(6)}–$${row.maximumUsd.toFixed(6)}`} ${row.complete ? row.outcome : 'usage unknown'}`);
       console.log(`estimated main-agent token cost: $${minimumUsd.toFixed(6)}–$${maximumUsd.toFixed(6)} USD${unknown ? `; ${unknown} incomplete/unpriced records (total is not complete)` : ''}`);
+      if(recovered.length)console.log(`recovery observations (separate from final turns): ${recovery.observedTokens} observed tokens, $${recovery.observedMinimumUsd.toFixed(6)}–$${recovery.observedMaximumUsd.toFixed(6)} partial USD; ${recovery.missing} missing-usage executions; ${recovery.unpriced} unpriced; ${recovery.unresolved} unresolved gaps. These are lower observations, not final costs.`);
     }
     return 0;
   } finally { store.close(); }

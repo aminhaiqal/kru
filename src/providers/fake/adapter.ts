@@ -22,6 +22,7 @@ export class FakeProvider extends ProviderBase {
     this.phase = 'stopping'; this.clearTurns(); this.ended(new Error('Fake provider stopped'));
   }
   forceStop(): Promise<void> { return this.stop(); }
+  async discardSession(id:string):Promise<void>{const s=this.threads.get(id);if(s?.active)throw new Error('Cannot discard an active session');this.threads.delete(id);}
   private clearTurns(): void {
     for (const session of this.threads.values()) {
       if (session.active) { clearTimeout(session.active.timer); session.active.controller.abort(new Error('Provider exited')); delete session.active; }

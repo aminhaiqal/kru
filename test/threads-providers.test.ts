@@ -32,11 +32,12 @@ test('Claude MCP history_search retrieves full entries and rejects invalid curso
   await until(()=>mailbox.get(first)!.status==='completed'); await initial.stop(0);
   const entry=new SqliteHistory(store).search(a.id,null,'Remember').entries.find(e=>e.role==='user')!.relatedEntryId!;
   agents.update(a.id,{provider:'claude'});
-  let args:Record<string,unknown>={entryId:entry,offset:800};
+  const initialPage=new SqliteHistory(store).query(a.id,null,{messageId:entry});
+  let args:Record<string,unknown>={messageId:entry,cursor:initialPage.nextCursor!};
   const provider=new ClaudeProvider({query: input=>scriptedClaude('tool',undefined,{name:'history_search',arguments:args})(input)});
   const d=new Daemon(store,{},()=>provider); daemons.push(d); d.start(); const next=enqueue('Retrieve the next chunk'); await until(()=>mailbox.get(next)!.status==='completed');
   const answer=()=>store.db.query<{text:string},[]>('SELECT text FROM thread_messages ORDER BY seq DESC LIMIT 1').get()!.text;
-  const page=JSON.parse(answer()); expect(page.offset).toBe(800); expect(page.entries[0].text).toBe('retained-'.repeat(200).slice(800,1600)); expect(page.nextOffset).toBe(1600);
+  const page=JSON.parse(answer()); expect(page.snapshotSeq).toBe(initialPage.snapshotSeq); expect(page.matches[0].text).toBe('retained-'.repeat(200).slice(800,1600)); expect(page.nextCursor).toBeString();
   // A fresh query instance uses the new scripted arguments while preserving native MCP validation.
   await d.stop(0); args={query:'Remember',cursor:'invalid'};
   const invalid=new Daemon(store,{},()=>new ClaudeProvider({query:scriptedClaude('tool',undefined,{name:'history_search',arguments:args})})); daemons.push(invalid); invalid.start();

@@ -5,7 +5,7 @@ import { ProviderBase } from '../base';
 import { prepareThread, promptMetadata, type PreparedThread } from '../prompt-profile';
 import type { Methods, ThreadParams, TokenCount } from '../protocol';
 import { RpcResponseError } from '../../rpc';
-import { prepareProcessRecordDir, writeProcessRecord, removeProcessRecord } from '../../rpc/process-record';
+import { prepareProcessRecordDir, prepareProcessIntent, writeProcessRecord, removeProcessRecord } from '../../rpc/process-record';
 import { terminateTree } from '../../rpc/process-tree';
 import { resolve } from 'node:path';
 import { fileDecision } from '../permissions';
@@ -33,6 +33,9 @@ function builtinTools(profile: PreparedThread): string[] | undefined {
     ? ['Read', 'Glob', 'Grep'] : ['Read', 'Edit', 'Bash', 'Write', 'Glob', 'Grep'];
 }
 export class ClaudeProvider extends ProviderBase {
+  override expectedPrefixHash(params:ThreadParams):string{const p=prepareThread(params);return promptMetadata(p,builtinTools(p)).prefixHash;}
+  private scope:import('../../boot/types').ProcessScope|undefined;
+  setProcessScope(scope:import('../../boot/types').ProcessScope):string { this.scope=scope;return scope.runtimeId; }
   readonly provider = 'claude';
   readonly capabilities = Object.freeze({ steering: false, subagents: false, compaction: 'none' as const });
   private sdk: typeof import('@anthropic-ai/claude-agent-sdk') | undefined;
@@ -50,6 +53,7 @@ export class ClaudeProvider extends ProviderBase {
   }
   async stop(): Promise<void> { await this.shutdown(false); }
   async forceStop(): Promise<void> { await this.shutdown(true); }
+  async discardSession(id:string):Promise<void>{const s=this.sessions.get(id);if(s){if(s.active)throw new Error('Cannot discard an active session');await this.closeSession(s);this.sessions.delete(id);}}
   private async shutdown(force: boolean): Promise<void> {
     if (this.phase === 'stopped') return;
     this.phase = 'stopping';
@@ -129,14 +133,16 @@ export class ClaudeProvider extends ProviderBase {
         if (!active) throw new Error('No active turn for tool call');
         const requestId = extra && typeof extra === 'object' ? (extra as { requestId?: unknown }).requestId : undefined;
         const callId = typeof requestId === 'string' || typeof requestId === 'number' ? `mcp:${JSON.stringify(requestId)}` : crypto.randomUUID();
-        this.emit('notification', { method: 'item/started', params: { threadId: session.id, turnId: active.id, item: { id: callId, type: 'dynamicToolCall' } } });
+        const metadata={name:def.name,input:args};let retained:unknown;
+        this.emit('notification', { method: 'item/started', params: { threadId: session.id, turnId: active.id, item: { id: callId, type: 'dynamicToolCall',details:metadata } } });
         try {
           const result = await this.callTool({ threadId: session.id, turnId: active.id, callId, tool: def.name, arguments: args }, active.controller.signal);
+          retained=result;
           return { isError: !result.success, content: result.contentItems.map(item => ({ type: 'text' as const, text: item.text })) };
         } catch (error) {
           throw error instanceof RpcResponseError ? error : new RpcResponseError(-32603, 'Internal error');
         } finally {
-          if (session.active === active) this.emit('notification', { method: 'item/completed', params: { threadId: session.id, turnId: active.id, item: { id: callId, type: 'dynamicToolCall' } } });
+          if (session.active === active) this.emit('notification', { method: 'item/completed', params: { threadId: session.id, turnId: active.id, item: { id: callId, type: 'dynamicToolCall',details:{...metadata,...(retained===undefined?{}:{result:retained})} } } });
         }
       });
     });
@@ -177,10 +183,12 @@ export class ClaudeProvider extends ProviderBase {
         return allowed ? { behavior: 'allow', updatedInput: input } : { behavior: 'deny', message: 'Tool declined by agent permissions' };
       },
       spawnClaudeCodeProcess: opts => {
-        const directory = prepareProcessRecordDir(this.options.processRecordDir);
+        const directory = prepareProcessRecordDir(this.scope?.directory ?? this.options.processRecordDir);
+        const intent=prepareProcessIntent(directory,this.scope);
+        if(intent)session.record=intent;
         const child = spawn(opts.command, opts.args, { cwd: opts.cwd, env: opts.env, stdio: ['pipe', 'pipe', 'pipe'], detached: process.platform !== 'win32' });
         session.child = child;
-        try { if (child.pid) session.record = writeProcessRecord(directory, child.pid); }
+        try { if (child.pid) session.record = writeProcessRecord(directory, child.pid,this.scope,intent); }
         catch (error) { void terminateTree(child, 0, session.force.signal); throw error; }
         child.stderr.on('data', (data: Buffer) => this.emit('diagnostic', { kind: 'stderr', message: data.toString() }));
         return child;

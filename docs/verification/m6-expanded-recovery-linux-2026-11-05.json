@@ -1,0 +1,134 @@
+{
+  "platform": "linux",
+  "architecture": "arm64",
+  "modelCalls": 0,
+  "assertions": {
+    "oldInterrupted": true,
+    "successorCompleted": true,
+    "containedBeforeNewProvider": true,
+    "noOldLane": true,
+    "oneRecovery": true,
+    "quarantinedGeneration": true,
+    "missingUsageIsExplicit": true,
+    "replayMatches": true
+  },
+  "deliveries": [
+    {
+      "seq": 1,
+      "id": "96fc828e-e02c-4a67-8178-e1bba37d391a",
+      "messageId": "6c8013cf-0559-4197-a7bf-6f4d6039959a",
+      "recipientAgentId": "8c41d9e7-42ec-4840-a1f4-f31febde7259",
+      "laneId": null,
+      "sender": {
+        "kind": "user"
+      },
+      "text": "This attempt will be interrupted.",
+      "replyToMessageId": null,
+      "expectsReply": false,
+      "status": "interrupted",
+      "batchId": "d21adffe-3b64-4af1-911c-7e9f76c0c052",
+      "turnId": "9e958662-c6d8-4fd9-93ba-c0b1042b7261",
+      "error": "daemon_restarted_outcome_unknown",
+      "retryOf": null,
+      "chainId": "df7d3d9b-57ce-4870-82ee-03ba0fd3cbb4",
+      "hop": 0,
+      "idempotencyKey": null,
+      "createdAt": "2026-11-04T23:43:19.462Z",
+      "updatedAt": "2026-11-04T23:43:19.551Z"
+    },
+    {
+      "seq": 2,
+      "id": "e0aa1f38-0925-40fd-9406-1d4e7c9e9db2",
+      "messageId": "7c70c86d-147e-4dfa-9610-e95beed7b4ab",
+      "recipientAgentId": "8c41d9e7-42ec-4840-a1f4-f31febde7259",
+      "laneId": null,
+      "sender": {
+        "kind": "user"
+      },
+      "text": "Continue this queued request after recovery.",
+      "replyToMessageId": null,
+      "expectsReply": false,
+      "status": "completed",
+      "batchId": "a23ba37f-f528-4fb0-8375-241bcb5c54f4",
+      "turnId": "10b6c272-c079-46c9-be1c-d4a7a87571cd",
+      "error": null,
+      "retryOf": null,
+      "chainId": "d51eef97-0433-4d07-af6f-31119111a6a7",
+      "hop": 0,
+      "idempotencyKey": null,
+      "createdAt": "2026-11-04T23:43:19.531Z",
+      "updatedAt": "2026-11-04T23:43:19.582Z"
+    }
+  ],
+  "recovery": {
+    "boot": {
+      "epoch": "76e313e7-bb2d-4abd-b33a-a76db01d0783",
+      "phase": "ready",
+      "error": null,
+      "started_at": "2026-11-04T23:43:19.543Z",
+      "updated_at": "2026-11-04T23:43:19.560Z"
+    },
+    "barrierOpen": true,
+    "executions": [
+      {
+        "execution_id": "d21adffe-3b64-4af1-911c-7e9f76c0c052",
+        "agent_id": "8c41d9e7-42ec-4840-a1f4-f31febde7259",
+        "lane_key": "",
+        "old_epoch": "0c68f782-9cda-4408-b6fb-bfbeb987baa7",
+        "recovered_epoch": "76e313e7-bb2d-4abd-b33a-a76db01d0783",
+        "delivery_ids_json": "[\"96fc828e-e02c-4a67-8178-e1bba37d391a\"]",
+        "reason": "daemon_restarted_outcome_unknown",
+        "recovered_at": "2026-11-04T23:43:19.550Z",
+        "checkpoint_at": null,
+        "runtime_id": "9066ad0d-a338-4802-afe9-160d5704d3bd",
+        "generation_id": "9ab8e997-7084-4037-b247-d0904edd8147"
+      }
+    ],
+    "quarantinedSessions": [
+      {
+        "generation_id": "9ab8e997-7084-4037-b247-d0904edd8147",
+        "agent_id": "8c41d9e7-42ec-4840-a1f4-f31febde7259",
+        "lane_key": "",
+        "provider": "codex",
+        "native_thread_id": "7a7eb2f5-7707-4690-a82b-0599c624d5ee",
+        "execution_id": "d21adffe-3b64-4af1-911c-7e9f76c0c052",
+        "reason": "daemon_restarted_outcome_unknown",
+        "quarantined_at": "2026-11-04T23:43:19.550Z"
+      }
+    ],
+    "cleanup": [
+      {
+        "runtime_id": "e034c705-7bf6-4048-9aaa-1a1900cde7e7.json",
+        "owner_epoch": "0c68f782-9cda-4408-b6fb-bfbeb987baa7",
+        "record_path": "/tmp/kru-m7-demo-PvNVTu/processes/a68b00ae2a83b361d231faf0b1d5729a/e034c705-7bf6-4048-9aaa-1a1900cde7e7.json",
+        "state": "complete",
+        "detail": "runtime tree is already gone",
+        "execution_runtime_id": "9066ad0d-a338-4802-afe9-160d5704d3bd"
+      }
+    ],
+    "usageGaps": [
+      {
+        "execution_id": "d21adffe-3b64-4af1-911c-7e9f76c0c052",
+        "agent_id": "8c41d9e7-42ec-4840-a1f4-f31febde7259",
+        "provider": "codex",
+        "model": "unknown",
+        "lane_key": "",
+        "recorded_at": "2026-11-04T23:43:19.519Z",
+        "chains_json": "[\"df7d3d9b-57ce-4870-82ee-03ba0fd3cbb4\"]",
+        "deliveries_json": "[\"96fc828e-e02c-4a67-8178-e1bba37d391a\"]",
+        "status": "missing",
+        "usage_json": null,
+        "cost_json": null,
+        "price_id": null,
+        "resolution_json": null
+      }
+    ],
+    "queued": []
+  },
+  "replay": {
+    "events": 46,
+    "projections": 22,
+    "matches": true,
+    "differences": []
+  }
+}

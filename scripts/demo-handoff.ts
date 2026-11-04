@@ -16,13 +16,14 @@ export async function demoHandoff() {
   const store = new Store(path), agents = new AgentRegistry(store), mailbox = new SqliteMailbox(store);
   const capture = join(directory, 'codex.jsonl');
   const firstFact = 'The launch code is indigo-otter-472.';
+  let nativeStarts=0;
   const agent = agents.create({ name: 'teammate', provider: 'claude', config: { model: 'scripted-claude', promptProfile: 'full' } });
-  const daemon = new Daemon(store, {}, a => a.provider === 'claude'
+  const daemon = new Daemon(store, {}, a => {const provider=a.provider === 'claude'
     ? new ClaudeProvider({ query: scriptedClaude() })
     : new CodexProvider({ transport: { command: process.execPath,
       args: [new URL('../test/fakes/provider-agent.ts', import.meta.url).pathname],
       env: { KRU_CAPTURE_FILE: capture, KRU_SCRIPTED_TOOL: 'history_search', KRU_SCRIPTED_TOOL_ARGS: JSON.stringify({ query: 'launch code' }) },
-      processRecordDir: join(directory, 'processes'), stopGraceMs: 50 } }));
+      processRecordDir: join(directory, 'processes'), stopGraceMs: 50 } });provider.on('notification',n=>{if(n.method==='turn/started')nativeStarts++;});return provider;});
   const turn = async (text: string) => {
     const id = mailbox.enqueue({ sender: { kind: 'user' }, recipientIds: [agent.id], text }).deliveryIds[0]!;
     const deadline = performance.now() + 5000;
@@ -32,10 +33,11 @@ export async function demoHandoff() {
       if (performance.now() > deadline) throw new Error('Handoff demo timed out');
       await Bun.sleep(5);
     }
+    return id;
   };
   try {
     daemon.start();
-    await turn(firstFact);
+    const firstDelivery=await turn('First-turn background. '.repeat(1000)+firstFact);
     for (let n = 2; n <= 10; n++) await turn(`Turn ${n}: unrelated planning note ${n}.`);
     const before = new ThreadStore(store).get(agent.id, null)!;
     const old = new SqliteSessions(store).get(agent.id, null, 'claude')!;
@@ -57,12 +59,15 @@ export async function demoHandoff() {
       oneCodexTurn: turns.filter(t => t.provider === 'codex' && t.status === 'completed').length === 1,
       stableThread: binding.logicalThreadId === before.id,
       newNativeSession: binding.nativeThreadId !== old.nativeThreadId,
-      boundedHandoff: input.split('\n--- end handoff; current request follows ---')[0]!.length + '\n--- end handoff; current request follows ---'.length <= 6000,
-      firstFactInHandoff: input.includes(firstFact), currentRequestLast: input.endsWith(request),
+      boundedHandoff: [...input.split('\n--- end handoff; current request follows ---')[0]!].length + '\n--- end handoff; current request follows ---'.length <= 12000&&Buffer.byteLength(input)<=32768,
+      firstFactOmittedFromHandoff: !input.includes(firstFact), currentRequestLast: input.endsWith(request),
       firstFactRetrieved: answer.includes(firstFact), handoffAcknowledged: binding.handoffPending === false,
       allTurnsLinked: (store.db.query<{ n: number }, [string]>('SELECT count(*) AS n FROM turn_threads WHERE thread_id=?').get(before.id)!.n === 11),
       providerOnlyCliSwitch: agents.get(agent.id)!.config.model === undefined && agents.get(agent.id)!.config.promptProfile === 'minimal',
       replayMatches: replay.matches,
+      noHiddenTurns:nativeStarts===11&&(store.db.query<{n:number},[]>('SELECT count(*) AS n FROM usage_records').get()!.n===11),
+      retrievedOriginalSource:answer.includes(mailbox.get(firstDelivery)!.messageId),
+      confirmedHandoffUse:store.db.query('SELECT * FROM handoff_uses').all().length===1,
     };
     if (Object.values(assertions).some(ok => !ok)) throw new Error(JSON.stringify(assertions));
     return { mode: 'scripted native adapters', modelCalls: 0, firstFact, threadId: before.id, assertions,
@@ -75,7 +80,7 @@ if (import.meta.main) {
   const report = await demoHandoff();
   if (process.argv[2]) writeFileSync(process.argv[2]!, JSON.stringify(report, null, 2) + '\n');
   console.log('10 Claude turns → provider-only CLI switch → 1 Codex turn.');
-  console.log('The bounded handoff and history_search both retain the first-turn launch code.');
+  console.log('The first-turn launch code is omitted from the bounded handoff and restored by history_search.');
   console.log(`Replay: ${report.replay.events} events; ${report.replay.projections} projections match.`);
   console.log('Scripted native adapters; zero live model calls.');
 }

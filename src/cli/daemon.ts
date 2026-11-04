@@ -5,6 +5,7 @@ import { AgentRegistry } from '../agents';
 import { SqliteMailbox } from '../mailbox';
 import { installRpcSignalHandlers } from '../rpc';
 import type { LaneStatus } from '../scheduler';
+import { recoveryReport } from '../boot/report';
 
 export const daemonUsage = `Usage: kru daemon [--db <path>] [--max-turns <count>] [--poll-ms <ms>]
                   [--idle-timeout-ms <ms>] [--start-timeout-ms <ms>] [--start-grace-ms <ms>]
@@ -48,6 +49,7 @@ export async function daemonCommand(args: string[]): Promise<number> {
     const signals = installRpcSignalHandlers([daemon]);
     try {
       daemon.start();
+      await daemon.ready;
       console.error('Kru daemon ready');
       await daemon.closed;
       if (daemon.failure) throw daemon.failure;
@@ -71,8 +73,10 @@ function printStatus(store: Store, json: boolean): void {
       ...(running ? { batchId: running.batchId, turnId: running.turnId, reason: undefined } : {}),
       queued: mailbox.listQueue(agent.id, lane.laneId).filter(d => d.status === 'queued').length };
   });
-  if (json) { console.log(JSON.stringify({ daemon: alive ? { pid: lock!.pid, heartbeatAt: lock!.heartbeat_at, budgetTimezone: snapshot.budgetTimezone } : null, lanes })); return; }
+  const recovery=recoveryReport(store);
+  if (json) { console.log(JSON.stringify({ daemon: alive ? { pid: lock!.pid, heartbeatAt: lock!.heartbeat_at, budgetTimezone: snapshot.budgetTimezone } : null, lanes,recovery })); return; }
   if (!alive) console.log('daemon offline');
+  if(recovery.boot)console.log(`recovery ${recovery.boot.phase}; barrier ${recovery.barrierOpen?'open':'closed'}${recovery.boot.error?'; '+recovery.boot.error:''}`);
   if (!lanes.length) console.log('no queued or active work');
   for (const lane of lanes) {
     const detail = lane.reason === 'budget' ? lane.dailyUsd !== undefined

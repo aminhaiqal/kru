@@ -1,5 +1,6 @@
 // Scripted native Codex peer: exercises the real adapter and stdio, without a model.
 import { appendFileSync } from 'node:fs';
+import { spawn } from 'node:child_process';
 import { FakeProvider, type FakeMode, type FakeTurnScript } from '../../src/providers/fake/adapter';
 import type { Methods, ToolResult, ApprovalResult } from '../../src/providers/protocol';
 import { ByteLineFramer } from '../../src/rpc/framing';
@@ -10,6 +11,11 @@ const script: FakeTurnScript | undefined = process.env.KRU_SCRIPTED_TOOL ? async
   JSON.stringify(await call(process.env.KRU_SCRIPTED_TOOL!, JSON.parse(process.env.KRU_SCRIPTED_TOOL_ARGS ?? '{}'))) : undefined;
 const provider = new FakeProvider({ mode, toolTimeoutMs: 500, ...(script ? { script } : {}) });
 await provider.start();
+if(process.env.KRU_RECOVERY_CHILD){
+  process.on('SIGTERM',()=>{});setInterval(()=>{},1000);
+  const child=spawn(process.execPath,['-e',"process.on('SIGTERM',()=>{});setInterval(()=>{},1000)"],{stdio:'ignore'});
+  if(process.env.KRU_RECOVERY_CHILD_FILE)appendFileSync(process.env.KRU_RECOVERY_CHILD_FILE,String(child.pid));
+}
 let initialized = false;
 let acknowledged = false;
 const approvals = new Map<string, (value: unknown) => void>();
@@ -71,6 +77,12 @@ async function handle(message: Record<string, unknown>) {
         if (process.env.KRU_CONFIG_READ_DELAY_MS) await Bun.sleep(Number(process.env.KRU_CONFIG_READ_DELAY_MS));
         if (process.env.KRU_CONFIG_READ_MODE === 'error') throw new RpcResponseError(-32603, 'Scripted config read error');
         result = { config: {} };
+      } else if(message.method==='account/read'){
+        result={account:{type:'apiKey'},requiresOpenaiAuth:false};
+      } else if(message.method==='thread/unsubscribe'){
+        result={status:'unsubscribed'};
+      } else if(message.method==='thread/archive'){
+        await provider.discardSession(String(p.threadId));result={};
       } else if (message.method === 'thread/start' || message.method === 'thread/resume') {
         if (typeof p.baseInstructions !== 'string' || Buffer.byteLength(p.baseInstructions) >= 8192) throw new Error('Invalid instruction budget');
         if (!['never', 'on-request'].includes(String(p.approvalPolicy)) || !['read-only', 'workspace-write'].includes(String(p.sandbox))) throw new Error('Invalid agent permissions');
@@ -90,6 +102,11 @@ async function handle(message: Record<string, unknown>) {
     }
     if (message.method === 'turn/start') {
       const p = message.params as Methods['turn/start']['params'];
+      if(process.env.KRU_RECOVERY_PARTIAL){
+        const turnId=(result as Methods['turn/start']['result']).turn.id;
+        send({method:'item/agentMessage/delta',params:{threadId:p.threadId,turnId,itemId:'partial',delta:'latest durable partial answer'}});
+        for(const inputTotal of [10,20,20])send({method:'thread/tokenUsage/updated',params:{threadId:p.threadId,turnId,tokenUsage:{last:{inputTokens:inputTotal,cachedInputTokens:0,outputTokens:3,totalTokens:inputTotal+3},total:{inputTokens:inputTotal,cachedInputTokens:0,outputTokens:3,totalTokens:inputTotal+3}}}});
+      }
       if (p.input[0]?.text === 'late-start') {
         const turnId = (result as Methods['turn/start']['result']).turn.id;
         send({ method: 'item/agentMessage/delta', params: { threadId: p.threadId, turnId, itemId: 'late', delta: 'discard this output' } });

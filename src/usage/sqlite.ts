@@ -6,9 +6,12 @@ import { MemoryUsageLedger, totals, type UsageRecord } from './ledger';
 import { PriceBook, priceRow } from '../cost/prices';
 import { estimateCost } from './pricing';
 import type { UsageRow } from '../store/event-types';
+import type { RecoveryUsageRow } from '../boot/types';
 
 /** One durable record per claimed batch/native turn. Stored estimates retain their price snapshot. */
 export class SqliteUsageLedger extends MemoryUsageLedger {
+  private pending=new Map<string,TokenUsage>();
+  private checkpointAt=new Map<string,number>();
   constructor(private readonly store: Store) { super(); }
   override onChange(listener: () => void): () => void {
     return this.store.onChange(change => { if (change.topic === 'usage' || change.topic === 'prices') listener(); });
@@ -56,6 +59,11 @@ export class SqliteUsageLedger extends MemoryUsageLedger {
   override submitted(id: string): void { this.mutate(id, () => super.submitted(id)); }
   override started(id: string, threadId: string, turnId: string, start?: () => void): void { this.mutate(id, () => super.started(id, threadId, turnId, start)); }
   override observe(id: string, usage: TokenUsage): void {
+    const row=this.read(id);if(row.phase==='final')throw new Error('Final usage cannot be changed');
+    if(Date.now()-(this.checkpointAt.get(id)??0)<2000){this.pending.set(id,structuredClone(usage));return;}
+    this.persistObservation(id,usage);this.checkpointAt.set(id,Date.now());this.pending.delete(id);
+  }
+  private persistObservation(id:string,usage:TokenUsage):void {
     this.mutate(id, () => {
       const row = this.get(id), previous = row.cost;
       super.observe(id, usage);
@@ -67,12 +75,16 @@ export class SqliteUsageLedger extends MemoryUsageLedger {
       if (!pinned) row.priceId = price?.id ?? null;
     });
   }
+  flush():void {for(const [id,usage] of this.pending){this.persistObservation(id,usage);this.pending.delete(id);this.checkpointAt.set(id,Date.now());}}
   override abandon(id: string, restore: () => void): void {
     this.store.atomic(() => { this.store.emit('usage.abandoned', { batchId: id }); restore();
       this.store.publishChanges([{ topic: 'usage', id }]); });
+    this.pending.delete(id);this.checkpointAt.delete(id);
   }
   override settle(id: string, outcome: string, confirmed: boolean, finish: () => void): void {
-    this.mutate(id, () => super.settle(id, outcome, confirmed, finish), 'turn.complete');
+    const pending=this.pending.get(id);
+    this.store.atomic(()=>{if(pending)this.persistObservation(id,pending);this.mutate(id, () => super.settle(id, outcome, confirmed, finish), 'turn.complete');});
+    this.pending.delete(id);this.checkpointAt.delete(id);
   }
   override recover(): void {
     this.store.command('usage.recover', () => {
@@ -84,6 +96,16 @@ export class SqliteUsageLedger extends MemoryUsageLedger {
   }
   acknowledge(id: string, tokens: number, nanoUsd: number, note: string): void {
     if (!Number.isSafeInteger(tokens) || tokens < 0 || !Number.isSafeInteger(nanoUsd) || nanoUsd < 0 || !note.trim()) throw new Error('Provide nonnegative usage bounds and a note');
+    if(this.store.db.query('SELECT 1 FROM recovery_usage WHERE execution_id=?').get(id)){
+      this.store.command('recovery.usage.resolve',()=>{
+        const row=this.recoveryList().find(r=>r.execution_id===id)!;
+        if(row.resolution_json)throw new Error('Recovery usage is already resolved');
+        const usage=row.usage_json?JSON.parse(row.usage_json):null,cost=row.cost_json?JSON.parse(row.cost_json):null;
+        if(tokens<(usage?.last.totalTokens??0)||nanoUsd<(cost?.maximumNanoUsd??0))throw new Error('Bounds cannot reduce observed usage');
+        this.store.emit('recovery.usage_resolved',{row:{...row,resolution_json:JSON.stringify({tokens,nanoUsd,note,at:new Date().toISOString()})}});
+        this.store.publishChanges([{topic:'usage',id}]);
+      });return;
+    }
     this.mutate(id, () => {
       const row = this.get(id);
       if (row.phase !== 'final' || row.resolution) throw new Error('Only an unresolved final record can be acknowledged once');
@@ -94,7 +116,13 @@ export class SqliteUsageLedger extends MemoryUsageLedger {
   override list(agentId?: string): UsageRecord[] {
     const rows = agentId === undefined ? this.store.db.query('SELECT * FROM usage_records ORDER BY started_at, batch_id').all()
       : this.store.db.query('SELECT * FROM usage_records WHERE agent_id = ? ORDER BY started_at, batch_id').all(agentId);
-    return this.decode(rows);
+    return this.decode(rows).map(row=>{
+      const pending=this.pending.get(row.batchId);if(!pending)return row;
+      const model=pending.model??row.model;return {...row,model,usage:pending,cost:estimateCost(model,pending.last,row.cost?.price??null)};
+    });
+  }
+  recoveryList(agentId?:string):RecoveryUsageRow[]{
+    return agentId===undefined?this.store.db.query<RecoveryUsageRow,[]>('SELECT * FROM recovery_usage ORDER BY recorded_at,execution_id').all():this.store.db.query<RecoveryUsageRow,[string]>('SELECT * FROM recovery_usage WHERE agent_id=? ORDER BY recorded_at,execution_id').all(agentId);
   }
   private decode(rows: unknown[]): UsageRecord[] {
     return (rows as Record<string, unknown>[]).map(r => ({
@@ -113,6 +141,8 @@ export class SqliteUsageLedger extends MemoryUsageLedger {
     const rows = this.store.db.query(`SELECT * FROM usage_records WHERE agent_id = ?
       AND ((recorded_at >= ? AND recorded_at < ?) OR phase <> 'final'
         OR (resolution_json IS NULL AND (complete = 0 OR usage_json IS NULL OR cost_usd IS NULL)))`).all(agentId, new Date(window.start).toISOString(), new Date(window.end).toISOString());
-    return totals(this.decode(rows), agentId, calendar, now);
+    const recovery=this.recoveryList(agentId).map(r=>({batchId:r.execution_id,agentId:r.agent_id,provider:r.provider,model:r.model,threadId:null,turnId:null,cause:'recovery',deliveryIds:JSON.parse(r.deliveries_json),chainIds:JSON.parse(r.chains_json),phase:'final' as const,outcome:'interrupted',usage:r.usage_json?JSON.parse(r.usage_json):null,cost:r.cost_json?JSON.parse(r.cost_json):null,complete:false,resolution:r.resolution_json?JSON.parse(r.resolution_json):null,startedAt:r.recorded_at,updatedAt:r.recorded_at}));
+    const live=this.decode(rows).map(r=>{const p=this.pending.get(r.batchId);return p?{...r,usage:p,cost:estimateCost(p.model??r.model,p.last,r.cost?.price??null)}:r;});
+    return totals([...live,...recovery], agentId, calendar, now);
   }
 }

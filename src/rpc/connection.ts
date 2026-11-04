@@ -5,7 +5,8 @@ import { ByteLineFramer } from "./framing";
 import { ProcessExitError, RequestTimeoutError, RpcResponseError } from "./errors";
 import { terminateTree } from "./process-tree";
 import { WriteQueue } from "./write-queue";
-import { prepareProcessRecordDir, writeProcessRecord, removeProcessRecord } from "./process-record";
+import { prepareProcessRecordDir, prepareProcessIntent, writeProcessRecord, removeProcessRecord } from "./process-record";
+import type { ProcessScope } from '../boot/types';
 
 export interface RpcConnectionOptions {
   command: string;
@@ -93,6 +94,12 @@ export class RpcConnection extends EventEmitter<{
   private nextId = 0n;
   private requestHandler: ((request: RpcRequest) => Promise<unknown>) | undefined;
   private readonly options: RpcConnectionOptions;
+  private scope:ProcessScope|undefined;
+  setProcessScope(scope:ProcessScope):string {
+    if(this.scope?.ownerEpoch===scope.ownerEpoch&&this.scope.databaseId===scope.databaseId)return this.scope.runtimeId;
+    if(this.run&&!this.run.finalized){if(this.scope?.ownerEpoch!==scope.ownerEpoch||this.scope.databaseId!==scope.databaseId)throw new Error('Runtime is owned by another daemon');return this.scope.runtimeId;}
+    this.scope=scope;return scope.runtimeId;
+  }
 
   constructor(options: RpcConnectionOptions) {
     super();
@@ -117,7 +124,8 @@ export class RpcConnection extends EventEmitter<{
 
   start(): void {
     if (this.run && !this.run.finalized) throw new Error("RPC connection is already started or stopping");
-    const recordDir = prepareProcessRecordDir(this.options.processRecordDir);
+    const recordDir = prepareProcessRecordDir(this.scope?.directory ?? this.options.processRecordDir);
+    const intent=prepareProcessIntent(recordDir,this.scope);
     const child = spawn(this.options.command, this.options.args, {
       env: { ...process.env, ...this.options.env },
       stdio: ["pipe", "pipe", "pipe"],
@@ -142,7 +150,7 @@ export class RpcConnection extends EventEmitter<{
       markExited: () => markExited(),
       done: new Promise<void>((resolve) => { finish = resolve; }),
       finish: () => finish(),
-      code: null, signal: null, cause: undefined, stopped: false, recordPath: undefined,
+      code: null, signal: null, cause: undefined, stopped: false, recordPath: intent,
       forceController: new AbortController(),
     };
     this.run = run;
@@ -187,7 +195,7 @@ export class RpcConnection extends EventEmitter<{
     child.stdout.on("error", (error) => { if (this.isCurrent(run)) this.close(run, error); });
     child.stderr.on("error", () => run.endStderr());
     if (child.pid) {
-      try { run.recordPath = writeProcessRecord(recordDir, child.pid); }
+      try { run.recordPath = writeProcessRecord(recordDir, child.pid,this.scope,intent); }
       catch (error) { this.close(run, asError(error)); }
     }
   }

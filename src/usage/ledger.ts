@@ -13,6 +13,7 @@ export interface UsageRecord {
 }
 export interface UsageTotals { tokens: number; nanoUsd: number; unknownTokens: boolean; unknownUsd: boolean }
 export interface UsageLedger {
+  flush?():void;
   onChange(listener: () => void): () => void;
   begin(batch: Batch, provider: string, model: string, startedAt?: string): void;
   submitted(id: string): void;

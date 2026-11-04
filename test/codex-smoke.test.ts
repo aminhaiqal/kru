@@ -7,6 +7,7 @@ import packageJson from "../package.json";
 import { createCodexRpcConnection } from "../src/providers/codex/transport";
 import type { RpcConnection } from "../src/rpc";
 import { CodexProvider } from '../src/providers/codex/adapter';
+import { agentToolDefinitions, historyToolDefinition } from '../src/tools/definitions';
 
 let directory: string;
 let rpc: RpcConnection | undefined;
@@ -62,12 +63,19 @@ test.skipIf(process.env.KRU_TEST_CODEX !== "1")("real Codex initializes with the
   expect(readFileSync(capture)).toEqual(Buffer.from(initialize + '{"method":"initialized"}\n' + repeated));
 }, 20_000);
 
-test.skipIf(process.env.KRU_TEST_CODEX !== '1')('real Codex registers the experimental tool API without a model call', async () => {
+test.skipIf(process.env.KRU_TEST_CODEX !== '1')('real Codex registers Kru tools, classifies missing resume and cleans candidates without a model call', async () => {
   const provider = new CodexProvider({ transport: { command: process.env.KRU_CODEX_COMMAND ?? 'codex', processRecordDir: join(directory, 'processes') } });
   try {
     await provider.start();
-    const { thread } = await provider.request('thread/start', { cwd: directory, tools: [{ name: 'kru_canary_echo', description: 'Echo a string.', inputSchema: { type: 'object', properties: { text: { type: 'string' } }, required: ['text'], additionalProperties: false } }] });
-    expect(thread.id).toBeString(); expect(thread.prompt?.toolCount).toBe(1);
+    const params = { cwd: directory, tools: [...agentToolDefinitions, historyToolDefinition] };
+    expect(await provider.sessionScope(params)).toMatch(/^[a-f0-9]{64}$/);
+    const { thread } = await provider.request('thread/start', params);
+    expect(thread.id).toBeString(); expect(thread.prompt?.toolCount).toBe(3);
+    try {
+      await provider.request('thread/resume', { ...params, threadId: '00000000-0000-4000-8000-000000000000' });
+      throw new Error('Expected a missing native session');
+    } catch (error) { expect(provider.classifySessionFailure(error)).toBe('missing'); }
+    await provider.discardSession(thread.id);
   } finally { await provider.stop(); }
 }, 20_000);
 

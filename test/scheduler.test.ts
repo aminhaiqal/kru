@@ -147,7 +147,7 @@ describe('M3 acceptance', () => {
     agents.update(a.id, { config: { testMode: 'echo' } });
     const daemon = new Daemon(store); daemon.start(); cleanups.push(() => daemon.stop(0));
     await until(() => done(next));
-    expect(mailbox.get(first)).toMatchObject({ status: 'interrupted', error: 'daemon restarted' });
+    expect(mailbox.get(first)).toMatchObject({ status: 'interrupted', error: 'daemon_restarted_outcome_unknown' });
     expect(mailbox.listQueue(a.id)).toEqual([]); expect(mailbox.activeLanes()).toEqual([]);
   });
   test('11. competing processes cannot reserve the same main or side lane', async () => {
@@ -347,7 +347,7 @@ test('an unchanged status does not write; the default heartbeat is ten seconds',
   const interval = spyOn(globalThis, 'setInterval');
   const daemon = new Daemon(store); cleanups.push(() => daemon.stop(0));
   try {
-    daemon.start(); expect(interval.mock.calls.some(call => call[1] === 10_000)).toBe(true);
+    daemon.start(); await daemon.ready; expect(interval.mock.calls.some(call => call[1] === 10_000)).toBe(true);
   } finally { interval.mockRestore(); }
   await Bun.sleep(10);
   const changes = () => store.db.query<{ changes: number }, []>('SELECT total_changes() AS changes').get()!.changes;

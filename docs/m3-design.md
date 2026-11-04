@@ -1,7 +1,7 @@
 # M3 design decisions
 
 These decisions refine the scheduler milestone in the
-[Kru project plan](Kru%20%E2%80%94%20Project%20Plan%20%26%20Milestones.pdf).
+[Kru project plan](Kru_Project_Plan_and_Milestones.pdf).
 The scheduler and batching are implemented in M3; see the
 [implementation record](m3.md). Idempotency expiry remains pre-v0.1 work.
 

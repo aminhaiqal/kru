@@ -59,14 +59,15 @@ test('handoff survives setup-only restart until a native turn is confirmed',asyn
   store.close(); store=new Store(path); agents=new AgentRegistry(store); mailbox=new SqliteMailbox(store);
   const resumed=new SqliteSessions(store).get(a.id,null,'fake')!;
   expect(resumed.handoffPending).toBe(true); expect(new SqliteSessions(store).handoff(resumed,[],6000,32000).text).toContain('value-0');
-  new SqliteSessions(store).acknowledgeHandoff(resumed); expect(new SqliteSessions(store).get(a.id,null,'fake')!.handoffPending).toBe(false);
+  expect(()=>new SqliteSessions(store).acknowledgeHandoff(resumed,'unconfirmed')).toThrow('confirmed');
+  const d=start(()=>new FakeProvider({script:async()=> 'confirmed'}));const next=send(a.id,'confirm a valid turn');await until(()=>done(next));expect(new SqliteSessions(store).get(a.id,null,'fake')!.handoffPending).toBe(false);expect(d.failure).toBeUndefined();
 });
 
 test('handoff is bounded by characters and bytes without splitting Unicode pairs',()=>{
   const entries:HistoryEntry[]=Array.from({length:20},(_,n)=>({id:`item:${n}`,role:'assistant',text:'🙂界'.repeat(1000),timestamp:'now',status:'completed',partial:false,baseSeq:n,phase:1,itemOrder:n}));
   for(const chars of [512,1000,6000]){
     const result=handoffPacket('thread',entries,true,chars,1300);
-    expect(result.text.length).toBeLessThanOrEqual(chars); expect(Buffer.byteLength(result.text)).toBeLessThanOrEqual(1300); expect(result.truncated).toBe(true); expect(result.text.isWellFormed()).toBe(true);
+    expect([...result.text].length).toBeLessThanOrEqual(chars); expect(Buffer.byteLength(result.text)).toBeLessThanOrEqual(1300); expect(result.truncated).toBe(true); expect(result.text.isWellFormed()).toBe(true);
   }
   expect(handoffPacket('thread',entries,false,512,10).blocked).toBe(true);
 });
@@ -141,7 +142,7 @@ test('interrupted partial answers remain labelled, and history order survives a 
   }
   const source=new SqliteHistory(store), thread=new ThreadStore(store).get(a.id,null)!;
   const entries=source.handoffEntries(thread.id,[]).entries;
-  expect(entries.map(e=>e.text)).toEqual(['first','partial first','second','partial second']);
+  expect(entries.filter(e=>e.role!=='execution').map(e=>e.text)).toEqual(['first','partial first','second','partial second']);
   expect(entries.filter(e=>e.role==='assistant').every(e=>e.partial&&e.status==='interrupted')).toBe(true);
   expect(source.search(a.id,null,'partial',1).entries[0]!.text).toBe('partial second'); expect(verifyReplay(store).matches).toBe(true);
 });

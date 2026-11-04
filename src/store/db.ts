@@ -6,7 +6,10 @@ import { randomUUID } from 'node:crypto';
 import { dispatch, emit, type Command } from './events';
 import { importGenesis } from './genesis';
 import { importThreads } from '../threads/migrate';
+import { importSessionHistory } from '../threads/import-session-history';
 import type { EventType, Payloads } from './event-types';
+import { join } from 'node:path';
+import { tmpdir } from 'node:os';
 
 const migrations = [
   { version: 1, sql: readFileSync(new URL('./migrations/001-initial.sql', import.meta.url), 'utf8') },
@@ -16,6 +19,8 @@ const migrations = [
   { version: 5, sql: readFileSync(new URL('./migrations/005-tools.sql', import.meta.url), 'utf8') },
   { version: 6, sql: readFileSync(new URL('./migrations/006-key-retention.sql', import.meta.url), 'utf8') },
   { version: 7, sql: readFileSync(new URL('./migrations/007-threads.sql', import.meta.url), 'utf8') },
+  { version: 8, sql: readFileSync(new URL('./migrations/008-recovery.sql', import.meta.url), 'utf8') },
+  { version: 9, sql: readFileSync(new URL('./migrations/009-session-history.sql', import.meta.url), 'utf8') },
 ];
 
 export interface StoreChange { topic: string; id: string; value?: unknown }
@@ -23,6 +28,11 @@ export interface StoreChange { topic: string; id: string; value?: unknown }
 /** Synchronous writes own their transaction. No callbacks may await or nest writes. */
 export class Store {
   readonly db: Database;
+  readonly path: string;
+  private fence: (() => void) | undefined;
+  get databaseId(): string { return this.db.query<{ database_id: string }, []>('SELECT database_id FROM store_identity WHERE id=1').get()!.database_id; }
+  get processDirectory(): string { return join(this.path === ':memory:' ? tmpdir() : dirname(resolve(this.path)), 'processes', this.databaseId); }
+  setWriteFence(fence?: () => void): void { this.fence = fence; }
   private readonly listeners = new Set<(change: StoreChange) => void>();
   private readonly notifications: StoreChange[] = [];
   private publishing = false;
@@ -32,6 +42,7 @@ export class Store {
   get inCommand(): boolean { return this.composing; }
 
   constructor(path = resolveDatabasePath(), options: { busyTimeoutMs?: number } = {}) {
+    this.path = path;
     const timeout = options.busyTimeoutMs ?? 5_000;
     if (!Number.isSafeInteger(timeout) || timeout < 0) throw new Error('Invalid SQLite busy timeout');
     if (path !== ':memory:') mkdirSync(dirname(resolve(path)), { recursive: true });
@@ -53,6 +64,7 @@ export class Store {
           this.db.exec(migration.sql);
           if (migration.version === 4) importGenesis(this.db);
           if (migration.version === 7) importThreads(this.db);
+          if (migration.version === 9) importSessionHistory(this.db);
           this.db.query('INSERT INTO schema_migrations (version, applied_at) VALUES (?, ?)').run(migration.version, new Date().toISOString());
         }
       });
@@ -63,6 +75,7 @@ export class Store {
     if (this.db.inTransaction && !this.composing) throw new Error('Store writes cannot run inside another transaction');
     const staged = this.stagedChanges.length;
     try { return this.db.transaction(() => {
+      this.fence?.();
       const value = operation();
       if (value && typeof (value as { then?: unknown }).then === 'function') throw new Error('Store writes must be synchronous');
       return value;

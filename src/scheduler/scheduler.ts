@@ -1,7 +1,8 @@
 import type { Agent } from '../agents';
 import type { Batch, LaneHead, Mailbox } from '../mailbox';
 import type { ProviderClient, TokenUsage } from '../providers/protocol';
-import { sessionConfigHash, bindSession } from './session';
+import { sessionConfigHash, prepareSession } from './session';
+import { SessionInputError } from '../threads/session-types';
 import type { AgentSource, ProviderFactory, SessionStore } from './ports';
 import { batchPrompt } from './batch';
 import { holdReason, type HoldReason } from './holds';
@@ -28,6 +29,10 @@ interface Runtime {
   error?: string; threadId?: string;
 }
 export interface SchedulerOptions {
+  guard?:()=>void;
+  onClaim?:(batch:Batch,provider:ProviderClient)=>void;
+  onBound?:(batch:Batch,threadId:string)=>void;
+  guardExecution?:(batch:Batch)=>void;
   handoffChars?: number;
   tools?: AgentTools; maxHops?: number;
   turns?: TurnHistory;
@@ -157,6 +162,7 @@ export class Scheduler {
     });
   }
   private runtime(key: string, agent: Agent, laneId: string | null): Runtime | undefined {
+    this.options.guard?.();
     const hash = sessionConfigHash(agent, this.options.tools);
     const old = this.runtimes.get(key);
     if (old && old.configHash === hash) {
@@ -179,6 +185,8 @@ export class Scheduler {
     // Bind calls to this provider view's confirmed active turn, never a model-supplied sender.
     provider.on('request', request => {
       if (request.signal.aborted) return;
+      try { this.options.guard?.(); if(runtime.active)this.options.guardExecution?.(runtime.active.batch); }
+      catch(error){provider.respondError(request.id,{code:-32602,message:'Stale daemon/runtime execution'});this.fail(error);return;}
       if (request.method === 'approval/request') provider.respond(request.id, { decision: 'decline' });
       else {
         const context = runtime.active;
@@ -200,7 +208,7 @@ export class Scheduler {
   private beginProvider(runtime: Runtime, key: string): void {
     if (this.stopped || runtime.starting) return;
     runtime.starting = true;
-    const task = abortable(Promise.resolve().then(() => runtime.provider.start()).then(async () => {
+    const task = abortable(Promise.resolve().then(() => {this.options.guard?.();return runtime.provider.start();}).then(async () => {
       if (this.stopped) { await runtime.provider.forceStop(); return; }
       runtime.ready = true; delete runtime.error;
     }), this.setupAbort.signal, this.options.startTimeoutMs ?? 30_000).catch(async error => {
@@ -218,6 +226,7 @@ export class Scheduler {
     void task.finally(() => this.tasks.delete(task)).catch(error => this.fail(error));
   }
   private pump(): void {
+    this.options.guard?.();
     const keys = [...this.scheduled]; this.scheduled.clear();
     const candidates = keys.filter(k => !this.draining.has(k)).map(key => {
       const lane = this.lanes.get(key)!;
@@ -260,6 +269,7 @@ export class Scheduler {
       catch (e) { this.draining.delete(key); releaseSlot(); throw e; }
       if (!batch) { this.draining.delete(key); releaseSlot(); continue; }
       this.ledger.begin(batch, agent.provider, model, new Date(this.now()).toISOString());
+      this.options.onClaim?.(batch,runtime!.provider);
       const controller = new AbortController(); this.controllers.add(controller);
       this.states.set(key, { agentId: agent.id, laneId: lane.laneId, state: 'starting', batchId: batch.id,
         batchSize: batch.deliveries.length, usedUsd: total.nanoUsd / 1e9, ...(dollars !== undefined ? { dailyUsd: dollars } : {}), usedTokens: this.used(agent.id),
@@ -276,14 +286,16 @@ export class Scheduler {
   }
   private async execute(runtime: Runtime, agent: Agent, batch: Batch, controller: AbortController): Promise<void> {
     let prompt = this.options.tools?.render(batch) ?? batchPrompt(batch);
-    if (Buffer.byteLength(prompt) > 32 * 1024) {
+    if (Buffer.byteLength(prompt) > Math.min(32768,runtime.provider.capabilities.maxInputBytes??32768)) {
       this.ledger.abandon(batch.id, () => this.mailbox.finishBatch(batch.id, 'failed', 'Message exceeds the 32 KB turn input limit; send smaller messages'));
       return;
     }
     try {
-      runtime.threadId ??= await abortable(bindSession(runtime.provider, agent, batch.laneId, this.sessions, controller.signal, this.options.tools),
-        controller.signal, this.options.startTimeoutMs ?? 30_000);
+      const prepared=await abortable(prepareSession(runtime.provider,agent,batch.laneId,this.sessions,controller.signal,this.options.tools,{batchId:batch.id,excludeMessageIds:batch.deliveries.map(d=>d.messageId),maxChars:this.options.handoffChars??12000,
+        maxBytes:Math.min(32768,runtime.provider.capabilities.maxInputBytes??32768)-Buffer.byteLength(prompt)-2,...(runtime.threadId?{liveNativeThreadId:runtime.threadId}:{})}),controller.signal,this.options.startTimeoutMs??30000);
+      runtime.threadId=prepared.binding.nativeThreadId;
     } catch (error) {
+      if(error instanceof SessionInputError){this.ledger.abandon(batch.id,()=>this.mailbox.finishBatch(batch.id,'failed',error.message));return;}
       // No turn/start was sent: preserve order and hold until the provider recovers.
       controller.abort();
       runtime.ready = false; runtime.error = errorText(error);
@@ -292,8 +304,9 @@ export class Scheduler {
       this.ledger.abandon(batch.id, () => this.mailbox.restoreBatch(batch.id)); return;
     }
     if (this.stopped || controller.signal.aborted) { this.ledger.abandon(batch.id, () => this.mailbox.restoreBatch(batch.id)); return; }
+    this.options.guard?.();this.options.onBound?.(batch,runtime.threadId);
     const binding = this.sessions.get(agent.id,batch.laneId,agent.provider);
-    const handoff = binding ? this.sessions.handoff?.(binding,batch.deliveries.map(d => d.messageId),this.options.handoffChars ?? 6000,32768 - Buffer.byteLength(prompt) - 2) : undefined;
+    const handoff = binding ? this.sessions.handoff?.(binding,batch.deliveries.map(d => d.messageId),this.options.handoffChars ?? 12000,Math.min(32768,runtime.provider.capabilities.maxInputBytes??32768) - Buffer.byteLength(prompt) - 2) : undefined;
     if (handoff?.blocked) {
       this.ledger.abandon(batch.id, () => this.mailbox.finishBatch(batch.id,'failed','Current request leaves no room for the conversation handoff; send a smaller message'));
       return;
@@ -305,29 +318,32 @@ export class Scheduler {
     let context: ToolContext | undefined;
     const outcome = await runScheduledTurn(runtime.provider, runtime.threadId, prompt, {
       signal: controller.signal,
-      onSubmitting: () => this.ledger.submitted(batch.id),
+      onSubmitting: () => {this.options.guardExecution?.(batch);this.ledger.submitted(batch.id);},
       ...(this.options.idleTimeoutMs !== undefined ? { idleTimeoutMs: this.options.idleTimeoutMs } : {}),
       ...(this.options.startTimeoutMs !== undefined ? { startTimeoutMs: this.options.startTimeoutMs } : {}),
       ...(this.options.startGraceMs !== undefined ? { startGraceMs: this.options.startGraceMs } : {}),
       onStarted: turnId => {
+        this.options.guardExecution?.(batch);
         this.ledger.started(batch.id, runtime.threadId!, turnId, () => {
           recording?.started(turnId);
           this.mailbox.markBatchRunning(batch.id, turnId);
-          if (binding) this.sessions.acknowledgeHandoff?.(binding);
+          if (binding) this.sessions.acknowledgeHandoff?.(binding,batch.id);
         });
-        context = { agent, batch, threadId: runtime.threadId!, turnId };
+        context = { agent, batch, threadId: runtime.threadId!, turnId,...(runtime.provider.capabilities.maxToolResultBytes?{maxToolResultBytes:runtime.provider.capabilities.maxToolResultBytes}:{}) };
         runtime.active = context;
         const state = this.states.get(keyOf(agent.id, batch.laneId));
         if (state) { state.state = 'running'; state.turnId = turnId; this.changed(); }
       },
-      onUsage: value => this.account(batch, value),
-      onNotification: notification => { recording?.observe(notification); answer.observe(notification); },
+      onUsage: value => {this.options.guardExecution?.(batch);this.account(batch, value);},
+      onNotification: notification => {this.options.guardExecution?.(batch);recording?.observe(notification); answer.observe(notification); },
       onFinished: () => { delete runtime.active; },
     });
+    this.options.guardExecution?.(batch);
     if (outcome.retireSession) {
       const threadId = runtime.threadId;
       delete runtime.threadId;
-      this.sessions.remove(agent.id, batch.laneId, agent.provider);
+      if(binding&&this.sessions.quarantine)this.sessions.quarantine(binding,batch.id,outcome.error??'Turn outcome unknown');
+      else this.sessions.remove(agent.id, batch.laneId, agent.provider);
       // The adapter owns cancellation and liveness. Shared providers tombstone only this thread.
       await runtime.provider.retireThread(threadId);
     }

@@ -2,16 +2,35 @@ import { randomUUID } from "node:crypto";
 import { spawnSync } from "node:child_process";
 import { closeSync, fsyncSync, mkdirSync, openSync, readFileSync, readdirSync, renameSync, unlinkSync, writeFileSync } from "node:fs";
 import { resolve, join } from "node:path";
+import type { ProcessScope } from '../boot/types';
+import { processGroupMembers, type ProcessMember } from './process-inspection';
 
 /** Ownership evidence for future boot recovery; never a license to kill a reused PID. */
 export interface RpcProcessRecord {
-  version: 1;
+  version: 1 | 2;
   ownerPid: number;
   childPid: number;
   processGroupId: number | null;
   platform: NodeJS.Platform;
   recordedAt: string;
   childStartIdentity: string | null;
+  scope?: ProcessScope;
+  members?: ProcessMember[];
+}
+const monitors=new Map<string,ReturnType<typeof setInterval>>();
+const contexts=new Map<string,{scope:ProcessScope;pid:number|null}>();
+
+export function prepareProcessIntent(directory:string,scope?:ProcessScope):string|undefined {
+  if(!scope)return undefined;
+  const path=join(directory,`${randomUUID()}.json`);
+  const intent={version:2,stage:'spawning',scope,ownerPid:process.pid};
+  publish(path,intent);contexts.set(path,{scope,pid:null});scope.onRecord?.(path,intent);
+  return path;
+}
+function publish(path:string,value:unknown):void {
+  const temporaryPath=path+'.tmp'; let fd:number|undefined;
+  try{fd=openSync(temporaryPath,'wx',0o600);writeFileSync(fd,JSON.stringify(value)+'\n');fsyncSync(fd);closeSync(fd);fd=undefined;renameSync(temporaryPath,path);}
+  finally{if(fd!==undefined)closeSync(fd);try{unlinkSync(temporaryPath);}catch{}}
 }
 
 export function processStartIdentity(pid: number): string | null {
@@ -39,15 +58,16 @@ export function prepareProcessRecordDir(directory = ".kru/processes"): string {
   return path;
 }
 
-export function writeProcessRecord(directory: string, pid: number): string {
+export function writeProcessRecord(directory: string, pid: number, scope?:ProcessScope, intent?:string): string {
   const id = randomUUID();
-  const path = join(directory, `${id}.json`);
+  const path = intent ?? join(directory, `${id}.json`);
   const temporaryPath = join(directory, `.${id}.tmp`);
   const record: RpcProcessRecord = {
-    version: 1, ownerPid: process.pid, childPid: pid,
+    version: scope ? 2 : 1, ownerPid: process.pid, childPid: pid,
     processGroupId: process.platform === "win32" ? null : pid,
     platform: process.platform, recordedAt: new Date().toISOString(),
     childStartIdentity: processStartIdentity(pid),
+    ...(scope ? { scope, members:processGroupMembers(pid) } : {}),
   };
   let fd: number | undefined;
   try {
@@ -62,6 +82,18 @@ export function writeProcessRecord(directory: string, pid: number): string {
     try { unlinkSync(temporaryPath); } catch { /* preserve the original failure */ }
     throw error;
   } finally { if (fd !== undefined) closeSync(fd); }
+  if(scope){
+    contexts.set(path,{scope,pid});scope.onRecord?.(path,record);
+    let previous=JSON.stringify(record.members);
+    const timer=setInterval(()=>{
+      try{
+        // Never extend ownership from a reused leader. The last verified snapshot stays intact.
+        if(processStartIdentity(pid)!==record.childStartIdentity)return;
+        const members=processGroupMembers(pid),current=JSON.stringify(members);
+        if(current!==previous){const updated={...record,members};publish(path,updated);scope.onRecord?.(path,updated);previous=current;}
+      }catch{/* A failed refresh cannot supply new ownership evidence. */}
+    },1000);timer.unref();monitors.set(path,timer);
+  }
   return path;
 }
 
@@ -94,11 +126,14 @@ export function readProcessRecords(directory = ".kru/processes"): RpcProcessReco
   return entries;
 }
 
-function isProcessRecord(value: unknown): value is RpcProcessRecord {
+export function isProcessRecord(value: unknown): value is RpcProcessRecord {
   if (!value || typeof value !== "object" || Array.isArray(value)) return false;
   const record = value as Record<string, unknown>;
   const positivePid = (pid: unknown): pid is number => typeof pid === "number" && Number.isSafeInteger(pid) && pid > 0;
-  return record.version === 1 && positivePid(record.ownerPid) && positivePid(record.childPid) &&
+  const scope=record.scope as ProcessScope|undefined;
+  const members=record.members as ProcessMember[]|undefined;
+  const scoped=record.version===1 || (record.version===2&&scope&&['databaseId','hostId','ownerEpoch','ownerStartIdentity','runtimeId','directory'].every(k=>{const value=(scope as unknown as Record<string,unknown>)[k];return typeof value==='string'&&value.length>0;})&&Array.isArray(members)&&members.every(m=>m!==null&&typeof m==='object'&&positivePid(m.pid)&&typeof m.identity==='string'&&m.identity.length>0));
+  return Boolean(scoped) && positivePid(record.ownerPid) && positivePid(record.childPid) &&
     (record.processGroupId === null || record.processGroupId === record.childPid) &&
     typeof record.platform === "string" &&
     typeof record.recordedAt === "string" && Number.isFinite(Date.parse(record.recordedAt)) &&
@@ -106,6 +141,13 @@ function isProcessRecord(value: unknown): value is RpcProcessRecord {
 }
 
 export function removeProcessRecord(path: string): void {
+  clearInterval(monitors.get(path));monitors.delete(path);
+  const context=contexts.get(path);
+  if(context){
+    // A normal shutdown must retain evidence if a descendant still executes.
+    if(context.pid!==null&&processGroupMembers(context.pid).length)return;
+    context.scope.onContained?.(path);contexts.delete(path);
+  }
   try { unlinkSync(path); }
   catch (error) { if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error; }
 }

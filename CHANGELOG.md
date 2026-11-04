@@ -1,5 +1,42 @@
 # Changelog
 
+## [Unreleased]
+
+M7 — crash recovery and safe restart; expanded M6 conformance follow-up.
+Planned release line v0.2.
+
+### Added
+
+- Expanded M6: monotonic event-sourced session generations and replacement
+  reasons, runtime/account scope compatibility, durable setup intents/candidates
+  and lane/generation compare-and-set activation with targeted cleanup.
+- Frozen handoff packets with hashes, renderer/cutoff/source metadata and
+  confirmed execution-use events; default 12,000 Unicode code points plus byte limits.
+- Canonical source/attempt history and message links; snapshot-bound signed
+  history cursors, exact message/item lookup, default six/max twenty matches and
+  recoverable lookup errors; retrieval-result bodies excluded from search evidence.
+- Migration v9 after v8, frozen v8 fixture, explicit legacy history gaps and
+  twenty-two replay projections. All eighteen expanded M6 acceptance cases map
+  directly to the PDF; omitted-fact demo and native Codex protocol smoke checks.
+- Durable daemon epochs and an inspect/reconcile/contain/verify/ready boot barrier;
+  no provider startup or claims before old executions and process cleanup settle.
+- Atomic, idempotent execution recovery with partial-item evidence, generation
+  quarantine, explicit missing/partial usage and conservative budget holds.
+- Scoped native process ownership, pre-spawn intents, membership snapshots and a
+  restartable SQLite cleanup journal; verified Linux/macOS tree containment.
+- Migration v8, frozen v7 upgrade fixture and fourteen replay projections.
+- `recovery inspect`, recovery details in `status`/`cost`, a real SIGKILL demo,
+  all 24 crash cases and release-check commands; CI now covers Linux and macOS.
+
+### Changed
+
+- Startup is asynchronous behind `Daemon.ready`; native session resume waits
+  until containment. Uncertain generations use M6 replacement/handoff.
+- In-flight usage snapshots coalesce over two seconds and flush at final commit.
+  Recovered usage stays separate from ordinary final turn accounting.
+- Store writes and provider/tool boundaries fence lost epochs and stale sessions.
+- Documentation points to the updated `Kru_Project_Plan_and_Milestones.pdf`.
+
 ## [0.1.1] - 2026-11-05
 
 M6 — durable Kru threads apart from provider sessions.

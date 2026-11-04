@@ -36,6 +36,20 @@ export interface ItemRow {
 }
 type DeliveryEvent = 'delivery.imported' | 'delivery.claimed' | 'delivery.running' | 'delivery.restored' | 'delivery.finished' | 'delivery.cancelled' | 'delivery.retried';
 export type Payloads = {
+  'history.initialized': { id:1 };
+  'history.imported': { row: import('../threads/records').HistoryRecord };
+  'message.thread_linked': { row:{message_id:string;thread_id:string} };
+  'history.gap_recorded': { row:{thread_id:string;before_seq:number;reason:string;recorded_at:string} };
+  'session.generation_activated': { row:import('../threads/session-types').GenerationRow };
+  'session.generation_retired': { row:import('../threads/session-types').GenerationRow };
+  'handoff.created': { row:import('../threads/session-types').HandoffRow };
+  'handoff.used': { row:{execution_id:string;handoff_id:string;generation_id:string;confirmed_at:string} };
+  'turn.generation_linked':{row:{turn_id:string;generation_id:string}};
+  'execution.recovered': { row: import('../boot/types').RecoveryRow };
+  'item.recovered': { row: ItemRow; executionId:string; checkpointAt:string; checkpointSeq:number; partial:boolean };
+  'session.quarantined': { row: import('../boot/types').QuarantineRow };
+  'recovery.usage_observed': { row: import('../boot/types').RecoveryUsageRow };
+  'recovery.usage_resolved': { row: import('../boot/types').RecoveryUsageRow };
   'thread.created': { row: { id: string; agent_id: string; lane_key: string; created_at: string } };
   'turn.thread_linked': { row: { turn_id: string; thread_id: string } };
   'message.key_expired': { messageId: string };

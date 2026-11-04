@@ -3,13 +3,17 @@ import type { AgentSource } from '../scheduler/ports';
 import type { ToolCall, ToolResult } from '../providers/protocol';
 import type { AgentTools, ToolContext, ToolState } from './ports';
 import { agentToolDefinitions, agentToolInstructions, historyToolDefinition, historyToolInstructions } from './definitions';
-import { HistoryInputError, type HistorySearch } from '../threads/types';
+import { HistoryInputError,HistoryStorageError,type HistorySearch } from '../threads/types';
 import { deliveryContent } from './delivery-content';
 import { toolCallKey } from './idempotency';
+import { characters,excerpt } from '../threads/text';
 
 class ToolInputError extends Error {}
 const result = (success: boolean, value: unknown): ToolResult => ({ success, contentItems: [{ type: 'inputText', text: JSON.stringify(value) }] });
-const fail = (message: string) => result(false, { error: message });
+function fail(message:string,maxBytes=32768):ToolResult {
+  let size=Math.min(characters(message),7900),value=result(false,{error:excerpt(message,0,size)});
+  while(Buffer.byteLength(JSON.stringify(value))>maxBytes&&size>0){size=Math.floor(size/2);value=result(false,{error:excerpt(message,0,size)});}return value;
+}
 function object(value: unknown): Record<string, unknown> {
   if (!value || typeof value !== 'object' || Array.isArray(value)) throw new ToolInputError('Tool arguments must be an object'); return value as Record<string, unknown>;
 }
@@ -35,6 +39,10 @@ export class ToolRouter implements AgentTools {
         try {
           const args = object(call.arguments);
           if (call.tool === 'history_search' && this.options.history) {
+            if(this.options.history.query){
+              if(Object.keys(args).some(k=>!['query','messageId','limit','cursor'].includes(k)))throw new ToolInputError('history_search accepts only query, messageId, limit and cursor');
+              return result(true,this.options.history.query(context.agent.id,context.batch.laneId,args as import('../threads/types').HistorySearchArgs,{...(context.maxToolResultBytes?{maxBytes:context.maxToolResultBytes}:{})}));
+            }
             if (Object.keys(args).some(key => !['query','limit','cursor','entryId','offset'].includes(key))) throw new ToolInputError('history_search accepts only query, limit, cursor, entryId and offset');
             if (args.entryId !== undefined) {
               text(args.entryId,'entryId');
@@ -53,7 +61,7 @@ export class ToolRouter implements AgentTools {
           }
           if (call.tool !== 'send_message') throw new ToolInputError(`Unknown Kru tool: ${call.tool}`);
           return this.send(context, args, id);
-        } catch (error) { if (error instanceof ToolInputError || error instanceof HistoryInputError) return fail(error.message); throw error; }
+        } catch (error) { if (error instanceof ToolInputError || error instanceof HistoryInputError || error instanceof HistoryStorageError) return fail(error.message,context.maxToolResultBytes??32768); throw error; }
       });
     } catch (error) {
       if (error instanceof Error && error.message === 'Command id reused with different input') return fail('Tool call id reused with different arguments');

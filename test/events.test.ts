@@ -205,7 +205,7 @@ test('boot preserves a crashed partial answer as interrupted history without log
   // Scratch can be left by a different process; boot imports it as a final partial item.
   const row = { id: batch.id, agent_id: agent.id, lane_key: '', provider: 'fake', native_thread_id: 'thread', native_turn_id: 'turn', model: 'fake', profile: 'minimal', prefix_hash: 'prefix', status: 'running', error: null, started_at: '2026-11-04T00:00:00Z', completed_at: null, duration_ms: null, deliveries_json: '[]', chains_json: '[]' };
   store.command('prepare-crash', () => store.emit('turn.started', { row }));
-  store.write(() => store.db.query('INSERT INTO turn_scratch VALUES (?, ?, ?, ?, ?)').run(batch.id, agent.id, '', JSON.stringify([{ item: { id: 'partial', type: 'agentMessage', text: 'saved partial' }, completed: false }]), '2026-11-04T00:00:01Z'));
+  store.write(() => store.db.query('INSERT INTO turn_scratch(turn_id,agent_id,lane_key,items_json,updated_at) VALUES (?, ?, ?, ?, ?)').run(batch.id, agent.id, '', JSON.stringify([{ item: { id: 'partial', type: 'agentMessage', text: 'saved partial' }, completed: false }]), '2026-11-04T00:00:01Z'));
   new SqliteTurnHistory(store).recover(); expect(readLog(store, agent.id).at(-1)).toMatchObject({ text: 'saved partial', partial: true });
   expect(store.db.query('SELECT status FROM turns').get()).toEqual({ status: 'interrupted' }); expect(verifyReplay(store).matches).toBe(true);
 });

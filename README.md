@@ -1,13 +1,18 @@
 # Kru
 
 Kru is a headless, local-first engine for running AI agent CLIs as persistent
-teammates. **M0–M6 are implemented:** a generic JSON-RPC transport, a typed
+teammates. **M0–M7 are implemented:** a generic JSON-RPC transport, a typed
 provider port with fake, Codex and Claude adapters, streaming terminal chat,
 a durable SQLite mailbox, a daemon with lane scheduling and batching, and
 replayable conversation history with token and dollar accounting, bounded
 agent-to-agent messaging, and durable threads with cross-provider handoff and
-scoped history retrieval through three Kru tools.
-The roadmap is in [the project plan](docs/Kru%20%E2%80%94%20Project%20Plan%20%26%20Milestones.pdf).
+scoped history retrieval through three Kru tools, and gated crash recovery with
+verified process cleanup and explicit usage gaps.
+The roadmap is in [the project plan](docs/Kru_Project_Plan_and_Milestones.pdf).
+The expanded M6 implementation includes durable session generations, guarded
+setup/activation, frozen handoffs and snapshot-bound history retrieval. See the
+[M6 acceptance report](docs/m6.md) for the eighteen-case verification and the
+[original conformance audit](docs/m6-conformance-review.md) for the resolved gaps.
 
 ## Try M0
 
@@ -173,7 +178,7 @@ bun run dev -- replay --verify
 
 Daemon inputs, assistant answers, tool/command details, turns and usage survive
 restart. Domain writes append versioned events and update projections in the
-same transaction. Replay verification now rebuilds eleven projection tables in an
+same transaction. Replay verification now rebuilds twenty-two projection tables in an
 isolated database and reports drift without changing live state. Existing v1–v3
 databases upgrade through migration v4 with genesis events preserving queue order.
 See [M4 implementation notes](docs/m4.md) and `bun run test:history:repeat`.
@@ -209,8 +214,32 @@ Kru resumes an available session first. A replacement receives a bounded history
 packet; `history_search` retrieves omitted text from that same lane. A provider
 switch clears the previous provider's model unless you supply a replacement,
 and changes an inherited Claude `full` profile to `minimal` for Codex.
-Configure the packet with `daemon --handoff-chars 6000` (512–16000).
+Packets default to 12,000 Unicode code points, with current-input room reserved
+under the runner/provider byte limits. Configure with
+`daemon --handoff-chars 12000` (512–16000). Session generations and exact packet
+use are replayable; history cursors retain one committed snapshot.
 See [M6 implementation notes](docs/m6.md) for recovery, limits and verification.
+
+## Try M7
+
+```sh
+bun run demo:recovery
+# Real SIGKILL → interrupted attempt → owned child cleanup → queued successor completes
+
+bun run dev -- recovery inspect --json
+bun run dev -- status --json
+bun run dev -- log reviewer
+```
+
+The daemon first acquires a new ownership epoch and keeps execution gated while
+it interrupts abandoned batches and verifies old process cleanup. Queued work
+continues after recovery; unknown attempts require an explicit `retry`. Partial
+output and observed usage remain labelled. Unknown usage holds finite budgets
+until a conservative bound is recorded with `cost acknowledge`.
+Linux and macOS containment are tested with real child processes; unsupported
+or unverifiable ownership blocks startup. See [M7 notes](docs/m7.md),
+[architecture](docs/architecture.md), [security boundaries](SECURITY.md) and
+the [v0.2 release audit](docs/release-check-v0.2.0.md).
 
 ## Cost and dollar budgets
 
@@ -290,13 +319,16 @@ The first signal stops gracefully. A second signal calls `forceStop()` on every
 tracked connection, sends SIGKILL to all process groups without waiting between
 them, skips the remaining shutdown waits, and exits the host after reaping children.
 
-Each child has a private ownership file in `.kru/processes` by default. It records
+Standalone RPC children have a private ownership file in `.kru/processes` by default. It records
 the owner PID, child PID, process group, timestamp, and available OS start identity.
 The writer fsyncs a private temporary file, closes it, then atomically renames it
 to its final `.json` path. `readProcessRecords()` ignores temporary files,
 truncated JSON, and invalid records; it only returns recovery candidates.
 Normal cleanup removes the record; SIGKILL leaves it for M7 boot recovery.
-Recording does not yet implement orphan recovery. See the notes below for details.
+Daemon children use a database-scoped directory beside the database and a durable
+cleanup journal, with host, epoch, runtime and process-group membership evidence.
+Recovery verifies process start identities before signalling; an unverified tree
+keeps the boot barrier closed. See [M7](docs/m7.md) for paths and limits.
 
 See [M0 implementation notes](docs/m0.md) for lifecycle behavior and test coverage.
 
@@ -316,6 +348,7 @@ M0–M4 use `0.0.x` versions. M5 starts the `0.1.x` line; the roadmap reserves
 bun test            # transport, provider conformance, runtime and CLI tests
 bun run typecheck  # strict TypeScript
 bun run check      # both; also run in CI
+bun run check:release # full suite, 10 repeated release suites and real crash demo
 bun run test:mailbox # M2 store, mailbox acceptance and CLI tests
 bun run test:mailbox:repeat # repeat every M2 test ten times
 bun run test:scheduler # M3 scheduler, batch, daemon CLI and migration tests

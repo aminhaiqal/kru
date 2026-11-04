@@ -64,12 +64,12 @@ test('frozen v4 upgrades to tool routing without changing old events; failed v5 
   finally { migrated.close(); }
 });
 
-test('frozen v5 preserves routed request and reply rows and replays all eleven projections', () => {
+test('frozen v5 preserves routed request and reply rows and replays all twenty-two projections', () => {
   const path = join(dir, 'v5.sqlite'), db = new Database(path);
   db.exec(readFileSync(new URL('./fixtures/store/v5.sql', import.meta.url), 'utf8')); db.close();
   const migrated = new Store(path);
   try {
-    expect(verifyReplay(migrated)).toMatchObject({ matches: true, projections: 11 });
+    expect(verifyReplay(migrated)).toMatchObject({ matches: true, projections: 22 });
     expect(migrated.db.query('SELECT * FROM message_routes').all()).toHaveLength(2);
     expect(migrated.db.query('SELECT outcome FROM delivery_replies').get()).toEqual({ outcome: 'sent' });
     expect(migrated.db.query('PRAGMA foreign_key_check').all()).toEqual([]);

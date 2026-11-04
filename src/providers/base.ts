@@ -1,5 +1,7 @@
 import { EventEmitter } from 'node:events';
 import { RpcResponseError } from '../rpc';
+import { classifySessionFailure,sessionScopeHash } from './session-errors';
+import { prepareThread,promptMetadata } from './prompt-profile';
 import type { ProviderCapabilities, ProviderClient, ProviderEvents, Methods, ToolCall, ToolResult, ApprovalCall, ApprovalResult, ProviderRequest } from './protocol';
 
 type Reply = { resolve: (value: ToolResult | ApprovalResult) => void; reject: (error: unknown) => void; cleanup: () => void; controller: AbortController; params: ToolCall | ApprovalCall; method: ProviderRequest['method'] };
@@ -18,6 +20,10 @@ export abstract class ProviderBase extends EventEmitter<ProviderEvents> implemen
   abstract start(): Promise<void>;
   abstract stop(): Promise<void>;
   abstract forceStop(): Promise<void>;
+  async sessionScope(params?:import('./protocol').ThreadParams):Promise<string>{return sessionScopeHash(this.provider,params);}
+  expectedPrefixHash(params:import('./protocol').ThreadParams):string{return promptMetadata(prepareThread(params)).prefixHash;}
+  sessionRuntimeToken():string{return `${this.provider}:${this.generation}`;}
+  classifySessionFailure(error:unknown){return classifySessionFailure(this.provider,error);}
   async retireThread(_threadId: string): Promise<void> { await this.forceStop(); }
   abstract request<M extends keyof Methods>(method: M, params: Methods[M]['params'], timeoutMs?: number): Promise<Methods[M]['result']>;
   protected begin(): number {

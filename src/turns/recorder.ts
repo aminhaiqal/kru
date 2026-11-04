@@ -63,6 +63,8 @@ export class TurnRecorder implements TurnRecording {
       const thread = new ThreadStore(store).ensure(agent.id, batch.laneId);
       store.emit('turn.prepared', { row: this.row });
       store.emit('turn.thread_linked', { row: { turn_id: batch.id, thread_id: thread.id } });
+      const generation=store.db.query<{generation_id:string},[string,string,string]>('SELECT generation_id FROM provider_sessions WHERE agent_id=? AND lane_key=? AND native_thread_id=? AND active=1').get(agent.id,batch.laneId??'',threadId);
+      if(generation)store.emit('turn.generation_linked',{row:{turn_id:batch.id,generation_id:generation.generation_id}});
     });
     this.timer = setInterval(() => {
       try { this.flush(); } catch (error) { this.flushError = error; options.onError?.(error); }
@@ -91,7 +93,7 @@ export class TurnRecorder implements TurnRecording {
   }
   flush(): void {
     if (!this.dirty) return;
-    this.store.write(() => this.store.db.query('INSERT INTO turn_scratch (turn_id, agent_id, lane_key, items_json, updated_at) VALUES (?, ?, ?, ?, ?) ON CONFLICT(turn_id) DO UPDATE SET items_json=excluded.items_json, updated_at=excluded.updated_at')
+    this.store.write(() => this.store.db.query('INSERT INTO turn_scratch (turn_id, agent_id, lane_key, items_json, updated_at) VALUES (?, ?, ?, ?, ?) ON CONFLICT(turn_id) DO UPDATE SET items_json=excluded.items_json, updated_at=excluded.updated_at,checkpoint_seq=turn_scratch.checkpoint_seq+1')
       .run(this.row.id, this.row.agent_id, this.row.lane_key, JSON.stringify([...this.items.values()]), new Date(this.now()).toISOString()));
     this.dirty = false;
   }

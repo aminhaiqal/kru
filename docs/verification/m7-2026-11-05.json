@@ -1,0 +1,145 @@
+{
+  "verifiedAt": "2026-11-05T01:11:40+08:00",
+  "timezone": "Asia/Kuala_Lumpur",
+  "baseCommit": "bc3753a81b15ba7ece963112debccb5b66521afc",
+  "workingTreeImplementation": true,
+  "packageVersion": "0.1.1",
+  "plannedRelease": "0.2.0",
+  "schemaVersion": 8,
+  "projectionCount": 14,
+  "planSha256": "3ea797c0513477356579578c2685969363d55b4992078047d2c489f989db6c87",
+  "sourceTreeSha256": "ccb4bec2cb617af428809e3ab3ae4f0426e84bf11fbfec441ced683b909b6495",
+  "sourceHashMethod": "SHA256 of sorted source/test/script/migration/fixture paths, package/lock/tsconfig/CI; path NUL content NUL",
+  "platforms": {
+    "darwin": {
+      "architecture": "arm64",
+      "runtime": "Bun 1.4.4",
+      "typecheck": "passed",
+      "fullSuite": {
+        "passed": 319,
+        "skipped": 9,
+        "failed": 0
+      },
+      "releaseRepeat": {
+        "passed": 690,
+        "failed": 0,
+        "repetitions": 10,
+        "files": 6,
+        "m7CasePasses": {
+          "01": 10,
+          "02": 10,
+          "03": 10,
+          "04": 10,
+          "05": 10,
+          "06": 10,
+          "07": 10,
+          "08": 10,
+          "09": 10,
+          "10": 10,
+          "11": 10,
+          "12": 10,
+          "13": 10,
+          "14": 10,
+          "15": 10,
+          "16": 10,
+          "17": 10,
+          "18": 10,
+          "19": 10,
+          "20": 10,
+          "21": 10,
+          "22": 10,
+          "23": 10,
+          "24": 10
+        }
+      },
+      "realSigkillRestart": "passed",
+      "realOrphanChildCleanup": "passed",
+      "demoEvidence": "m7-demo-darwin-2026-11-05.json",
+      "replayProjections": 14
+    },
+    "linux": {
+      "architecture": "arm64",
+      "runtime": "Bun 1.4.4",
+      "typecheck": "passed",
+      "fullSuite": {
+        "passed": 319,
+        "skipped": 9,
+        "failed": 0
+      },
+      "releaseRepeat": {
+        "passed": 690,
+        "failed": 0,
+        "repetitions": 10,
+        "files": 6,
+        "m7CasePasses": {
+          "01": 10,
+          "02": 10,
+          "03": 10,
+          "04": 10,
+          "05": 10,
+          "06": 10,
+          "07": 10,
+          "08": 10,
+          "09": 10,
+          "10": 10,
+          "11": 10,
+          "12": 10,
+          "13": 10,
+          "14": 10,
+          "15": 10,
+          "16": 10,
+          "17": 10,
+          "18": 10,
+          "19": 10,
+          "20": 10,
+          "21": 10,
+          "22": 10,
+          "23": 10,
+          "24": 10
+        }
+      },
+      "realSigkillRestart": "passed",
+      "realOrphanChildCleanup": "passed",
+      "demoEvidence": "m7-demo-linux-2026-11-05.json",
+      "replayProjections": 14,
+      "environment": {
+        "kind": "local Docker container",
+        "image": "oven/bun:1.4.4",
+        "imageId": "sha256:1d22548f177f4ff38e0c15baa3c2c46c6c2060ba2d1bc573bb4720b407548f1d",
+        "initProcess": true,
+        "procps": true
+      }
+    }
+  },
+  "liveModelCalls": 0,
+  "remoteCiResultClaimed": false,
+  "otherChecks": {
+    "gitDiffCheck": "passed",
+    "credentialFreeExample": "passed",
+    "cliVersion": "0.1.1"
+  },
+  "releaseAudit": {
+    "engineeringChecks": "passed",
+    "publicNpmAnnouncementReady": false,
+    "npmNameProbe": {
+      "name": "kru",
+      "version": "0.0.1-security.2",
+      "description": "security holding package"
+    },
+    "packagePrivate": true,
+    "packDryRun": {
+      "files": 567,
+      "unpackedBytes": 4999336,
+      "runtimeDatabasesIncluded": false,
+      "note": "No publication file allowlist; dry-run only, not an installed-artifact smoke test."
+    },
+    "pending": [
+      "Choose/obtain npm namespace and packaging allowlist; clean installed-artifact smoke test",
+      "Supply README demo GIF",
+      "Perform version bump and annotated tag/publish when requested"
+    ],
+    "deferred": [
+      "HTTP/Slack and nightly-routine examples depend on post-M7 features"
+    ]
+  }
+}

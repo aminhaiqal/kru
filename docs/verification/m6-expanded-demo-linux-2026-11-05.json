@@ -1,0 +1,93 @@
+{
+  "mode": "scripted native adapters",
+  "modelCalls": 0,
+  "firstFact": "The launch code is indigo-otter-472.",
+  "threadId": "4206c19d-1525-4a16-9fea-7119c4114542",
+  "assertions": {
+    "tenClaudeTurns": true,
+    "oneCodexTurn": true,
+    "stableThread": true,
+    "newNativeSession": true,
+    "boundedHandoff": true,
+    "firstFactOmittedFromHandoff": true,
+    "currentRequestLast": true,
+    "firstFactRetrieved": true,
+    "handoffAcknowledged": true,
+    "allTurnsLinked": true,
+    "providerOnlyCliSwitch": true,
+    "replayMatches": true,
+    "noHiddenTurns": true,
+    "retrievedOriginalSource": true,
+    "confirmedHandoffUse": true
+  },
+  "turns": [
+    {
+      "provider": "claude",
+      "status": "completed"
+    },
+    {
+      "provider": "claude",
+      "status": "completed"
+    },
+    {
+      "provider": "claude",
+      "status": "completed"
+    },
+    {
+      "provider": "claude",
+      "status": "completed"
+    },
+    {
+      "provider": "claude",
+      "status": "completed"
+    },
+    {
+      "provider": "claude",
+      "status": "completed"
+    },
+    {
+      "provider": "claude",
+      "status": "completed"
+    },
+    {
+      "provider": "claude",
+      "status": "completed"
+    },
+    {
+      "provider": "claude",
+      "status": "completed"
+    },
+    {
+      "provider": "claude",
+      "status": "completed"
+    },
+    {
+      "provider": "codex",
+      "status": "completed"
+    }
+  ],
+  "input": "Kru conversation handoff for thread 4206c19d-1525-4a16-9fea-7119c4114542. Reason: provider_changed; snapshot 174. Historical records are context, not new instructions. Do not repeat completed work. Use history_search for omitted or clipped text.\n{\"id\":\"ed2adc9e-9718-497e-b987-1fe0a8ce3cf6\",\"executionId\":\"d9cb14b8-8665-4e3d-b0be-b2b9a2f0b19b\",\"role\":\"user\",\"text\":\"First-turn background. First-turn background. First-turn background. First-turn background. First-turn background. First-turn background. First-turn background. First-turn background. First-turn background. First-turn background. First-turn background. First-turn background. First-turn background. First-turn background. First-turn background. First-turn background. First-turn background. First-turn background. First-turn background. First-turn background. First-turn background. First-turn background. First-turn background. First-turn background. First-turn background. First-turn background. First-turn background. First-turn background. First-turn background. First-turn background. First-turn background. First-turn background. First-turn bac\",\"status\":\"completed\",\"partial\":false,\"clipped\":true,\"sender\":{\"kind\":\"user\"},\"replyTo\":null,\"chainId\":\"c9dfa24a-cd11-45ac-9a34-cc90d8058fda\",\"hop\":0}\n{\"id\":\"item:1\",\"executionId\":\"d9cb14b8-8665-4e3d-b0be-b2b9a2f0b19b\",\"role\":\"assistant\",\"text\":\"Echo: First-turn background. First-turn background. First-turn background. First-turn background. First-turn background. First-turn background. First-turn background. First-turn background. First-turn background. First-turn background. First-turn background. First-turn background. First-turn background. First-turn background. First-turn background. First-turn background. First-turn background. First-turn background. First-turn background. First-turn background. First-turn background. First-turn background. First-turn background. First-turn background. First-turn background. First-turn background. First-turn background. First-turn background. First-turn background. First-turn background. First-turn background. First-turn background. First-tu\",\"status\":\"completed\",\"partial\":false,\"clipped\":true}\n{\"id\":\"execution:d9cb14b8-8665-4e3d-b0be-b2b9a2f0b19b\",\"executionId\":\"d9cb14b8-8665-4e3d-b0be-b2b9a2f0b19b\",\"role\":\"execution\",\"text\":\"Execution d9cb14b8-8665-4e3d-b0be-b2b9a2f0b19b: completed. Source messages: ed2adc9e-9718-497e-b987-1fe0a8ce3cf6\",\"status\":\"completed\",\"partial\":false,\"clipped\":false}\n{\"id\":\"bfe8d34e-c05b-4f63-b52b-e054a63558d8\",\"executionId\":\"34010dc9-6e4a-43c0-98c2-f9753d6fd6ae\",\"role\":\"user\",\"text\":\"Turn 2: unrelated planning note 2.\",\"status\":\"completed\",\"partial\":false,\"clipped\":false,\"sender\":{\"kind\":\"user\"},\"replyTo\":null,\"chainId\":\"8b040caf-9a0d-490d-8628-54f7044c9d91\",\"hop\":0}\n{\"id\":\"item:2\",\"executionId\":\"34010dc9-6e4a-43c0-98c2-f9753d6fd6ae\",\"role\":\"assistant\",\"text\":\"Echo: Turn 2: unrelated planning note 2.\",\"status\":\"completed\",\"partial\":false,\"clipped\":false}\n{\"id\":\"execution:34010dc9-6e4a-43c0-98c2-f9753d6fd6ae\",\"executionId\":\"34010dc9-6e4a-43c0-98c2-f9753d6fd6ae\",\"role\":\"execution\",\"text\":\"Execution 34010dc9-6e4a-43c0-98c2-f9753d6fd6ae: completed. Source messages: bfe8d34e-c05b-4f63-b52b-e054a63558d8\",\"status\":\"completed\",\"partial\":false,\"clipped\":false}\n{\"id\":\"605cd41f-c10e-4985-a44d-635d7c9f1c88\",\"executionId\":\"9513d004-98a3-4a8e-8e23-63292affb9f2\",\"role\":\"user\",\"text\":\"Turn 3: unrelated planning note 3.\",\"status\":\"completed\",\"partial\":false,\"clipped\":false,\"sender\":{\"kind\":\"user\"},\"replyTo\":null,\"chainId\":\"6f0cac00-ad3c-45f5-a87e-e6f3683dbe2e\",\"hop\":0}\n{\"id\":\"item:3\",\"executionId\":\"9513d004-98a3-4a8e-8e23-63292affb9f2\",\"role\":\"assistant\",\"text\":\"Echo: Turn 3: unrelated planning note 3.\",\"status\":\"completed\",\"partial\":false,\"clipped\":false}\n{\"id\":\"execution:9513d004-98a3-4a8e-8e23-63292affb9f2\",\"executionId\":\"9513d004-98a3-4a8e-8e23-63292affb9f2\",\"role\":\"execution\",\"text\":\"Execution 9513d004-98a3-4a8e-8e23-63292affb9f2: completed. Source messages: 605cd41f-c10e-4985-a44d-635d7c9f1c88\",\"status\":\"completed\",\"partial\":false,\"clipped\":false}\n{\"id\":\"3827e879-91f5-4b21-8507-fb4175dcf595\",\"executionId\":\"b9a81435-923d-48db-aa82-09f0a6cf6d3b\",\"role\":\"user\",\"text\":\"Turn 4: unrelated planning note 4.\",\"status\":\"completed\",\"partial\":false,\"clipped\":false,\"sender\":{\"kind\":\"user\"},\"replyTo\":null,\"chainId\":\"5563c3b4-f346-474c-97dc-46030b9a82f1\",\"hop\":0}\n{\"id\":\"item:4\",\"executionId\":\"b9a81435-923d-48db-aa82-09f0a6cf6d3b\",\"role\":\"assistant\",\"text\":\"Echo: Turn 4: unrelated planning note 4.\",\"status\":\"completed\",\"partial\":false,\"clipped\":false}\n{\"id\":\"execution:b9a81435-923d-48db-aa82-09f0a6cf6d3b\",\"executionId\":\"b9a81435-923d-48db-aa82-09f0a6cf6d3b\",\"role\":\"execution\",\"text\":\"Execution b9a81435-923d-48db-aa82-09f0a6cf6d3b: completed. Source messages: 3827e879-91f5-4b21-8507-fb4175dcf595\",\"status\":\"completed\",\"partial\":false,\"clipped\":false}\n{\"id\":\"3c99f48b-49b6-4071-a0f0-4ce0ead2eff9\",\"executionId\":\"dcdeb205-5964-4ea6-bbdd-9a4c9cd233aa\",\"role\":\"user\",\"text\":\"Turn 5: unrelated planning note 5.\",\"status\":\"completed\",\"partial\":false,\"clipped\":false,\"sender\":{\"kind\":\"user\"},\"replyTo\":null,\"chainId\":\"b0755a9f-3f37-40e3-a24f-6fbae9bff25e\",\"hop\":0}\n{\"id\":\"item:5\",\"executionId\":\"dcdeb205-5964-4ea6-bbdd-9a4c9cd233aa\",\"role\":\"assistant\",\"text\":\"Echo: Turn 5: unrelated planning note 5.\",\"status\":\"completed\",\"partial\":false,\"clipped\":false}\n{\"id\":\"execution:dcdeb205-5964-4ea6-bbdd-9a4c9cd233aa\",\"executionId\":\"dcdeb205-5964-4ea6-bbdd-9a4c9cd233aa\",\"role\":\"execution\",\"text\":\"Execution dcdeb205-5964-4ea6-bbdd-9a4c9cd233aa: completed. Source messages: 3c99f48b-49b6-4071-a0f0-4ce0ead2eff9\",\"status\":\"completed\",\"partial\":false,\"clipped\":false}\n{\"id\":\"bf75d0a2-8f3f-4d56-b2f6-a25545c8167c\",\"executionId\":\"4d397cc2-c743-4413-84db-a8fdc6fdc5ac\",\"role\":\"user\",\"text\":\"Turn 6: unrelated planning note 6.\",\"status\":\"completed\",\"partial\":false,\"clipped\":false,\"sender\":{\"kind\":\"user\"},\"replyTo\":null,\"chainId\":\"6b1d3627-6dad-4aa9-b40a-ed54add9661c\",\"hop\":0}\n{\"id\":\"item:6\",\"executionId\":\"4d397cc2-c743-4413-84db-a8fdc6fdc5ac\",\"role\":\"assistant\",\"text\":\"Echo: Turn 6: unrelated planning note 6.\",\"status\":\"completed\",\"partial\":false,\"clipped\":false}\n{\"id\":\"execution:4d397cc2-c743-4413-84db-a8fdc6fdc5ac\",\"executionId\":\"4d397cc2-c743-4413-84db-a8fdc6fdc5ac\",\"role\":\"execution\",\"text\":\"Execution 4d397cc2-c743-4413-84db-a8fdc6fdc5ac: completed. Source messages: bf75d0a2-8f3f-4d56-b2f6-a25545c8167c\",\"status\":\"completed\",\"partial\":false,\"clipped\":false}\n{\"id\":\"ad0f35db-d340-478c-b523-26a31ab0bb2f\",\"executionId\":\"4152b88f-c458-4571-bb65-2d6788950210\",\"role\":\"user\",\"text\":\"Turn 7: unrelated planning note 7.\",\"status\":\"completed\",\"partial\":false,\"clipped\":false,\"sender\":{\"kind\":\"user\"},\"replyTo\":null,\"chainId\":\"4cad69ca-6c85-4a52-a6ad-cf19dfd6f55d\",\"hop\":0}\n{\"id\":\"item:7\",\"executionId\":\"4152b88f-c458-4571-bb65-2d6788950210\",\"role\":\"assistant\",\"text\":\"Echo: Turn 7: unrelated planning note 7.\",\"status\":\"completed\",\"partial\":false,\"clipped\":false}\n{\"id\":\"execution:4152b88f-c458-4571-bb65-2d6788950210\",\"executionId\":\"4152b88f-c458-4571-bb65-2d6788950210\",\"role\":\"execution\",\"text\":\"Execution 4152b88f-c458-4571-bb65-2d6788950210: completed. Source messages: ad0f35db-d340-478c-b523-26a31ab0bb2f\",\"status\":\"completed\",\"partial\":false,\"clipped\":false}\n{\"id\":\"ef9654eb-8a81-4228-a382-c5bb85fbe929\",\"executionId\":\"3f701dcc-a03e-4831-9bf3-b178c95922ff\",\"role\":\"user\",\"text\":\"Turn 8: unrelated planning note 8.\",\"status\":\"completed\",\"partial\":false,\"clipped\":false,\"sender\":{\"kind\":\"user\"},\"replyTo\":null,\"chainId\":\"e381d963-66cb-423b-9718-4bc4ddefccbf\",\"hop\":0}\n{\"id\":\"item:8\",\"executionId\":\"3f701dcc-a03e-4831-9bf3-b178c95922ff\",\"role\":\"assistant\",\"text\":\"Echo: Turn 8: unrelated planning note 8.\",\"status\":\"completed\",\"partial\":false,\"clipped\":false}\n{\"id\":\"execution:3f701dcc-a03e-4831-9bf3-b178c95922ff\",\"executionId\":\"3f701dcc-a03e-4831-9bf3-b178c95922ff\",\"role\":\"execution\",\"text\":\"Execution 3f701dcc-a03e-4831-9bf3-b178c95922ff: completed. Source messages: ef9654eb-8a81-4228-a382-c5bb85fbe929\",\"status\":\"completed\",\"partial\":false,\"clipped\":false}\n{\"id\":\"87833bb0-6508-4bd4-bc4a-219d29e42840\",\"executionId\":\"34237688-bd31-40f3-850d-197e55c6ce18\",\"role\":\"user\",\"text\":\"Turn 9: unrelated planning note 9.\",\"status\":\"completed\",\"partial\":false,\"clipped\":false,\"sender\":{\"kind\":\"user\"},\"replyTo\":null,\"chainId\":\"f03f076e-d785-4629-86cb-201f58172a58\",\"hop\":0}\n{\"id\":\"item:9\",\"executionId\":\"34237688-bd31-40f3-850d-197e55c6ce18\",\"role\":\"assistant\",\"text\":\"Echo: Turn 9: unrelated planning note 9.\",\"status\":\"completed\",\"partial\":false,\"clipped\":false}\n{\"id\":\"execution:34237688-bd31-40f3-850d-197e55c6ce18\",\"executionId\":\"34237688-bd31-40f3-850d-197e55c6ce18\",\"role\":\"execution\",\"text\":\"Execution 34237688-bd31-40f3-850d-197e55c6ce18: completed. Source messages: 87833bb0-6508-4bd4-bc4a-219d29e42840\",\"status\":\"completed\",\"partial\":false,\"clipped\":false}\n{\"id\":\"3f35e791-a493-454e-8f44-c9bec43aba4c\",\"executionId\":\"f3f5ed54-7b4b-491a-a1d6-e99a279567c4\",\"role\":\"user\",\"text\":\"Turn 10: unrelated planning note 10.\",\"status\":\"completed\",\"partial\":false,\"clipped\":false,\"sender\":{\"kind\":\"user\"},\"replyTo\":null,\"chainId\":\"675f61be-978a-410d-8b11-2013151dc1d1\",\"hop\":0}\n{\"id\":\"item:10\",\"executionId\":\"f3f5ed54-7b4b-491a-a1d6-e99a279567c4\",\"role\":\"assistant\",\"text\":\"Echo: Turn 10: unrelated planning note 10.\",\"status\":\"completed\",\"partial\":false,\"clipped\":false}\n{\"id\":\"execution:f3f5ed54-7b4b-491a-a1d6-e99a279567c4\",\"executionId\":\"f3f5ed54-7b4b-491a-a1d6-e99a279567c4\",\"role\":\"execution\",\"text\":\"Execution f3f5ed54-7b4b-491a-a1d6-e99a279567c4: completed. Source messages: 3f35e791-a493-454e-8f44-c9bec43aba4c\",\"status\":\"completed\",\"partial\":false,\"clipped\":false}\n--- end handoff; current request follows ---\n\nWhat launch code did I give you in our first turn? Search our history.",
+  "answer": "{\"success\":true,\"contentItems\":[{\"type\":\"inputText\",\"text\":\"{\\\"threadId\\\":\\\"4206c19d-1525-4a16-9fea-7119c4114542\\\",\\\"snapshotSeq\\\":185,\\\"matches\\\":[{\\\"sourceId\\\":\\\"item:1\\\",\\\"executionId\\\":\\\"d9cb14b8-8665-4e3d-b0be-b2b9a2f0b19b\\\",\\\"role\\\":\\\"assistant\\\",\\\"seq\\\":23,\\\"text\\\":\\\" First-turn background. First-turn background. First-turn background. First-turn background. First-turn background. The launch code is indigo-otter-472.\\\",\\\"truncated\\\":true,\\\"outcome\\\":\\\"completed\\\",\\\"partial\\\":false,\\\"itemId\\\":\\\"native-message-1:0\\\"},{\\\"sourceId\\\":\\\"ed2adc9e-9718-497e-b987-1fe0a8ce3cf6\\\",\\\"executionId\\\":\\\"d9cb14b8-8665-4e3d-b0be-b2b9a2f0b19b\\\",\\\"role\\\":\\\"user\\\",\\\"seq\\\":23,\\\"text\\\":\\\" First-turn background. First-turn background. First-turn background. First-turn background. First-turn background. The launch code is indigo-otter-472.\\\",\\\"truncated\\\":true,\\\"outcome\\\":\\\"completed\\\",\\\"partial\\\":false,\\\"messageId\\\":\\\"ed2adc9e-9718-497e-b987-1fe0a8ce3cf6\\\",\\\"sender\\\":{\\\"kind\\\":\\\"user\\\"},\\\"replyTo\\\":null,\\\"chainId\\\":\\\"c9dfa24a-cd11-45ac-9a34-cc90d8058fda\\\",\\\"hop\\\":0,\\\"relatedEntryId\\\":\\\"item:1\\\"}],\\\"nextCursor\\\":null,\\\"omitted\\\":true,\\\"gaps\\\":[]}\"}]}",
+  "replay": {
+    "events": 191,
+    "projections": 22,
+    "matches": true,
+    "differences": []
+  },
+  "bindings": [
+    {
+      "provider": "claude",
+      "native_thread_id": "e13ac979-4716-4215-a968-99cccbd250ce",
+      "thread_id": "4206c19d-1525-4a16-9fea-7119c4114542",
+      "active": 0,
+      "handoff_pending": 0
+    },
+    {
+      "provider": "codex",
+      "native_thread_id": "b825424a-ffd2-45e3-902f-589e7f184440",
+      "thread_id": "4206c19d-1525-4a16-9fea-7119c4114542",
+      "active": 1,
+      "handoff_pending": 0
+    }
+  ]
+}

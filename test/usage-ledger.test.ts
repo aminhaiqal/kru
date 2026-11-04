@@ -59,13 +59,13 @@ test('usage and batch completion roll back together, publish nothing on rollback
   expect(() => ledger.begin(batch, 'claude', 'claude-sonnet-4-6')).toThrow('already exists');
 });
 
-test('recovery retains submitted unknown usage, while prepared but unsent work has no charge', async () => {
+test('recovery retains unknown usage gaps for submitted and conservatively interrupted starting work', async () => {
   const a = agents.create({ name: 'a', provider: 'fake', config: { model: 'claude-sonnet-4-6', dailyUsd: 1 } });
   const old = send(a.id); const batch = mailbox.claimBatch(a.id, null)!;
   ledger.begin(batch, 'claude', 'claude-sonnet-4-6'); ledger.submitted(batch.id);
   const b = agents.create({ name: 'prepared', provider: 'fake' }); const unsent = send(b.id);
   const prepared = mailbox.claimBatch(b.id, null)!; ledger.begin(prepared, 'fake', 'fake');
-  let d = daemon(); expect(mailbox.get(old)!.status).toBe('interrupted');
+  let d = daemon(); await d.ready; expect(mailbox.get(old)!.status).toBe('interrupted');
   expect(mailbox.get(unsent)!.status).toBe('interrupted');
   expect(ledger.list().some(row => row.batchId === prepared.id)).toBe(false);
   const next = send(a.id); await until(() => d.scheduler.status()[0]?.reason === 'budget');
@@ -77,8 +77,8 @@ test('recovery retains submitted unknown usage, while prepared but unsent work h
   const child = Bun.spawn([process.execPath, new URL('../src/cli/index.ts', import.meta.url).pathname, 'cost', 'acknowledge', batch.id,
     '--tokens', '100', '--usd', '.01', '--note', 'reviewed interrupted run', '--db', path], { stdout: 'pipe', stderr: 'pipe' });
   expect(await child.exited).toBe(0); await until(() => mailbox.get(next)!.status === 'completed');
-  expect(ledger.list()[0]!.resolution!.note).toBe('reviewed interrupted run');
-  expect(() => ledger.acknowledge(batch.id, 0, 0, 'overwrite')).toThrow('once');
+  expect(JSON.parse(ledger.recoveryList().find(row=>row.execution_id===batch.id)!.resolution_json!).note).toBe('reviewed interrupted run');
+  expect(() => ledger.acknowledge(batch.id, 0, 0, 'overwrite')).toThrow('already resolved');
 });
 
 test('unpriced models cannot run under a dollar limit', async () => {

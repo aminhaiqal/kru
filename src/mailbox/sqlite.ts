@@ -1,5 +1,6 @@
 import { createHash, randomUUID } from 'node:crypto';
 import type { Store } from '../store';
+import { ThreadStore } from '../threads/store';
 import { nextSequence } from '../store/events';
 import type { DeliveryRow } from '../store/event-types';
 import { storedError } from '../store/errors';
@@ -97,6 +98,10 @@ export class SqliteMailbox implements Mailbox {
         expects_reply: Number(input.expectsReply ?? false), idempotency_key: input.idempotencyKey ?? null,
         request_hash: input.idempotencyKey === undefined ? null : hash, created_at: now,
       }, deliveries });
+      for(const recipient of recipients){
+        const thread=new ThreadStore(this.store).ensure(recipient,input.laneId??null);
+        this.store.emit('message.thread_linked',{row:{message_id:messageId,thread_id:thread.id}});
+      }
       const deliveryIds = deliveries.map(row => row.id);
       return { messageId, deliveryIds, duplicate: false };
     });

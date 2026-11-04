@@ -1,5 +1,6 @@
 /** Kru's provider port. No process, transport, or provider imports belong here. */
 export interface ProviderCapabilities {
+  maxInputBytes?:number; maxToolResultBytes?:number;
   readonly steering: boolean;
   readonly subagents: boolean;
   readonly compaction: 'none' | 'provider';
@@ -40,6 +41,12 @@ export interface ProviderEvents {
   activity: [{ threadId: string; turnId?: string }];
 }
 export interface ProviderClient {
+  sessionScope?(params?:ThreadParams):Promise<string>;
+  expectedPrefixHash?(params:ThreadParams):string;
+  sessionRuntimeToken?():string;
+  classifySessionFailure?(error:unknown):import('./session-errors').SessionFailureKind;
+  discardSession?(threadId:string):Promise<void>;
+  setProcessScope?(scope: import('../boot/types').ProcessScope): string;
   readonly provider: string;
   readonly capabilities: ProviderCapabilities;
   start(): Promise<void>;

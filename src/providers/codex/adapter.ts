@@ -1,4 +1,5 @@
 import packageJson from '../../../package.json';
+import { createHash } from 'node:crypto';
 import { RpcResponseError, RequestTimeoutError, type RpcConnection, type RpcRequest, type RpcRequestOptions } from '../../rpc';
 import { ProviderBase } from '../base';
 import type { Methods, Notification, ThreadParams, ApprovalCall } from '../protocol';
@@ -150,6 +151,20 @@ export class CodexRuntime {
 let sharedRuntime: CodexRuntime | undefined;
 export interface CodexProviderOptions { transport?: CodexConnectionOptions; runtime?: CodexRuntime; maxBadNotifications?: number; toolTimeoutMs?: number; answerTimeoutMs?: number }
 export class CodexProvider extends ProviderBase {
+  override async sessionScope(params?:ThreadParams):Promise<string>{
+    this.requireReady();const local=await super.sessionScope(params),reply=await this.runtime.request<{account:unknown}>('account/read',{refreshToken:false});
+    if(!reply||!Object.hasOwn(reply,'account'))throw new Error('Invalid local account/read result');
+    return createHash('sha256').update(local+'\n'+JSON.stringify(reply.account)).digest('hex');
+  }
+  override sessionRuntimeToken():string{return `codex:${this.connection.pid??'stopped'}`;}
+  async discardSession(threadId:string):Promise<void>{
+    // A never-used thread can exist only in memory, with no rollout to archive.
+    await this.runtime.request('thread/unsubscribe',{threadId});
+    try{await this.runtime.request('thread/archive',{threadId});}
+    catch(error){if(this.classifySessionFailure(error)!=='missing')throw error;}
+    this.configs.delete(threadId);this.parameters.delete(threadId);this.cancelThreadCalls(threadId);
+  }
+  setProcessScope(scope:import('../../boot/types').ProcessScope):string { return this.connection.setProcessScope(scope); }
   readonly provider = 'codex';
   readonly capabilities = Object.freeze({ steering: false, subagents: false, compaction: 'none' as const });
   readonly runtime: CodexRuntime;
@@ -190,8 +205,10 @@ export class CodexProvider extends ProviderBase {
   async handleNativeRequest(request: RpcRequest): Promise<unknown> {
     this.requireReady();
     if (request.method === 'item/tool/call') {
-      try { return await this.callTool(decodeToolCall(request.params), request.signal); }
+      let call:ReturnType<typeof decodeToolCall>|undefined,result:unknown;
+      try {call=decodeToolCall(request.params);this.emit('notification',{method:'item/started',params:{threadId:call.threadId,turnId:call.turnId,item:{id:call.callId,type:'dynamicToolCall',details:{name:call.tool,input:call.arguments}}}});result=await this.callTool(call,request.signal);return result; }
       catch (error) { if (error instanceof TypeError) throw new RpcResponseError(-32602, 'Invalid tool call'); throw error; }
+      finally{if(call&&!request.signal.aborted)this.emit('notification',{method:'item/completed',params:{threadId:call.threadId,turnId:call.turnId,item:{id:call.callId,type:'dynamicToolCall',details:{name:call.tool,input:call.arguments,...(result===undefined?{}:{result})}}}});}
     }
     const kinds: Record<string, ApprovalCall['kind']> = {
       'item/commandExecution/requestApproval': 'command', 'item/fileChange/requestApproval': 'file',

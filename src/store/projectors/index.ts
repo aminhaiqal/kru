@@ -1,8 +1,20 @@
 import type { Database, SQLQueryBindings } from 'bun:sqlite';
 import type { DomainEvent } from '../event-types';
+import { projectHistory,putHistory } from '../../threads/records';
 
 /** Fixed columns, never payload-derived SQL. Projectors have no clocks or transaction ownership. */
 export const columns = {
+  history_state:'id,initialized_seq',
+  message_threads:'message_id,thread_id',
+  history_versions:'thread_id,source_id,version_seq,execution_id,role,text,timestamp,outcome,partial,order_seq,phase,item_order,source_ids_json,message_id,item_id,sender_kind,sender_agent_id,sender_routine_id,reply_to,chain_id,hop',
+  history_gaps:'thread_id,before_seq,reason,recorded_at,recorded_seq',
+  session_generations:'id,thread_id,generation,provider,config_hash,runtime_scope_hash,reason,previous_id,status,handoff_id,created_at,retired_at,retired_reason',
+  handoffs:'id,thread_id,generation_id,renderer_version,snapshot_seq,reason,included_json,omitted_json,packet,packet_hash,char_budget,byte_budget,created_at',
+  handoff_uses:'execution_id,handoff_id,generation_id,confirmed_at',
+  turn_generations:'turn_id,generation_id',
+  recoveries: 'execution_id,agent_id,lane_key,old_epoch,recovered_epoch,delivery_ids_json,reason,recovered_at,checkpoint_at,runtime_id,generation_id',
+  session_quarantines: 'generation_id,agent_id,lane_key,provider,native_thread_id,execution_id,reason,quarantined_at',
+  recovery_usage: 'execution_id,agent_id,provider,model,lane_key,recorded_at,chains_json,deliveries_json,status,usage_json,cost_json,price_id,resolution_json',
   threads: 'id,agent_id,lane_key,created_at',
   turn_threads: 'turn_id,thread_id',
   message_routes: 'message_id,sender_lane_key',
@@ -16,7 +28,7 @@ export const columns = {
   thread_messages: 'seq,turn_id,item_id,agent_id,lane_key,type,text,details_json,completed_at',
 } as const;
 export type ProjectionTable = keyof typeof columns;
-const keys: Record<ProjectionTable, string> = { threads: 'id', turn_threads: 'turn_id', message_routes: 'message_id', delivery_replies: 'delivery_id', agents: 'id', messages: 'id', deliveries: 'id', prices: 'id', usage_records: 'batch_id', turns: 'id', thread_messages: 'turn_id,item_id' };
+const keys: Record<ProjectionTable, string> = { history_state:'id',message_threads:'message_id,thread_id',history_versions:'thread_id,source_id,version_seq',history_gaps:'thread_id,recorded_seq',session_generations:'id',handoffs:'id',handoff_uses:'execution_id',turn_generations:'turn_id',recoveries: 'execution_id', session_quarantines: 'generation_id', recovery_usage: 'execution_id', threads: 'id', turn_threads: 'turn_id', message_routes: 'message_id', delivery_replies: 'delivery_id', agents: 'id', messages: 'id', deliveries: 'id', prices: 'id', usage_records: 'batch_id', turns: 'id', thread_messages: 'turn_id,item_id' };
 function put(db: Database, table: ProjectionTable, value: object): void {
   const names = columns[table].split(','), row = value as Record<string, SQLQueryBindings>;
   if (names.some(name => row[name] === undefined)) throw new Error(`Incomplete ${table} event payload`);
@@ -26,11 +38,26 @@ function put(db: Database, table: ProjectionTable, value: object): void {
     const old = db.query<{ snapshot_json: string }, [string]>('SELECT snapshot_json FROM prices WHERE id = ?').get(String(row.id));
     if (old) { if (old.snapshot_json !== row.snapshot_json) throw new Error('Price snapshot is immutable'); return; }
   }
-  db.query(`INSERT INTO ${table} (${names.join(',')}) VALUES (${names.map(() => '?').join(',')}) ON CONFLICT(${keys[table]}) DO UPDATE SET ${updates}`)
+  if(['handoffs','handoff_uses','turn_generations'].includes(table)){
+    const keyNames=keys[table].split(','),old=db.query<Record<string,SQLQueryBindings>,SQLQueryBindings[]>(`SELECT ${columns[table]} FROM ${table} WHERE ${keyNames.map(k=>k+'=?').join(' AND ')}`).get(...keyNames.map(k=>row[k]!));
+    if(old){if(names.some(k=>old[k]!==row[k]))throw new Error(`Immutable ${table} fact changed`);return;}
+  }
+  db.query(`INSERT INTO ${table} (${names.join(',')}) VALUES (${names.map(() => '?').join(',')}) ON CONFLICT(${keys[table]}) ${updates?'DO UPDATE SET '+updates:'DO NOTHING'}`)
     .run(...names.map(n => row[n]!));
 }
 export function project(db: Database, event: DomainEvent): void {
   switch (event.type) {
+    case 'history.initialized':put(db,'history_state',{id:1,initialized_seq:event.seq});break;
+    case 'history.imported':putHistory(db,event.payload.row,event.seq);break;
+    case 'message.thread_linked':put(db,'message_threads',event.payload.row);break;
+    case 'history.gap_recorded':put(db,'history_gaps',{...event.payload.row,recorded_seq:event.seq});break;
+    case 'session.generation_activated':case 'session.generation_retired':put(db,'session_generations',event.payload.row);break;
+    case 'handoff.created':put(db,'handoffs',event.payload.row);break;
+    case 'handoff.used':put(db,'handoff_uses',event.payload.row);break;
+    case 'turn.generation_linked':put(db,'turn_generations',event.payload.row);break;
+    case 'execution.recovered': put(db, 'recoveries', event.payload.row); break;
+    case 'session.quarantined': put(db, 'session_quarantines', event.payload.row); break;
+    case 'recovery.usage_observed': case 'recovery.usage_resolved': put(db, 'recovery_usage', event.payload.row); break;
     case 'thread.created': put(db, 'threads', event.payload.row); break;
     case 'turn.thread_linked': put(db, 'turn_threads', event.payload.row); break;
     case 'message.key_expired':
@@ -48,9 +75,10 @@ export function project(db: Database, event: DomainEvent): void {
     case 'usage.imported': case 'usage.prepared': case 'usage.checkpointed': case 'usage.resolved': case 'usage.recorded': put(db, 'usage_records', event.payload.row); break;
     case 'usage.abandoned': db.query('DELETE FROM usage_records WHERE batch_id = ?').run(event.payload.batchId); break;
     case 'turn.prepared': case 'turn.started': case 'turn.completed': put(db, 'turns', event.payload.row); break;
-    case 'item.completed': put(db, 'thread_messages', event.payload.row); break;
+    case 'item.completed': case 'item.recovered': put(db, 'thread_messages', event.payload.row); break;
     case 'delivery.imported': case 'delivery.claimed': case 'delivery.running': case 'delivery.restored': case 'delivery.finished': case 'delivery.cancelled': case 'delivery.retried':
       put(db, 'deliveries', event.payload.row); break;
     default: { const exhaustive: never = event; throw new Error(`Unknown event ${(exhaustive as DomainEvent).type}`); }
   }
+  projectHistory(db,event);
 }

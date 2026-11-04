@@ -2,7 +2,10 @@ name: CI
 on: [push, pull_request, workflow_dispatch]
 jobs:
   check:
-    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
       - uses: oven-sh/setup-bun@v2
@@ -10,7 +13,7 @@ jobs:
           bun-version: latest
       - run: bun install --frozen-lockfile
       - run: bun run check
-      - name: Repeat complete suite ten times on Linux
+      - name: Repeat complete suite ten times
         run: bun test --rerun-each 10
   codex-smoke:
     runs-on: ubuntu-latest

@@ -8,5 +8,7 @@ export { createProvider } from './registry';
 export { ClaudeProvider } from './claude/adapter';
 export type { ClaudeProviderOptions } from './claude/adapter';
 export { CodexRuntime } from './codex/adapter';
+export { SessionFailure } from './session-errors';
+export type { SessionFailureKind } from './session-errors';
 export { prepareThread, promptMetadata } from './prompt-profile';
 export type { ApprovalCall, ApprovalResult, TokenCount, TokenUsage } from './protocol';
