@@ -1,0 +1,56 @@
+export function parseDuration(text: string): number {
+  const MAX = Number.MAX_SAFE_INTEGER;
+  const s = text.trim();
+  if (s.length === 0) throw new RangeError('Invalid duration');
+
+  let pos = 0;
+  let total = 0;
+  let lastUnit = -1;
+  let count = 0;
+
+  while (pos < s.length) {
+    // Parse decimal digits only (no sign, no decimal point)
+    const digitStart = pos;
+    while (pos < s.length && s[pos] >= '0' && s[pos] <= '9') pos++;
+    if (pos === digitStart) throw new RangeError('Invalid duration');
+    const numStr = s.slice(digitStart, pos);
+
+    // Parse unit: check 'ms' before 'm'/'s' to avoid prefix ambiguity
+    let unitOrder: number;
+    let unitMs: number;
+    if (s.slice(pos, pos + 2) === 'ms') {
+      unitOrder = 3; unitMs = 1; pos += 2;
+    } else if (s[pos] === 'h') {
+      unitOrder = 0; unitMs = 3_600_000; pos++;
+    } else if (s[pos] === 'm') {
+      unitOrder = 1; unitMs = 60_000; pos++;
+    } else if (s[pos] === 's') {
+      unitOrder = 2; unitMs = 1_000; pos++;
+    } else {
+      throw new RangeError('Invalid duration');
+    }
+
+    // Enforce strictly descending unit order (rejects duplicates and out-of-order)
+    if (unitOrder <= lastUnit) throw new RangeError('Invalid duration');
+    lastUnit = unitOrder;
+
+    // Validate the parsed integer value
+    const val = Number(numStr);
+    if (val > MAX) throw new RangeError('Invalid duration');
+
+    // Validate the component's millisecond contribution won't overflow
+    if (unitMs > 1 && val > Math.floor(MAX / unitMs)) throw new RangeError('Invalid duration');
+    const contrib = val * unitMs;
+
+    // Validate running total
+    if (total > MAX - contrib) throw new RangeError('Invalid duration');
+    total += contrib;
+    count++;
+
+    // Skip optional whitespace between components (not between digit and unit)
+    while (pos < s.length && /\s/.test(s[pos])) pos++;
+  }
+
+  if (count === 0) throw new RangeError('Invalid duration');
+  return total;
+}

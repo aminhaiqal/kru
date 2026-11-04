@@ -1,0 +1,23 @@
+{
+  "model": "claude-sonnet-4-6",
+  "prompt": "Fix src/duration.ts so parseDuration accepts one or more nonnegative integer duration components in strictly descending h, m, s, ms order, with optional whitespace between components and at the ends. Reject empty input, duplicates, out-of-order units, signs, fractions, junk, and values or totals exceeding Number.MAX_SAFE_INTEGER with RangeError. Preserve the public API. Read project instructions, change only src/duration.ts, and run bun test. Finish with a brief result. Do not use network or delegate.",
+  "source": "export function parseDuration(text: string): number {\n  const match = /^(d+)ms$/.exec(text);\n  if (!match) throw new RangeError('Invalid duration');\n  return Number(match[1]);\n}\n",
+  "tests": "import { expect, test } from 'bun:test';\nimport { parseDuration } from './src/duration';\nfor (const [input, expected] of [ ['0ms',0], ['7ms',7], ['2s',2000], ['3m',180000], ['1h',3600000], ['1h2m3s4ms',3723004], [' 1h 2m 3s 4ms ',3723004], ['0h0m0s0ms',0], ['1m4ms',60004], ['9007199254740991ms',9007199254740991] ] as const)\n  test('accept '+JSON.stringify(input), () => expect(parseDuration(input)).toBe(expected));\nfor (const input of ['', ' ', '-1s', '+1s', '1.5s', '1', '1d', '1s2s', '1ms1s', '2m1h', '1s junk', '1 s', '9007199254740992ms', '9007199254740991ms1ms', '2501999792984h', '9007199254740991h'])\n  test('reject '+JSON.stringify(input), () => expect(() => parseDuration(input)).toThrow(RangeError));\n",
+  "instructions": "# Project instructions\nKeep this library dependency-free. Preserve the parseDuration export. Validate the entire input, never accept a partial parse. Use RangeError for invalid durations. Change implementation only; do not weaken tests. Run bun test.\n",
+  "order": [
+    "full",
+    "coding"
+  ],
+  "settings": {
+    "permissions": {
+      "allow": [
+        "Read",
+        "Edit",
+        "Write",
+        "Bash(bun test*)"
+      ]
+    }
+  },
+  "sdk": "0.3.317",
+  "autoMemoryDisabled": true
+}

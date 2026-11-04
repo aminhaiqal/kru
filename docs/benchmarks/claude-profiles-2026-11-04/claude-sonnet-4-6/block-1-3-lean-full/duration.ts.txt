@@ -1,0 +1,43 @@
+export function parseDuration(text: string): number {
+  const trimmed = text.trim();
+  if (!trimmed) throw new RangeError('Invalid duration');
+
+  // Validate: one or more components (digits + unit), separated by optional whitespace.
+  // ms must precede m in the alternation so "ms" is tried first.
+  if (!/^\d+(?:h|ms|m|s)(?:\s*\d+(?:h|ms|m|s))*$/.test(trimmed)) {
+    throw new RangeError('Invalid duration');
+  }
+
+  const unitOrder = ['h', 'm', 's', 'ms'];
+  const unitMultipliers: Record<string, number> = {
+    h: 3_600_000,
+    m:    60_000,
+    s:     1_000,
+    ms:        1,
+  };
+
+  const tokenRegex = /(\d+)(h|ms|m|s)/g;
+  let total = 0;
+  let lastUnitIndex = -1;
+  let match: RegExpExecArray | null;
+
+  while ((match = tokenRegex.exec(trimmed)) !== null) {
+    const unit = match[2];
+    const unitIndex = unitOrder.indexOf(unit);
+
+    // Units must appear in strictly descending order (no repeats, no going back).
+    if (unitIndex <= lastUnitIndex) throw new RangeError('Invalid duration');
+    lastUnitIndex = unitIndex;
+
+    const value = Number(match[1]);
+    if (!Number.isSafeInteger(value)) throw new RangeError('Invalid duration');
+
+    const contribution = value * unitMultipliers[unit];
+    if (!Number.isSafeInteger(contribution)) throw new RangeError('Invalid duration');
+
+    total += contribution;
+    if (!Number.isSafeInteger(total)) throw new RangeError('Invalid duration');
+  }
+
+  return total;
+}

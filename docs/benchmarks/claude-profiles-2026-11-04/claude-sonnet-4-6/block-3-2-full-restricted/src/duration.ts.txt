@@ -1,0 +1,35 @@
+const ORDER = { h: 0, m: 1, s: 2, ms: 3 } as const;
+const MULT  = { h: 3600000, m: 60000, s: 1000, ms: 1 } as const;
+
+export function parseDuration(text: string): number {
+  let pos = 0;
+  let lastOrder = -1;
+  let total = 0;
+  let found = false;
+
+  while (pos < text.length && (text[pos] === ' ' || text[pos] === '\t')) pos++;
+
+  while (pos < text.length) {
+    const m = /^(\d+)(h|ms|m|s)/.exec(text.slice(pos));
+    if (!m) throw new RangeError('Invalid duration');
+
+    found = true;
+    const unit = m[2] as keyof typeof ORDER;
+    const ord = ORDER[unit];
+
+    if (ord <= lastOrder) throw new RangeError('Invalid duration');
+    lastOrder = ord;
+
+    const val = Number(m[1]);
+    if (!Number.isSafeInteger(val)) throw new RangeError('Invalid duration');
+
+    total += val * MULT[unit];
+    if (!Number.isSafeInteger(total)) throw new RangeError('Invalid duration');
+
+    pos += m[0].length;
+    while (pos < text.length && (text[pos] === ' ' || text[pos] === '\t')) pos++;
+  }
+
+  if (!found) throw new RangeError('Invalid duration');
+  return total;
+}

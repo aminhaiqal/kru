@@ -1,0 +1,34 @@
+bun test v1.4.4 (38afee6c8)
+
+duration.test.ts:
+(pass) accept "0ms" [0.20ms]
+(pass) accept "7ms"
+(pass) accept "2s"
+(pass) accept "3m"
+(pass) accept "1h"
+(pass) accept "1h2m3s4ms"
+(pass) accept " 1h 2m 3s 4ms " [0.02ms]
+(pass) accept "0h0m0s0ms"
+(pass) accept "1m4ms"
+(pass) accept "9007199254740991ms"
+(pass) reject "" [0.05ms]
+(pass) reject " "
+(pass) reject "-1s"
+(pass) reject "+1s"
+(pass) reject "1.5s"
+(pass) reject "1"
+(pass) reject "1d"
+(pass) reject "1s2s"
+(pass) reject "1ms1s"
+(pass) reject "2m1h"
+(pass) reject "1s junk"
+(pass) reject "1 s"
+(pass) reject "9007199254740992ms"
+(pass) reject "9007199254740991ms1ms"
+(pass) reject "2501999792984h"
+(pass) reject "9007199254740991h"
+
+ 26 pass
+ 0 fail
+ 26 expect() calls
+Ran 26 tests across 1 file. [6.00ms]

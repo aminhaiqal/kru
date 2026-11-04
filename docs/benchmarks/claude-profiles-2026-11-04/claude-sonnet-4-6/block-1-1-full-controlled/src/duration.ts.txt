@@ -1,0 +1,52 @@
+export function parseDuration(text: string): number {
+  const multipliers: Record<string, number> = { h: 3600000, m: 60000, s: 1000, ms: 1 };
+  // unit order index: h=0, m=1, s=2, ms=3
+  const unitOrder: Record<string, number> = { h: 0, m: 1, s: 2, ms: 3 };
+
+  const s = text.trim();
+  if (!s) throw new RangeError('Invalid duration');
+
+  let pos = 0;
+  let total = 0;
+  let lastOrder = -1;
+  let count = 0;
+
+  while (pos < s.length) {
+    // skip inter-component spaces
+    while (pos < s.length && s[pos] === ' ') pos++;
+    if (pos >= s.length) break;
+
+    // parse digits
+    const start = pos;
+    while (pos < s.length && s[pos] >= '0' && s[pos] <= '9') pos++;
+    if (pos === start) throw new RangeError('Invalid duration');
+    const numStr = s.slice(start, pos);
+
+    // parse unit (ms before s to avoid partial match)
+    let unit: string;
+    if (s.startsWith('ms', pos)) { unit = 'ms'; pos += 2; }
+    else if (s[pos] === 'h') { unit = 'h'; pos += 1; }
+    else if (s[pos] === 'm') { unit = 'm'; pos += 1; }
+    else if (s[pos] === 's') { unit = 's'; pos += 1; }
+    else throw new RangeError('Invalid duration');
+
+    // strictly descending order
+    const order = unitOrder[unit];
+    if (order <= lastOrder) throw new RangeError('Invalid duration');
+    lastOrder = order;
+
+    const val = Number(numStr);
+    if (!Number.isSafeInteger(val)) throw new RangeError('Invalid duration');
+
+    const contribution = val * multipliers[unit];
+    if (contribution > Number.MAX_SAFE_INTEGER) throw new RangeError('Invalid duration');
+
+    total += contribution;
+    if (!Number.isSafeInteger(total)) throw new RangeError('Invalid duration');
+
+    count++;
+  }
+
+  if (count === 0) throw new RangeError('Invalid duration');
+  return total;
+}

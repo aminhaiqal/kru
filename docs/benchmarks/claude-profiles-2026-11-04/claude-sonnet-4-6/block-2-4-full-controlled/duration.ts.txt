@@ -1,0 +1,46 @@
+export function parseDuration(text: string): number {
+  const trimmed = text.trim();
+  if (!trimmed) throw new RangeError('Invalid duration');
+
+  const unitOrder = ['h', 'm', 's', 'ms'] as const;
+  const unitMs: Record<string, number> = { h: 3600000, m: 60000, s: 1000, ms: 1 };
+
+  const componentRe = /(\d+)(h|ms|m|s)/y;
+  const wsRe = /\s*/y;
+
+  let pos = 0;
+  let lastUnitIndex = -1;
+  let total = 0;
+  let hasComponent = false;
+
+  while (pos < trimmed.length) {
+    componentRe.lastIndex = pos;
+    const match = componentRe.exec(trimmed);
+    if (!match) throw new RangeError('Invalid duration');
+
+    hasComponent = true;
+    const unit = match[2] as typeof unitOrder[number];
+    pos = componentRe.lastIndex;
+
+    const unitIndex = unitOrder.indexOf(unit);
+    if (unitIndex <= lastUnitIndex) throw new RangeError('Invalid duration');
+    lastUnitIndex = unitIndex;
+
+    const value = Number(match[1]);
+    if (!Number.isSafeInteger(value)) throw new RangeError('Invalid duration');
+
+    const contribution = value * unitMs[unit];
+    if (!Number.isSafeInteger(contribution)) throw new RangeError('Invalid duration');
+
+    total += contribution;
+    if (!Number.isSafeInteger(total)) throw new RangeError('Invalid duration');
+
+    wsRe.lastIndex = pos;
+    wsRe.exec(trimmed);
+    pos = wsRe.lastIndex;
+  }
+
+  if (!hasComponent) throw new RangeError('Invalid duration');
+
+  return total;
+}

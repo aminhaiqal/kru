@@ -5,11 +5,20 @@ import { resolveDatabasePath } from './location';
 
 const migrations = [
   { version: 1, sql: readFileSync(new URL('./migrations/001-initial.sql', import.meta.url), 'utf8') },
+  { version: 2, sql: readFileSync(new URL('./migrations/002-scheduler.sql', import.meta.url), 'utf8') },
+  { version: 3, sql: readFileSync(new URL('./migrations/003-usage-ledger.sql', import.meta.url), 'utf8') },
 ];
+
+export interface StoreChange { topic: string; id: string; value?: unknown }
 
 /** Synchronous writes own their transaction. No callbacks may await or nest writes. */
 export class Store {
   readonly db: Database;
+  private readonly listeners = new Set<(change: StoreChange) => void>();
+  private readonly notifications: StoreChange[] = [];
+  private publishing = false;
+  private composing = false;
+  private stagedChanges: StoreChange[] = [];
 
   constructor(path = resolveDatabasePath(), options: { busyTimeoutMs?: number } = {}) {
     const timeout = options.busyTimeoutMs ?? 5_000;
@@ -37,13 +46,50 @@ export class Store {
   }
 
   write<T>(operation: () => T): T {
-    if (this.db.inTransaction) throw new Error('Store writes cannot run inside another transaction');
-    return this.db.transaction(() => {
+    if (this.db.inTransaction && !this.composing) throw new Error('Store writes cannot run inside another transaction');
+    const staged = this.stagedChanges.length;
+    try { return this.db.transaction(() => {
       const value = operation();
       if (value && typeof (value as { then?: unknown }).then === 'function') throw new Error('Store writes must be synchronous');
       return value;
-    }).immediate();
+    }).immediate(); }
+    catch (error) { this.stagedChanges.length = staged; throw error; }
   }
 
-  close(): void { this.db.close(); }
+  /** Explicit M4 composition: nested writes use savepoints, events publish after the outer commit. */
+  atomic<T>(operation: () => T): T {
+    if (this.db.inTransaction) throw new Error('Atomic commands must own their transaction');
+    this.composing = true; this.stagedChanges = [];
+    let value: T;
+    try { value = this.write(operation); }
+    catch (error) { this.stagedChanges = []; throw error; }
+    finally { this.composing = false; }
+    const changes = this.stagedChanges; this.stagedChanges = [];
+    this.publishChanges(changes);
+    return value;
+  }
+
+  onChange(listener: (change: StoreChange) => void): () => void {
+    this.listeners.add(listener);
+    return () => { this.listeners.delete(listener); };
+  }
+  /** Domain adapters publish only after their write transaction has committed. */
+  publishChanges(changes: StoreChange[]): void {
+    if (this.db.inTransaction) {
+      if (!this.composing) throw new Error('Store changes must be published after commit');
+      this.stagedChanges.push(...changes); return;
+    }
+    this.notifications.push(...changes);
+    if (this.publishing) return;
+    this.publishing = true;
+    try {
+      for (let change = this.notifications.shift(); change; change = this.notifications.shift()) {
+        for (const listener of [...this.listeners]) {
+          try { listener({ ...change }); }
+          catch (error) { process.emitWarning(`Store listener failed: ${error instanceof Error ? error.message : String(error)}`); }
+        }
+      }
+    } finally { this.publishing = false; }
+  }
+  close(): void { this.listeners.clear(); this.db.close(); }
 }

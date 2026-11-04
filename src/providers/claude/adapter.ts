@@ -18,13 +18,13 @@ export interface ClaudeProviderOptions { query?: ClaudeQueryFactory; processReco
 interface Active {
   id: string; controller: AbortController; interrupted: boolean; messageId: string;
   blocks: Map<string, { text: string; completed: boolean }>;
-  nativeTools: Map<string, string>; approvedTools: Set<string>;
+  nativeTools: Map<string, string>; approvedTools: Set<string>; modelSteps: Set<string>; toolCalls: Set<string>;
 }
 interface Session {
   id: string; params: ThreadParams; profile: PreparedThread; nativeId?: string;
   query?: ClaudeQuery; input: InputQueue<SDKUserMessage>; reader?: Promise<void>;
   child?: ChildProcess; record?: string; force: AbortController; closing: boolean;
-  nativeTools?: string[]; active?: Active; total: TokenCount; nativeTotal: TokenCount;
+  model?: string; nativeTools?: string[]; active?: Active; total: TokenCount; nativeTotal: TokenCount;
 }
 function builtinTools(profile: PreparedThread): string[] | undefined {
   if (profile.promptProfile === 'full') return undefined;
@@ -109,7 +109,7 @@ export class ClaudeProvider extends ProviderBase {
         if (session.active) throw new RpcResponseError(-32600, 'A turn is already active');
         if (!Array.isArray(p.input) || !p.input.every(i => i.type === 'text' && typeof i.text === 'string')) throw new RpcResponseError(-32602, 'Invalid text input');
         if (!session.query) this.open(session);
-        const active: Active = { id: crypto.randomUUID(), controller: new AbortController(), interrupted: false, messageId: crypto.randomUUID(), blocks: new Map(), nativeTools: new Map(), approvedTools: new Set() };
+        const active: Active = { id: crypto.randomUUID(), controller: new AbortController(), interrupted: false, messageId: crypto.randomUUID(), blocks: new Map(), nativeTools: new Map(), approvedTools: new Set(), modelSteps: new Set(), toolCalls: new Set() };
         session.active = active;
         session.input.push({ type: 'user', ...(session.profile.promptProfile === 'full' ? {} : { client_composed: true as const }), session_id: session.nativeId ?? session.id, uuid: active.id as `${string}-${string}-${string}-${string}-${string}`, parent_tool_use_id: null, message: { role: 'user', content: p.input.map(i => i.text).join('\n') } });
         this.emit('notification', { method: 'turn/started', params: { threadId: session.id, turn: { id: active.id, status: 'inProgress' } } });
@@ -211,6 +211,7 @@ export class ClaudeProvider extends ProviderBase {
       if (session.closing) break;
       if ('session_id' in message) session.nativeId = message.session_id;
       if (message.type === 'system' && message.subtype === 'init') {
+        session.model = message.model;
         session.nativeTools = message.tools.filter(name => !name.startsWith('mcp__'));
         this.emit('diagnostic', { kind: 'sdk-init', message: JSON.stringify({ model: message.model, version: message.claude_code_version, tools: session.nativeTools }) });
       }
@@ -220,13 +221,15 @@ export class ClaudeProvider extends ProviderBase {
       if ('parent_tool_use_id' in message && message.parent_tool_use_id) continue;
       if (message.type === 'stream_event') {
         const event = message.event;
-        if (event.type === 'message_start') active.messageId = event.message.id;
+        if (event.type === 'message_start') { active.messageId = event.message.id; active.modelSteps.add(event.message.id); }
         if (event.type === 'content_block_delta' && event.delta.type === 'text_delta') this.text(session, active, `${active.messageId}:${event.index}`, event.delta.text, false);
         if (event.type === 'content_block_stop') {
           const id = `${active.messageId}:${event.index}`; const item = active.blocks.get(id);
           if (item) this.text(session, active, id, item.text, true);
         }
       } else if (message.type === 'assistant') {
+        active.modelSteps.add(message.message.id);
+        for (const block of message.message.content) if (block.type === 'tool_use') active.toolCalls.add(block.id);
         message.message.content.forEach((block, index) => {
           if (block.type === 'text') {
             const existing = [...active.blocks].find(([key, item]) => key.startsWith(message.message.id + ':') && item.text === block.text);
@@ -254,7 +257,7 @@ export class ClaudeProvider extends ProviderBase {
         if (models.length && current.totalTokens >= session.nativeTotal.totalTokens) session.total = current;
         else session.total = addTokens(session.total, last);
         session.nativeTotal = current;
-        this.emit('notification', { method: 'thread/tokenUsage/updated', params: { threadId: session.id, turnId: active.id, tokenUsage: { last, total: { ...session.total }, modelContextWindow: models[0]?.contextWindow ?? null } } });
+        this.emit('notification', { method: 'thread/tokenUsage/updated', params: { threadId: session.id, turnId: active.id, tokenUsage: { ...(session.model ?? session.params.model ? { model: session.model ?? session.params.model! } : {}), modelSteps: active.modelSteps.size, toolCalls: active.toolCalls.size, last, total: { ...session.total }, modelContextWindow: models[0]?.contextWindow ?? null } } });
         this.cancelTurnCalls(session.id, active.id); active.controller.abort(new Error('Turn ended')); delete session.active;
         const failed = message.subtype !== 'success' || message.is_error;
         this.emit('notification', { method: 'turn/completed', params: { threadId: session.id, turn: { id: active.id, status: active.interrupted ? 'interrupted' : failed ? 'failed' : 'completed', error: failed && !active.interrupted ? { message: message.subtype === 'success' ? message.result : message.errors.join('; ') } : null } } });

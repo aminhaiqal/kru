@@ -1,5 +1,46 @@
 # Changelog
 
+## [0.0.5] - 2026-11-04
+
+M3 — lanes and the drain scheduler, with lifecycle follow-ups, the first M4
+durable usage/budget foundation and controlled profile benchmark evidence.
+
+### Added
+
+- Durable per-turn usage/cost ledger, atomic usage/batch completion, dated model
+  prices with cache-lifetime bounds, `cost` and combined token/`--daily-usd` gates.
+- Per-turn Claude model-step/tool-call instrumentation and retained cache-write
+  lifetime counts.
+- Repeated four-treatment benchmark with at least five alternating blocks,
+  warm-ups, legacy/current models, raw evidence and median/range reports.
+  `--plan` is non-billable; `--run` executes real model calls.
+- Archived 2026-11-04 live evidence: 38 measured runs passed 26/26 acceptance
+  tests; two final Sonnet 5.5 attempts hit the account limit. Median/range and
+  paired comparisons retain missing samples and the excluded protocol attempt.
+
+- M3 daemon with process-identity ownership, startup interruption of abandoned
+  work, cross-process database polling and graceful/forced signal shutdown.
+- Atomic batch claims and lane reservations in schema v2, plus persisted native
+  session bindings and daemon status snapshots.
+- Lane scheduling with lost-wakeup rechecks, user-first capacity allocation,
+  ordered holds, daily token gates and bounded user-message batching.
+- Turn runner that retains unknown starts through their grace period, handles
+  late confirmation and retires uncertain native threads before lane release.
+  Codex tombstones abandoned threads and probes shared-server liveness without
+  interrupting healthy peers; Claude retains per-thread process termination.
+- `daemon`, `status`, `agent set`, `agent pause` and `agent resume` commands.
+- All 12 M3 acceptance cases, real process contention/crash/signal tests, frozen
+  schema-v2 coverage and `test:scheduler:repeat` for ten repeated runs.
+
+### Changed
+
+- Mailbox adapters and agent registries sharing one Store connection publish
+  committed changes on one bus, so configuration changes wake the scheduler.
+- Heartbeats run every ten seconds; unchanged status snapshots skip writes.
+- Budget days follow local time by default, with a `--budget-timezone` override.
+- Boot recovery preserves native session bindings and tries resume before replacing
+  missing caches. The first M4 foundation now persists token and estimated-USD budgets.
+
 ## [0.0.4] - 2026-11-04
 
 M2 — the durable mailbox, project discovery and CLI, plus interactive chat approvals.

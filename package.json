@@ -1,6 +1,6 @@
 {
   "name": "kru",
-  "version": "0.0.4",
+  "version": "0.0.5",
   "private": true,
   "description": "A local-first engine for persistent AI agent teammates",
   "license": "MIT",
@@ -14,7 +14,10 @@
     "./chat": "./src/chat/turn.ts",
     "./store": "./src/store/index.ts",
     "./agents": "./src/agents/index.ts",
-    "./mailbox": "./src/mailbox/index.ts"
+    "./mailbox": "./src/mailbox/index.ts",
+    "./scheduler": "./src/scheduler/index.ts",
+    "./daemon": "./src/daemon/index.ts",
+    "./usage": "./src/usage/index.ts"
   },
   "scripts": {
     "dev": "bun src/cli/index.ts",
@@ -29,7 +32,10 @@
     "test:shell-parity-live": "bun scripts/check-shell-parity.ts",
     "benchmark:claude-profiles": "CLAUDE_CODE_DISABLE_AUTO_MEMORY=1 bun scripts/claude-profile-benchmark.ts",
     "test:mailbox": "bun test test/mailbox.test.ts test/mailbox-cli.test.ts test/store.test.ts",
-    "test:mailbox:repeat": "bun test --rerun-each 10 test/mailbox.test.ts test/mailbox-cli.test.ts test/store.test.ts"
+    "test:mailbox:repeat": "bun test --rerun-each 10 test/mailbox.test.ts test/mailbox-cli.test.ts test/store.test.ts",
+    "test:scheduler": "bun test test/scheduler.test.ts test/mailbox-batch.test.ts test/scheduler-cli.test.ts test/store.test.ts test/codex-retirement.test.ts test/budget-day.test.ts test/pricing.test.ts test/usage-ledger.test.ts",
+    "test:scheduler:repeat": "bun test --rerun-each 10 test/scheduler.test.ts test/mailbox-batch.test.ts test/scheduler-cli.test.ts test/store.test.ts test/codex-retirement.test.ts test/budget-day.test.ts test/pricing.test.ts test/usage-ledger.test.ts",
+    "test:usage": "bun test test/pricing.test.ts test/usage-ledger.test.ts test/token-usage.test.ts"
   },
   "engines": {
     "bun": ">=1.3.0"

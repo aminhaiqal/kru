@@ -1,0 +1,57 @@
+export function parseDuration(text: string): number {
+  const unitOrder: Record<string, number> = { h: 3, m: 2, s: 1, ms: 0 };
+  const unitMs: Record<string, number> = { h: 3600000, m: 60000, s: 1000, ms: 1 };
+
+  let pos = 0;
+  const len = text.length;
+
+  // Skip leading whitespace
+  while (pos < len && (text[pos] === ' ' || text[pos] === '\t' || text[pos] === '\n' || text[pos] === '\r')) pos++;
+
+  if (pos === len) throw new RangeError('Invalid duration: empty input');
+
+  let total = 0;
+  let lastOrder = 4; // Higher than any valid unit order
+  let hasComponent = false;
+
+  while (pos < len) {
+    // Skip whitespace between components
+    while (pos < len && (text[pos] === ' ' || text[pos] === '\t' || text[pos] === '\n' || text[pos] === '\r')) pos++;
+
+    if (pos === len) break;
+
+    // Parse digits (no sign, no fraction allowed)
+    if (text[pos] < '0' || text[pos] > '9') throw new RangeError('Invalid duration');
+    const numStart = pos;
+    while (pos < len && text[pos] >= '0' && text[pos] <= '9') pos++;
+    const numStr = text.slice(numStart, pos);
+
+    // Parse unit — check 'ms' before 'm' to avoid ambiguity
+    let unit: string;
+    if (text.startsWith('ms', pos)) { unit = 'ms'; pos += 2; }
+    else if (pos < len && text[pos] === 'h') { unit = 'h'; pos++; }
+    else if (pos < len && text[pos] === 'm') { unit = 'm'; pos++; }
+    else if (pos < len && text[pos] === 's') { unit = 's'; pos++; }
+    else throw new RangeError('Invalid duration: unknown or missing unit');
+
+    // Strictly descending order; duplicates are caught by >=
+    const order = unitOrder[unit];
+    if (order >= lastOrder) throw new RangeError('Invalid duration: out-of-order or duplicate unit');
+    lastOrder = order;
+
+    const val = Number(numStr);
+    if (!Number.isSafeInteger(val)) throw new RangeError('Invalid duration: value exceeds MAX_SAFE_INTEGER');
+
+    const ms = val * unitMs[unit];
+    if (!Number.isSafeInteger(ms)) throw new RangeError('Invalid duration: component exceeds MAX_SAFE_INTEGER');
+
+    total += ms;
+    if (!Number.isSafeInteger(total)) throw new RangeError('Invalid duration: total exceeds MAX_SAFE_INTEGER');
+
+    hasComponent = true;
+  }
+
+  if (!hasComponent) throw new RangeError('Invalid duration: empty input');
+
+  return total;
+}

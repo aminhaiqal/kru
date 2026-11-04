@@ -66,6 +66,7 @@ test('an idle deadline resets on scoped activity and ignores other threads', asy
 });
 
 test('prompt snapshots are immutable, canonical and independent of object insertion order', () => {
+  expect(prepareThread({}).promptProfile).toBe('minimal'); // coding remains explicit opt-in.
   const a = prepareThread({ tools: [{ name: 'tool', description: 'test', inputSchema: { type: 'object', properties: { z: { type: 'string' }, a: { type: 'string' } } } }] });
   const b = prepareThread({ tools: [{ description: 'test', name: 'tool', inputSchema: { properties: { a: { type: 'string' }, z: { type: 'string' } }, type: 'object' } }] });
   expect(promptMetadata(a).prefixHash).toBe(promptMetadata(b).prefixHash);

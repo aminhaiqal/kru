@@ -1,0 +1,5 @@
+export function parseDuration(text: string): number {
+  const match = /^(d+)ms$/.exec(text);
+  if (!match) throw new RangeError('Invalid duration');
+  return Number(match[1]);
+}

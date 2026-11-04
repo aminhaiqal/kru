@@ -14,6 +14,8 @@ more cache tokens. This is not evidence of a monetary saving or broad quality pa
 | Uncached input (derived) | 9 | 8 |
 | Native tools advertised | 33 | 6 |
 | Kru-declared tools | 0 | 0 |
+| Recorded tool invocations | 8 | 7 |
+| Model steps | not archived | not archived |
 | Elapsed including startup and shutdown | 110.742 s | 178.775 s |
 | Independent acceptance | 26/26 | 26/26 |
 | Acceptance tests unchanged | yes | yes |
@@ -54,9 +56,10 @@ this task even without automatic loading. No Kru tools were registered.
 - [Coding implementation](coding-duration.ts.txt) and [test log](coding-acceptance.log)
 - [Benchmark runner](../../../scripts/claude-profile-benchmark.ts)
 
-Run `bun run benchmark:claude-profiles` from the repo with Bun on PATH and an
-existing Claude login. This makes real model calls and writes fresh evidence to
-`.kru/benchmarks/`. `KRU_BENCHMARK_MODEL` overrides the default fixed model.
+The runner has since been upgraded to the [repeated factorial protocol](../profile-factorial-protocol.md).
+`bun run benchmark:claude-profiles --plan` previews it; `--run` makes live calls
+and writes fresh evidence under `.kru/benchmarks/`. The archived one-pair evidence
+above is unchanged; the new controlled baseline has explicitly different context settings.
 
 This is one small task and one ordered pair, not a statistical savings estimate.
 Provider caching was observed, not reset or controlled across runs; output length,
@@ -66,3 +69,30 @@ to system-prompt length. Passing 26 functional tests does not prove equivalent
 coding quality on larger repositories. Cache write counts increased from 14,515
 to 31,295; pricing reads, writes and output separately is necessary before making
 any cost-saving claim.
+
+
+## Retrospective token-price estimate — 2026-11-04
+
+Using the standard first-party Sonnet 4.6 rates listed on
+[Anthropic's pricing page](https://platform.claude.com/docs/en/about-claude/pricing)
+on 2026-11-04, the recorded main-agent token usage gives:
+
+| Profile | Estimated USD range |
+| --- | ---: |
+| full | $0.229030–$0.261689 |
+| coding | $0.345906–$0.416320 |
+
+The write lifetimes were not retained, so the bounds price unspecified writes
+between the 5-minute and 1-hour rates. Even the upper full estimate is below the
+lower coding estimate. Full was faster and had a lower estimated main-token cost
+in this pair, despite coding's lower total token count. This is why coding stays
+opt-in rather than becoming a default based on token count alone.
+
+These are retrospective list-price calculations, not observed invoices or
+subscription quota costs. Auxiliary model calls/tool charges are excluded. The
+[calculation artifact](cost-estimate-2026-11-04.json) retains rates, scope and raw
+bounds; it makes no new model calls and does not alter the original results.
+
+The archived tool events contain eight invocations for full and seven for coding.
+Assistant message IDs were not retained, so model steps cannot be reconstructed.
+The more-steps explanation remains a hypothesis for the next instrumented run.

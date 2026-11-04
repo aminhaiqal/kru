@@ -1,0 +1,31 @@
+export function parseDuration(text: string): number {
+  if (!/^\s*\d+(?:h|ms|s|m)(?:\s*\d+(?:h|ms|s|m))*\s*$/.test(text)) {
+    throw new RangeError('Invalid duration');
+  }
+
+  const mult: Record<string, number> = { h: 3_600_000, m: 60_000, s: 1_000, ms: 1 };
+  const rank: Record<string, number> = { h: 3, m: 2, s: 1, ms: 0 };
+
+  const re = /(\d+)(h|ms|s|m)/g;
+  let total = 0;
+  let prevRank = Infinity;
+  let match: RegExpExecArray | null;
+
+  while ((match = re.exec(text)) !== null) {
+    const value = Number(match[1]);
+    const unit = match[2];
+
+    if (value > Number.MAX_SAFE_INTEGER) throw new RangeError('Invalid duration');
+    if (rank[unit] >= prevRank) throw new RangeError('Invalid duration');
+
+    const contribution = value * mult[unit];
+    if (contribution > Number.MAX_SAFE_INTEGER) throw new RangeError('Invalid duration');
+
+    total += contribution;
+    if (total > Number.MAX_SAFE_INTEGER) throw new RangeError('Invalid duration');
+
+    prevRank = rank[unit];
+  }
+
+  return total;
+}

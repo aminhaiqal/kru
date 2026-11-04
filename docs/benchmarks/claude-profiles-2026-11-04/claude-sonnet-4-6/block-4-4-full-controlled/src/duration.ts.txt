@@ -1,0 +1,50 @@
+const UNITS = ['h', 'm', 's', 'ms'] as const;
+const MULTIPLIERS: Record<string, number> = { h: 3600000, m: 60000, s: 1000, ms: 1 };
+
+export function parseDuration(text: string): number {
+  const trimmed = text.trim();
+  if (!trimmed) throw new RangeError('Invalid duration');
+
+  let pos = 0;
+  let lastUnitIndex = -1;
+  let total = 0;
+  let seenAny = false;
+
+  while (pos < trimmed.length) {
+    // skip whitespace between components
+    while (pos < trimmed.length && trimmed[pos] === ' ') pos++;
+    if (pos >= trimmed.length) break;
+
+    // read digits (no sign, no fraction)
+    const numStart = pos;
+    while (pos < trimmed.length && trimmed[pos] >= '0' && trimmed[pos] <= '9') pos++;
+    if (pos === numStart) throw new RangeError('Invalid duration');
+
+    const value = Number(trimmed.slice(numStart, pos));
+    if (value > Number.MAX_SAFE_INTEGER) throw new RangeError('Invalid duration');
+
+    // read unit (try ms before m to avoid partial match)
+    let unit: string;
+    if (trimmed.startsWith('ms', pos)) {
+      unit = 'ms';
+      pos += 2;
+    } else if (pos < trimmed.length && (trimmed[pos] === 'h' || trimmed[pos] === 'm' || trimmed[pos] === 's')) {
+      unit = trimmed[pos];
+      pos++;
+    } else {
+      throw new RangeError('Invalid duration');
+    }
+
+    const unitIndex = UNITS.indexOf(unit as typeof UNITS[number]);
+    if (unitIndex <= lastUnitIndex) throw new RangeError('Invalid duration');
+    lastUnitIndex = unitIndex;
+
+    total += value * MULTIPLIERS[unit];
+    if (total > Number.MAX_SAFE_INTEGER) throw new RangeError('Invalid duration');
+
+    seenAny = true;
+  }
+
+  if (!seenAny) throw new RangeError('Invalid duration');
+  return total;
+}

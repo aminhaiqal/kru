@@ -22,7 +22,7 @@ test('12. fresh and frozen version-1 databases migrate to the same schema withou
       id: 'fixture-delivery', text: 'retained work', seq: 1, chainId: 'fixture-chain', hop: 0,
     });
     expect(migrated.db.query('PRAGMA foreign_key_check').all()).toEqual([]);
-    expect(migrated.db.query('SELECT version FROM schema_migrations ORDER BY version').all()).toEqual([{ version: 1 }]);
+    expect(migrated.db.query('SELECT version FROM schema_migrations ORDER BY version').all()).toEqual([{ version: 1 }, { version: 2 }, { version: 3 }]);
   } finally { fresh.close(); migrated.close(); rmSync(dir, { recursive: true, force: true }); }
 });
 
@@ -80,4 +80,83 @@ test('data_version signals other connections committing, but not local writes or
     })).toThrow('rollback');
     expect(version()).toBe(changed);
   } finally { observer.close(); writer.close(); rmSync(dir, { recursive: true, force: true }); }
+});
+
+test('frozen version-2 schema retains queued work and session bindings', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'kru-schema-v2-'));
+  const path = join(dir, 'v2.sqlite');
+  const db = new Database(path); db.exec(readFileSync(new URL('./fixtures/store/v2.sql', import.meta.url), 'utf8')); db.close();
+  const migrated = new Store(path), fresh = new Store(':memory:');
+  try {
+    expect(schema(migrated.db)).toEqual(schema(fresh.db));
+    expect(new SqliteMailbox(migrated).listQueue('fixture-agent')[0]!.batchId).toBeNull();
+    expect(migrated.db.query('SELECT native_thread_id FROM agent_sessions').get()).toEqual({ native_thread_id: 'fixture-native-thread' });
+    expect(migrated.db.query('PRAGMA foreign_key_check').all()).toEqual([]);
+  } finally { migrated.close(); fresh.close(); rmSync(dir, { recursive: true, force: true }); }
+});
+
+test('version-2 migration failure rolls back DDL and its receipt while retaining version-1 data', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'kru-rollback-v2-')); const path = join(dir, 'v1.sqlite');
+  const fixture = new Database(path);
+  fixture.exec(readFileSync(new URL('./fixtures/store/v1.sql', import.meta.url), 'utf8'));
+  fixture.exec(`CREATE TRIGGER reject_migration BEFORE INSERT ON schema_migrations
+    WHEN NEW.version = 2 BEGIN SELECT RAISE(ABORT, 'migration rollback'); END`);
+  fixture.close();
+  try {
+    expect(() => new Store(path)).toThrow('migration rollback');
+    const inspect = new Database(path);
+    try {
+      expect(inspect.query('SELECT version FROM schema_migrations').all()).toEqual([{ version: 1 }]);
+      expect(inspect.query("SELECT name FROM sqlite_master WHERE name = 'active_lanes'").all()).toEqual([]);
+      expect(inspect.query<{ name: string }, []>('PRAGMA table_info(deliveries)').all().some(r => r.name === 'batch_id')).toBe(false);
+      expect(inspect.query('SELECT id FROM deliveries').get()).toEqual({ id: 'fixture-delivery' });
+      inspect.exec('DROP TRIGGER reject_migration');
+    } finally { inspect.close(); }
+    const retried = new Store(path);
+    try { expect(retried.db.query('SELECT version FROM schema_migrations ORDER BY version').all()).toEqual([{ version: 1 }, { version: 2 }, { version: 3 }]); }
+    finally { retried.close(); }
+  } finally { rmSync(dir, { recursive: true, force: true }); }
+});
+
+test('agent setting patches merge permissions within the writer transaction', () => {
+  const store = new Store(':memory:'), agents = new AgentRegistry(store);
+  try {
+    const agent = agents.create({ name: 'settings', provider: 'fake' });
+    agents.update(agent.id, { config: { permissions: { sandbox: 'workspace-write' } } });
+    agents.update(agent.id, { config: { permissions: { approvalPolicy: 'never' } } });
+    expect(agents.get(agent.id)!.config.permissions).toEqual({ sandbox: 'workspace-write', approvalPolicy: 'never' });
+    expect(() => agents.update(agent.id, { config: { permissions: 'invalid' } })).toThrow('Invalid agent permissions');
+    expect(() => agents.update(agent.id, { config: { permissions: null } })).toThrow('Invalid agent permissions');
+  } finally { store.close(); }
+});
+
+test('registry changes share the Store bus with mailbox changes and publish only after commit', () => {
+  const store = new Store(':memory:'), agents = new AgentRegistry(store), other = new AgentRegistry(store);
+  try {
+    const agent = agents.create({ name: 'shared', provider: 'fake' });
+    const seen: string[] = [], topics: string[] = [];
+    const off = agents.onChange(id => seen.push(id));
+    store.onChange(c => topics.push(c.topic));
+    store.write(() => store.db.exec(`CREATE TRIGGER reject_settings BEFORE UPDATE ON agents
+      BEGIN SELECT RAISE(ABORT, 'rollback settings'); END`));
+    expect(() => other.update(agent.id, { config: { paused: true } })).toThrow('rollback settings');
+    expect(seen).toEqual([]); expect(topics).toEqual([]);
+    store.write(() => store.db.exec('DROP TRIGGER reject_settings'));
+    other.update(agent.id, { config: { paused: true } });
+    new SqliteMailbox(store).enqueue({ sender: { kind: 'user' }, recipientIds: [agent.id], text: 'queued' });
+    expect(seen).toEqual([agent.id]); expect(topics).toEqual(['agents', 'mailbox']);
+    off(); other.update(agent.id, { config: { paused: false } }); expect(seen).toEqual([agent.id]);
+  } finally { store.close(); }
+});
+
+test('frozen version-3 schema preserves historical price snapshots and turn costs', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'kru-schema-v3-')), path = join(dir, 'v3.sqlite');
+  const db = new Database(path); db.exec(readFileSync(new URL('./fixtures/store/v3.sql', import.meta.url), 'utf8')); db.close();
+  const migrated = new Store(path), fresh = new Store(':memory:');
+  try {
+    expect(schema(migrated.db)).toEqual(schema(fresh.db));
+    const cost = JSON.parse(String((migrated.db.query('SELECT cost_json FROM usage_records').get() as { cost_json: string }).cost_json));
+    expect(cost.maximumNanoUsd).toBe(24000); expect(cost.price.verifiedAt).toBe('2026-11-04');
+    expect(migrated.db.query('PRAGMA foreign_key_check').all()).toEqual([]);
+  } finally { migrated.close(); fresh.close(); rmSync(dir, { recursive: true, force: true }); }
 });

@@ -1,0 +1,77 @@
+export function parseDuration(text: string): number {
+  const MAX = Number.MAX_SAFE_INTEGER;
+  const MAX_STR = '9007199254740991'; // String(MAX)
+
+  // Units in strictly descending order
+  const ORDER = ['h', 'm', 's', 'ms'] as const;
+  type Unit = (typeof ORDER)[number];
+  const MULT: Record<Unit, number> = { h: 3_600_000, m: 60_000, s: 1_000, ms: 1 };
+
+  const s = text;
+  const len = s.length;
+  let pos = 0;
+
+  const isWs = (c: string) => c === ' ' || c === '\t' || c === '\r' || c === '\n';
+  const skipWs = () => { while (pos < len && isWs(s[pos])) pos++; };
+  const err = (): never => { throw new RangeError('Invalid duration'); };
+
+  skipWs();
+  if (pos === len) err();
+
+  let lastOrderIdx = -1;
+  let total = 0;
+  let parsed = false;
+
+  while (pos < len) {
+    // Skip inter-component (or trailing) whitespace after first component
+    if (parsed) {
+      skipWs();
+      if (pos === len) break; // clean trailing whitespace
+    }
+
+    // Parse one or more decimal digits — no sign, no decimal point
+    if (s[pos] < '0' || s[pos] > '9') err();
+    const numStart = pos;
+    while (pos < len && s[pos] >= '0' && s[pos] <= '9') pos++;
+    const numStr = s.slice(numStart, pos);
+
+    // Parse unit immediately after digits (no whitespace allowed between)
+    let unit: Unit;
+    if (pos + 1 < len && s[pos] === 'm' && s[pos + 1] === 's') {
+      unit = 'ms'; pos += 2;
+    } else if (pos < len && s[pos] === 'h') {
+      unit = 'h'; pos++;
+    } else if (pos < len && s[pos] === 'm') {
+      unit = 'm'; pos++;
+    } else if (pos < len && s[pos] === 's') {
+      unit = 's'; pos++;
+    } else {
+      err();
+    }
+
+    // Enforce strictly descending unit order (no duplicates)
+    const orderIdx = ORDER.indexOf(unit);
+    if (orderIdx <= lastOrderIdx) err();
+    lastOrderIdx = orderIdx;
+
+    // Reject component value > MAX_SAFE_INTEGER (compare as digit strings)
+    if (numStr.length > MAX_STR.length ||
+        (numStr.length === MAX_STR.length && numStr > MAX_STR)) err();
+
+    const val = Number(numStr);
+    const mult = MULT[unit];
+
+    // Reject if val * mult would overflow MAX_SAFE_INTEGER
+    if (val > 0 && val > Math.floor(MAX / mult)) err();
+    const contribution = val * mult;
+
+    // Reject if running total would overflow MAX_SAFE_INTEGER
+    if (total > MAX - contribution) err();
+
+    total += contribution;
+    parsed = true;
+  }
+
+  if (!parsed) err();
+  return total;
+}

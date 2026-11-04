@@ -1,0 +1,27 @@
+const UNITS: Record<string, number> = { h: 3600000, m: 60000, s: 1000, ms: 1 };
+const ORDER = ['h', 'm', 's', 'ms'];
+
+export function parseDuration(text: string): number {
+  if (typeof text !== 'string') throw new RangeError('Invalid duration');
+  const re = /\s*(\d+)(ms|h|m|s)/y;
+  const end = text.trimEnd().length;
+  let pos = 0;
+  let lastIdx = -1;
+  let total = 0;
+  const skip = /^\s*/.exec(text)![0].length;
+  if (skip >= end) throw new RangeError('Invalid duration');
+  while (pos < end) {
+    re.lastIndex = pos;
+    const m = re.exec(text);
+    if (!m || re.lastIndex > end) throw new RangeError('Invalid duration');
+    const idx = ORDER.indexOf(m[2]);
+    if (idx <= lastIdx) throw new RangeError('Invalid duration');
+    lastIdx = idx;
+    const n = Number(m[1]);
+    if (!Number.isSafeInteger(n)) throw new RangeError('Invalid duration');
+    total += n * UNITS[m[2]];
+    if (!Number.isSafeInteger(total)) throw new RangeError('Invalid duration');
+    pos = re.lastIndex;
+  }
+  return total;
+}

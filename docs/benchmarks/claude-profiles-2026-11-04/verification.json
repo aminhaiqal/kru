@@ -1,0 +1,396 @@
+{
+  "measuredRunsVerified": 38,
+  "checks": [
+    {
+      "model": "claude-sonnet-4-6",
+      "block": 1,
+      "variant": "full-controlled",
+      "acceptancePass": 26,
+      "acceptanceFail": 0,
+      "protectedFixturesUnchanged": true,
+      "generatedSourceMatches": true,
+      "servedModelMatches": true
+    },
+    {
+      "model": "claude-sonnet-4-6",
+      "block": 1,
+      "variant": "full-restricted",
+      "acceptancePass": 26,
+      "acceptanceFail": 0,
+      "protectedFixturesUnchanged": true,
+      "generatedSourceMatches": true,
+      "servedModelMatches": true
+    },
+    {
+      "model": "claude-sonnet-4-6",
+      "block": 1,
+      "variant": "lean-full",
+      "acceptancePass": 26,
+      "acceptanceFail": 0,
+      "protectedFixturesUnchanged": true,
+      "generatedSourceMatches": true,
+      "servedModelMatches": true
+    },
+    {
+      "model": "claude-sonnet-4-6",
+      "block": 1,
+      "variant": "coding",
+      "acceptancePass": 26,
+      "acceptanceFail": 0,
+      "protectedFixturesUnchanged": true,
+      "generatedSourceMatches": true,
+      "servedModelMatches": true
+    },
+    {
+      "model": "claude-sonnet-4-6",
+      "block": 2,
+      "variant": "coding",
+      "acceptancePass": 26,
+      "acceptanceFail": 0,
+      "protectedFixturesUnchanged": true,
+      "generatedSourceMatches": true,
+      "servedModelMatches": true
+    },
+    {
+      "model": "claude-sonnet-4-6",
+      "block": 2,
+      "variant": "lean-full",
+      "acceptancePass": 26,
+      "acceptanceFail": 0,
+      "protectedFixturesUnchanged": true,
+      "generatedSourceMatches": true,
+      "servedModelMatches": true
+    },
+    {
+      "model": "claude-sonnet-4-6",
+      "block": 2,
+      "variant": "full-restricted",
+      "acceptancePass": 26,
+      "acceptanceFail": 0,
+      "protectedFixturesUnchanged": true,
+      "generatedSourceMatches": true,
+      "servedModelMatches": true
+    },
+    {
+      "model": "claude-sonnet-4-6",
+      "block": 2,
+      "variant": "full-controlled",
+      "acceptancePass": 26,
+      "acceptanceFail": 0,
+      "protectedFixturesUnchanged": true,
+      "generatedSourceMatches": true,
+      "servedModelMatches": true
+    },
+    {
+      "model": "claude-sonnet-4-6",
+      "block": 3,
+      "variant": "full-controlled",
+      "acceptancePass": 26,
+      "acceptanceFail": 0,
+      "protectedFixturesUnchanged": true,
+      "generatedSourceMatches": true,
+      "servedModelMatches": true
+    },
+    {
+      "model": "claude-sonnet-4-6",
+      "block": 3,
+      "variant": "full-restricted",
+      "acceptancePass": 26,
+      "acceptanceFail": 0,
+      "protectedFixturesUnchanged": true,
+      "generatedSourceMatches": true,
+      "servedModelMatches": true
+    },
+    {
+      "model": "claude-sonnet-4-6",
+      "block": 3,
+      "variant": "lean-full",
+      "acceptancePass": 26,
+      "acceptanceFail": 0,
+      "protectedFixturesUnchanged": true,
+      "generatedSourceMatches": true,
+      "servedModelMatches": true
+    },
+    {
+      "model": "claude-sonnet-4-6",
+      "block": 3,
+      "variant": "coding",
+      "acceptancePass": 26,
+      "acceptanceFail": 0,
+      "protectedFixturesUnchanged": true,
+      "generatedSourceMatches": true,
+      "servedModelMatches": true
+    },
+    {
+      "model": "claude-sonnet-4-6",
+      "block": 4,
+      "variant": "coding",
+      "acceptancePass": 26,
+      "acceptanceFail": 0,
+      "protectedFixturesUnchanged": true,
+      "generatedSourceMatches": true,
+      "servedModelMatches": true
+    },
+    {
+      "model": "claude-sonnet-4-6",
+      "block": 4,
+      "variant": "lean-full",
+      "acceptancePass": 26,
+      "acceptanceFail": 0,
+      "protectedFixturesUnchanged": true,
+      "generatedSourceMatches": true,
+      "servedModelMatches": true
+    },
+    {
+      "model": "claude-sonnet-4-6",
+      "block": 4,
+      "variant": "full-restricted",
+      "acceptancePass": 26,
+      "acceptanceFail": 0,
+      "protectedFixturesUnchanged": true,
+      "generatedSourceMatches": true,
+      "servedModelMatches": true
+    },
+    {
+      "model": "claude-sonnet-4-6",
+      "block": 4,
+      "variant": "full-controlled",
+      "acceptancePass": 26,
+      "acceptanceFail": 0,
+      "protectedFixturesUnchanged": true,
+      "generatedSourceMatches": true,
+      "servedModelMatches": true
+    },
+    {
+      "model": "claude-sonnet-4-6",
+      "block": 5,
+      "variant": "full-controlled",
+      "acceptancePass": 26,
+      "acceptanceFail": 0,
+      "protectedFixturesUnchanged": true,
+      "generatedSourceMatches": true,
+      "servedModelMatches": true
+    },
+    {
+      "model": "claude-sonnet-4-6",
+      "block": 5,
+      "variant": "full-restricted",
+      "acceptancePass": 26,
+      "acceptanceFail": 0,
+      "protectedFixturesUnchanged": true,
+      "generatedSourceMatches": true,
+      "servedModelMatches": true
+    },
+    {
+      "model": "claude-sonnet-4-6",
+      "block": 5,
+      "variant": "lean-full",
+      "acceptancePass": 26,
+      "acceptanceFail": 0,
+      "protectedFixturesUnchanged": true,
+      "generatedSourceMatches": true,
+      "servedModelMatches": true
+    },
+    {
+      "model": "claude-sonnet-4-6",
+      "block": 5,
+      "variant": "coding",
+      "acceptancePass": 26,
+      "acceptanceFail": 0,
+      "protectedFixturesUnchanged": true,
+      "generatedSourceMatches": true,
+      "servedModelMatches": true
+    },
+    {
+      "model": "claude-sonnet-5-5",
+      "block": 1,
+      "variant": "full-controlled",
+      "acceptancePass": 26,
+      "acceptanceFail": 0,
+      "protectedFixturesUnchanged": true,
+      "generatedSourceMatches": true,
+      "servedModelMatches": true
+    },
+    {
+      "model": "claude-sonnet-5-5",
+      "block": 1,
+      "variant": "full-restricted",
+      "acceptancePass": 26,
+      "acceptanceFail": 0,
+      "protectedFixturesUnchanged": true,
+      "generatedSourceMatches": true,
+      "servedModelMatches": true
+    },
+    {
+      "model": "claude-sonnet-5-5",
+      "block": 1,
+      "variant": "lean-full",
+      "acceptancePass": 26,
+      "acceptanceFail": 0,
+      "protectedFixturesUnchanged": true,
+      "generatedSourceMatches": true,
+      "servedModelMatches": true
+    },
+    {
+      "model": "claude-sonnet-5-5",
+      "block": 1,
+      "variant": "coding",
+      "acceptancePass": 26,
+      "acceptanceFail": 0,
+      "protectedFixturesUnchanged": true,
+      "generatedSourceMatches": true,
+      "servedModelMatches": true
+    },
+    {
+      "model": "claude-sonnet-5-5",
+      "block": 2,
+      "variant": "coding",
+      "acceptancePass": 26,
+      "acceptanceFail": 0,
+      "protectedFixturesUnchanged": true,
+      "generatedSourceMatches": true,
+      "servedModelMatches": true
+    },
+    {
+      "model": "claude-sonnet-5-5",
+      "block": 2,
+      "variant": "lean-full",
+      "acceptancePass": 26,
+      "acceptanceFail": 0,
+      "protectedFixturesUnchanged": true,
+      "generatedSourceMatches": true,
+      "servedModelMatches": true
+    },
+    {
+      "model": "claude-sonnet-5-5",
+      "block": 2,
+      "variant": "full-restricted",
+      "acceptancePass": 26,
+      "acceptanceFail": 0,
+      "protectedFixturesUnchanged": true,
+      "generatedSourceMatches": true,
+      "servedModelMatches": true
+    },
+    {
+      "model": "claude-sonnet-5-5",
+      "block": 2,
+      "variant": "full-controlled",
+      "acceptancePass": 26,
+      "acceptanceFail": 0,
+      "protectedFixturesUnchanged": true,
+      "generatedSourceMatches": true,
+      "servedModelMatches": true
+    },
+    {
+      "model": "claude-sonnet-5-5",
+      "block": 3,
+      "variant": "full-controlled",
+      "acceptancePass": 26,
+      "acceptanceFail": 0,
+      "protectedFixturesUnchanged": true,
+      "generatedSourceMatches": true,
+      "servedModelMatches": true
+    },
+    {
+      "model": "claude-sonnet-5-5",
+      "block": 3,
+      "variant": "full-restricted",
+      "acceptancePass": 26,
+      "acceptanceFail": 0,
+      "protectedFixturesUnchanged": true,
+      "generatedSourceMatches": true,
+      "servedModelMatches": true
+    },
+    {
+      "model": "claude-sonnet-5-5",
+      "block": 3,
+      "variant": "lean-full",
+      "acceptancePass": 26,
+      "acceptanceFail": 0,
+      "protectedFixturesUnchanged": true,
+      "generatedSourceMatches": true,
+      "servedModelMatches": true
+    },
+    {
+      "model": "claude-sonnet-5-5",
+      "block": 3,
+      "variant": "coding",
+      "acceptancePass": 26,
+      "acceptanceFail": 0,
+      "protectedFixturesUnchanged": true,
+      "generatedSourceMatches": true,
+      "servedModelMatches": true
+    },
+    {
+      "model": "claude-sonnet-5-5",
+      "block": 4,
+      "variant": "coding",
+      "acceptancePass": 26,
+      "acceptanceFail": 0,
+      "protectedFixturesUnchanged": true,
+      "generatedSourceMatches": true,
+      "servedModelMatches": true
+    },
+    {
+      "model": "claude-sonnet-5-5",
+      "block": 4,
+      "variant": "lean-full",
+      "acceptancePass": 26,
+      "acceptanceFail": 0,
+      "protectedFixturesUnchanged": true,
+      "generatedSourceMatches": true,
+      "servedModelMatches": true
+    },
+    {
+      "model": "claude-sonnet-5-5",
+      "block": 4,
+      "variant": "full-restricted",
+      "acceptancePass": 26,
+      "acceptanceFail": 0,
+      "protectedFixturesUnchanged": true,
+      "generatedSourceMatches": true,
+      "servedModelMatches": true
+    },
+    {
+      "model": "claude-sonnet-5-5",
+      "block": 4,
+      "variant": "full-controlled",
+      "acceptancePass": 26,
+      "acceptanceFail": 0,
+      "protectedFixturesUnchanged": true,
+      "generatedSourceMatches": true,
+      "servedModelMatches": true
+    },
+    {
+      "model": "claude-sonnet-5-5",
+      "block": 5,
+      "variant": "full-controlled",
+      "acceptancePass": 26,
+      "acceptanceFail": 0,
+      "protectedFixturesUnchanged": true,
+      "generatedSourceMatches": true,
+      "servedModelMatches": true
+    },
+    {
+      "model": "claude-sonnet-5-5",
+      "block": 5,
+      "variant": "full-restricted",
+      "acceptancePass": 26,
+      "acceptanceFail": 0,
+      "protectedFixturesUnchanged": true,
+      "generatedSourceMatches": true,
+      "servedModelMatches": true
+    }
+  ],
+  "implementationHashesVerified": true,
+  "excludedImplementationHashesVerified": true,
+  "repositoryChecks": {
+    "typescript": "passed",
+    "unitTests": {
+      "passed": 228,
+      "skipped": 9,
+      "failed": 0
+    },
+    "diffWhitespace": "passed"
+  }
+}

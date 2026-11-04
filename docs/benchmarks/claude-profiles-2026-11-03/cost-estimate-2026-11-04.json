@@ -1,0 +1,58 @@
+{
+  "asOf": "2026-11-04",
+  "scope": "Retrospective main-agent token estimate using standard first-party API list rates; cache lifetimes were not recorded; not subscription billing or an invoice. No new model calls.",
+  "rows": [
+    {
+      "profile": "full",
+      "estimate": {
+        "model": "claude-sonnet-4-6",
+        "minimumNanoUsd": 229029750,
+        "maximumNanoUsd": 261688500,
+        "unknownCacheWriteTokens": 14515,
+        "price": {
+          "model": "claude-sonnet-4-6",
+          "input": 3,
+          "cacheWrite5m": 3.75,
+          "cacheWrite1h": 6,
+          "cacheRead": 0.3,
+          "output": 15,
+          "source": "https://platform.claude.com/docs/en/about-claude/pricing",
+          "verifiedAt": "2026-11-04",
+          "currency": "USD",
+          "unit": "million-tokens"
+        },
+        "estimated": true,
+        "scope": "main-agent-token-usage"
+      },
+      "recordedToolCalls": 8,
+      "modelSteps": null,
+      "modelStepNote": "Assistant message IDs were not archived; model-step counts cannot be reconstructed from tool calls."
+    },
+    {
+      "profile": "coding",
+      "estimate": {
+        "model": "claude-sonnet-4-6",
+        "minimumNanoUsd": 345906450,
+        "maximumNanoUsd": 416320200,
+        "unknownCacheWriteTokens": 31295,
+        "price": {
+          "model": "claude-sonnet-4-6",
+          "input": 3,
+          "cacheWrite5m": 3.75,
+          "cacheWrite1h": 6,
+          "cacheRead": 0.3,
+          "output": 15,
+          "source": "https://platform.claude.com/docs/en/about-claude/pricing",
+          "verifiedAt": "2026-11-04",
+          "currency": "USD",
+          "unit": "million-tokens"
+        },
+        "estimated": true,
+        "scope": "main-agent-token-usage"
+      },
+      "recordedToolCalls": 7,
+      "modelSteps": null,
+      "modelStepNote": "Assistant message IDs were not archived; model-step counts cannot be reconstructed from tool calls."
+    }
+  ]
+}

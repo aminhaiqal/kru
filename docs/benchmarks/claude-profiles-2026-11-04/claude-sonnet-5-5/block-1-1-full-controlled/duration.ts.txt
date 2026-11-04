@@ -1,0 +1,29 @@
+const UNITS: Record<string, [number, bigint]> = {
+  h: [0, 3600000n],
+  m: [1, 60000n],
+  s: [2, 1000n],
+  ms: [3, 1n],
+};
+
+export function parseDuration(text: string): number {
+  const token = /\s*(\d+)(ms|h|m|s)/y;
+  const end = /\s*$/y;
+  const max = BigInt(Number.MAX_SAFE_INTEGER);
+  let pos = 0;
+  let last = -1;
+  let total = 0n;
+  while (true) {
+    token.lastIndex = pos;
+    const match = token.exec(text);
+    if (!match) break;
+    const [order, factor] = UNITS[match[2]];
+    if (order <= last) throw new RangeError('Invalid duration');
+    last = order;
+    total += BigInt(match[1]) * factor;
+    if (total > max) throw new RangeError('Duration too large');
+    pos = token.lastIndex;
+  }
+  end.lastIndex = pos;
+  if (last < 0 || !end.test(text)) throw new RangeError('Invalid duration');
+  return Number(total);
+}

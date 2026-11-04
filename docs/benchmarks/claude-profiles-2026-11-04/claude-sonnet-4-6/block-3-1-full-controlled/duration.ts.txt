@@ -1,0 +1,30 @@
+export function parseDuration(text: string): number {
+  const MAX = Number.MAX_SAFE_INTEGER;
+  const re = /^\s*(?:(\d+)h\s*)?(?:(\d+)m(?!s)\s*)?(?:(\d+)s\s*)?(?:(\d+)ms\s*)?$/;
+  const match = re.exec(text);
+  if (!match) throw new RangeError('Invalid duration');
+
+  const [, h, m, s, ms] = match;
+  if (h === undefined && m === undefined && s === undefined && ms === undefined) {
+    throw new RangeError('Invalid duration');
+  }
+
+  const components: Array<[string | undefined, number]> = [
+    [h, 3600000],
+    [m, 60000],
+    [s, 1000],
+    [ms, 1],
+  ];
+
+  let total = 0;
+  for (const [raw, multiplier] of components) {
+    if (raw === undefined) continue;
+    const val = Number(raw);
+    if (val > MAX) throw new RangeError('Invalid duration');
+    const contribution = val * multiplier;
+    if (contribution > MAX - total) throw new RangeError('Invalid duration');
+    total += contribution;
+  }
+
+  return total;
+}

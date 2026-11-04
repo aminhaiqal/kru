@@ -1,0 +1,33 @@
+export function parseDuration(text: string): number {
+  const MAX = Number.MAX_SAFE_INTEGER;
+  const unitMult: Record<string, number> = { h: 3600000, m: 60000, s: 1000, ms: 1 };
+  const unitOrder = ['h', 'm', 's', 'ms'];
+
+  const stripped = text.trim();
+  if (!stripped) throw new RangeError('Invalid duration');
+
+  if (stripped.replace(/\d+(ms|[hms])/g, '').trim() !== '')
+    throw new RangeError('Invalid duration');
+
+  const compRe = /(\d+)(ms|[hms])/g;
+  let lastUnitIdx = -1;
+  let total = 0;
+
+  for (let m = compRe.exec(stripped); m !== null; m = compRe.exec(stripped)) {
+    const unit = m[2];
+    const unitIdx = unitOrder.indexOf(unit);
+
+    if (unitIdx <= lastUnitIdx) throw new RangeError('Invalid duration');
+    lastUnitIdx = unitIdx;
+
+    const val = Number(m[1]);
+    const contribution = val * unitMult[unit];
+
+    if (contribution > MAX || total + contribution > MAX)
+      throw new RangeError('Invalid duration');
+
+    total += contribution;
+  }
+
+  return total;
+}

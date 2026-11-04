@@ -1,0 +1,1 @@
+{"phase":"warmup","value":{"kind":"sdk-init","message":"{\"model\":\"claude-sonnet-4-6\",\"version\":\"2.1.317\",\"tools\":[\"Bash\",\"Edit\",\"Glob\",\"Grep\",\"Read\",\"Write\"]}"}}

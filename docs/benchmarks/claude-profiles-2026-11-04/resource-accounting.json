@@ -1,0 +1,11 @@
+{
+  "currency": "USD",
+  "basis": "SDK list-price estimates, not an invoice or subscription charge",
+  "measuredCompleted": 4.901479000000003,
+  "warmupsWithRecordedCost": 0.7226948,
+  "warmupsWithRecordedCostCount": 39,
+  "excludedMeasuredWithRecordedCost": 0.4927658999999999,
+  "excludedWarmupsWithRecordedCost": 0.035866699999999994,
+  "unknown": "The interrupted excluded attempt has an additional in-flight warm-up with no final usage receipt. Failed quota requests have no measured usage receipt; unreported partial usage cannot be priced.",
+  "recordedEstimateSubtotal": 6.152806400000003
+}

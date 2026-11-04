@@ -2,8 +2,8 @@
 
 These decisions refine the scheduler milestone in the
 [Kru project plan](Kru%20%E2%80%94%20Project%20Plan%20%26%20Milestones.pdf).
-They are requirements for M3 and pre-v0.1 work; M2 does not yet implement batching,
-a daemon or idempotency expiry.
+The scheduler and batching are implemented in M3; see the
+[implementation record](m3.md). Idempotency expiry remains pre-v0.1 work.
 
 ## One project database
 
@@ -20,7 +20,9 @@ An initial queue scan is mandatory. A version change triggers queue queries;
 an unchanged value needs no queue scan. Compare samples from the same connection
 only; reopening the connection requires a new baseline and initial scan.
 Local commits do not change that connection's value, so retain `onChange` for
-immediate local wakeups. This follows [SQLite's documented semantics](https://www.sqlite.org/pragma.html#pragma_data_version).
+immediate local wakeups. The Store owns this bus; both mailbox writes and agent
+configuration writes publish after commit. Scheduler subscribers do not need
+manual refresh calls. This follows [SQLite's documented semantics](https://www.sqlite.org/pragma.html#pragma_data_version).
 
 Sample the version before scanning queues and retain that sampled value. A
 concurrent commit during the scan will either be visible in the scan or trigger
@@ -35,7 +37,7 @@ changes the observed value, while local commits and rolled-back writes do not.
 ## One active batch per lane
 
 The invariant is one active **batch**, not one active delivery. Several messages
-can share one turn. M3 adds `claimBatch` to the mailbox port and a new migration
+can share one turn. M3 implements `claimBatch` on the mailbox port and migration v2
 with `deliveries.batch_id` plus a small `active_lanes` table:
 
 ```sql
@@ -43,6 +45,8 @@ CREATE TABLE active_lanes (
   agent_id TEXT NOT NULL REFERENCES agents(id),
   lane_key TEXT NOT NULL,
   batch_id TEXT NOT NULL UNIQUE,
+  turn_id TEXT,
+  started_at TEXT NOT NULL,
   PRIMARY KEY (agent_id, lane_key)
 ) WITHOUT ROWID;
 ```
@@ -68,14 +72,14 @@ release another batch's reservation.
 Known pre-start failures may restore the entire batch to its original queued
 positions and release its reservation atomically. Unknown outcomes become
 interrupted and do not automatically retry. Never steal a reservation solely
-because a timer elapsed. M7 recovery must reconcile interrupted batches and
-release stale reservations before normal scheduling resumes.
+because a timer elapsed. M3 boot recovery marks abandoned batches interrupted and releases their
+reservations before providers start; M7 adds richer reconciliation.
 
-Before switching the scheduler to this API, test competing processes on both
-the main and side lanes, independent lanes progressing in parallel, atomic
-rollback, original queue order after restore, and stale batch releases. Preserve
-`claimNext` for existing consumers, but require it to respect active batch
-reservations once M3 is shipped; all scheduler execution uses `claimBatch`.
+Regression tests cover competing processes on both main and side lanes,
+independent lanes progressing in parallel, atomic rollback, original queue order
+after restore, and stale batch releases. `claimNext` remains available for
+existing consumers and respects active batch reservations. All scheduler
+execution uses `claimBatch`.
 
 ## Idempotency retention before v0.1
 
@@ -98,3 +102,21 @@ Expiry remains disabled in M2. Ship the migration, lookup/pruning logic,
 documentation and boundary/concurrency tests before v0.1. Tests must include the
 30-day boundary, no expiry extension on replay, pinned open attempts, retained
 history, and concurrent reuse after expiry.
+
+
+## Follow-up lifecycle decisions
+
+Codex thread retirement must not kill a healthy shared process. Keep a runtime
+tombstone for the abandoned native thread, cancel any late `turn/started`, and
+suppress its output and requests. Probe with local `config/read` after timeouts;
+only an unanswered probe warrants a shared restart. Claude can terminate its
+individual process. The engine uses the `retireThread` provider port operation.
+
+Heartbeats run every ten seconds; status snapshots write only when they change.
+PID/start identity, not heartbeat age, determines ownership. Boot recovery keeps
+native session bindings so the next delivery can attempt resume.
+
+Budget days default to the host's local timezone, with an explicit daemon
+`--budget-timezone` override. The [first M4 foundation](usage-and-pricing.md) now persists token and estimated-USD
+accounting, including interrupted/unknown-cost turns and restart regressions before
+the broader event/projection work.

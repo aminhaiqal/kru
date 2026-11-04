@@ -1,0 +1,30 @@
+const UNITS: readonly (readonly [string, bigint])[] = [
+  ['h', 3600000n],
+  ['m', 60000n],
+  ['s', 1000n],
+  ['ms', 1n],
+];
+
+export function parseDuration(text: string): number {
+  if (typeof text !== 'string') throw new RangeError('Invalid duration');
+  const re = /\s*(\d+)(ms|h|m|s)/y;
+  const end = text.trimEnd().length;
+  let pos = 0;
+  let lastIndex = -1;
+  let total = 0n;
+  const max = BigInt(Number.MAX_SAFE_INTEGER);
+  // skip leading whitespace is handled by the sticky regex's \s*
+  while (pos < end) {
+    re.lastIndex = pos;
+    const m = re.exec(text);
+    if (!m || re.lastIndex > end) throw new RangeError('Invalid duration');
+    const idx = UNITS.findIndex(([u]) => u === m[2]);
+    if (idx <= lastIndex) throw new RangeError('Invalid duration');
+    lastIndex = idx;
+    total += BigInt(m[1]) * UNITS[idx][1];
+    if (total > max) throw new RangeError('Duration exceeds MAX_SAFE_INTEGER');
+    pos = re.lastIndex;
+  }
+  if (lastIndex < 0) throw new RangeError('Invalid duration');
+  return Number(total);
+}

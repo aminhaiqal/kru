@@ -1,0 +1,41 @@
+export function parseDuration(text: string): number {
+  const unitOrder: Record<string, number> = { h: 0, m: 1, s: 2, ms: 3 };
+  const unitMs: Record<string, number> = { h: 3600000, m: 60000, s: 1000, ms: 1 };
+  const componentRe = /^(\d+)(h|ms|m|s)/;
+
+  const trimmed = text.trim();
+  if (!trimmed) throw new RangeError('Invalid duration');
+
+  let remaining = trimmed;
+  let total = 0;
+  let lastOrder = -1;
+  let parsed = false;
+
+  while (remaining.length > 0) {
+    remaining = remaining.replace(/^\s+/, '');
+    if (!remaining) break;
+
+    const match = componentRe.exec(remaining);
+    if (!match) throw new RangeError('Invalid duration');
+
+    const unit = match[2];
+    const order = unitOrder[unit];
+    if (order <= lastOrder) throw new RangeError('Invalid duration');
+    lastOrder = order;
+
+    const value = Number(match[1]);
+    if (!Number.isSafeInteger(value)) throw new RangeError('Invalid duration');
+
+    const ms = value * unitMs[unit];
+    if (!Number.isSafeInteger(ms)) throw new RangeError('Invalid duration');
+
+    total += ms;
+    if (!Number.isSafeInteger(total)) throw new RangeError('Invalid duration');
+
+    parsed = true;
+    remaining = remaining.slice(match[0].length);
+  }
+
+  if (!parsed) throw new RangeError('Invalid duration');
+  return total;
+}

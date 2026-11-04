@@ -1,0 +1,34 @@
+const UNITS = ['h', 'm', 's', 'ms'] as const;
+const FACTOR: Record<string, bigint> = { h: 3600000n, m: 60000n, s: 1000n, ms: 1n };
+
+export function parseDuration(text: string): number {
+  if (typeof text !== 'string') throw new RangeError('Invalid duration');
+  const re = /(\d+)(ms|h|m|s)/y;
+  const ws = /\s*/y;
+  const max = BigInt(Number.MAX_SAFE_INTEGER);
+  let pos = 0;
+  let lastIndex = -1;
+  let total = 0n;
+  let count = 0;
+
+  ws.lastIndex = 0;
+  ws.exec(text);
+  pos = ws.lastIndex;
+
+  while (pos < text.length) {
+    re.lastIndex = pos;
+    const m = re.exec(text);
+    if (!m) throw new RangeError('Invalid duration');
+    const idx = UNITS.indexOf(m[2] as (typeof UNITS)[number]);
+    if (idx <= lastIndex) throw new RangeError('Invalid duration');
+    lastIndex = idx;
+    total += BigInt(m[1]) * FACTOR[m[2]];
+    if (total > max) throw new RangeError('Duration exceeds MAX_SAFE_INTEGER');
+    count++;
+    ws.lastIndex = re.lastIndex;
+    ws.exec(text);
+    pos = ws.lastIndex;
+  }
+  if (count === 0) throw new RangeError('Invalid duration');
+  return Number(total);
+}

@@ -1,11 +1,9 @@
 # Kru
 
 Kru is a headless, local-first engine for running AI agent CLIs as persistent
-teammates. **M0–M2 are implemented:** a generic JSON-RPC transport, a typed
+teammates. **M0–M3 are implemented:** a generic JSON-RPC transport, a typed
 provider port with fake, Codex and Claude adapters, streaming terminal chat,
-and a durable SQLite mailbox.
-
-Scheduling comes in M3.
+a durable SQLite mailbox, and a daemon with lane scheduling and batching.
 The roadmap is in [the project plan](docs/Kru%20%E2%80%94%20Project%20Plan%20%26%20Milestones.pdf).
 
 ## Try M0
@@ -98,8 +96,14 @@ See [OpenAI's sandbox and approvals documentation](https://learn.chatgpt.com/doc
 Claude's `full` profile uses the native Claude Code prompt and standard tools,
 loads project/local settings and CLAUDE.md, and retains native context attachments.
 It supplies the baseline for measuring the custom `coding` profile. Run
-`bun run benchmark:claude-profiles` for an opt-in comparison using the same model,
-task and tests in two fresh workspaces (uses the existing Claude login/quota).
+`bun run benchmark:claude-profiles --plan` to preview five counterbalanced blocks
+on legacy Sonnet 4.6 and current Sonnet 5.5. Add `--run` to execute the controlled
+prompt/tool variants with a recorded warm-up and median/range reports (uses the
+existing Claude login/quota). See the [benchmark protocol](docs/benchmarks/profile-factorial-protocol.md).
+The [2026-11-04 results](docs/benchmarks/claude-profiles-2026-11-04/README.md)
+contain 38 passing measured runs and two quota failures. Coding reduced input on
+both models; estimated cost increased on Sonnet 4.6 and decreased on the four
+completed Sonnet 5.5 pairs. Coding remains opt-in.
 
 All three adapters use the same chat consumer and conformance suite, including
 explicit prefix-stability and context-budget tests. Default Codex views share one
@@ -125,10 +129,50 @@ ask you to initialize one. Use `--db <path>` or `KRU_DB` to override discovery. 
 the first receipt; using it with different content is refused.
 `send reviewer,coder "review this"` creates one message with independent deliveries.
 
-M2 stores work and enforces delivery transitions. It does not run queued work;
-M3 adds the scheduler. `chat` remains the direct M1 chat command.
+M2 stores work and enforces delivery transitions. The M3 daemon runs queued work.
+`chat` remains the direct M1 chat command.
 See [M2 implementation notes](docs/m2.md) for the mailbox port, state machine,
 migrations, CLI options and acceptance coverage.
+
+## Try M3
+
+```sh
+bun run dev -- daemon
+# Leave running; in another terminal in the same project:
+bun run dev -- send reviewer "review the latest commit"
+bun run dev -- status
+bun run dev -- status --json
+
+bun run dev -- agent pause reviewer
+bun run dev -- agent set reviewer --daily-tokens 200000
+bun run dev -- agent resume reviewer
+```
+
+Use the fake agent created above to try scheduling without credentials. The
+single daemon watches committed work from other terminals, runs up to two turns
+at once, and batches consecutive user messages in each lane. `status` explains
+paused, provider readiness, lane, budget and slot holds. Budget days use local
+time by default; `daemon --budget-timezone Asia/Kuala_Lumpur` sets an explicit
+zone. Daemon counters and estimated token costs now persist in the [usage ledger](docs/usage-and-pricing.md). Every turn has a delivery behind it; uncertain turns become
+interrupted and require an explicit retry. Stop the daemon with Ctrl+C.
+
+See [M3 implementation notes](docs/m3.md) for session bindings, atomic batches,
+shutdown, crash recovery, command options and acceptance tests.
+
+## Cost and dollar budgets
+
+```sh
+bun run dev -- agent set coder --model claude-sonnet-5-5 --prompt-profile full
+bun run dev -- agent set coder --daily-tokens 200000 --daily-usd 2.00
+bun run dev -- cost
+bun run dev -- cost --agent coder --json
+```
+
+Both limits apply and survive daemon restarts. Costs are estimated main-agent
+token costs at dated list prices, with separate cache-read and write-lifetime
+rates. Missing lifetimes produce a range; the dollar gate uses its upper bound.
+Unknown/unpriced usage is held rather than assumed free. These are not hard caps
+on all account charges. See [pricing and ledger scope](docs/usage-and-pricing.md).
 
 ## Transport API
 
@@ -205,7 +249,7 @@ See [M0 implementation notes](docs/m0.md) for lifecycle behavior and test covera
 
 ## Versioning
 
-The current release is **0.0.4**, tagged `v0.0.4`. `package.json` is the source
+The current release is **0.0.5**, tagged `v0.0.5`. `package.json` is the source
 of the version printed by `kru --version` (or `bun run dev -- --version`).
 Each release records its changes in [CHANGELOG.md](CHANGELOG.md) and receives
 an annotated Git tag matching the package version.
@@ -221,6 +265,8 @@ bun run typecheck  # strict TypeScript
 bun run check      # both; also run in CI
 bun run test:mailbox # M2 store, mailbox acceptance and CLI tests
 bun run test:mailbox:repeat # repeat every M2 test ten times
+bun run test:scheduler # M3 scheduler, batch, daemon CLI and migration tests
+bun run test:scheduler:repeat # repeat every M3 test ten times
 bun run test:codex # optional: real initialize + tool registration, no model call
 bun run test:providers # fake, Codex and Claude conformance; no model or credentials
 bun run test:codex-chat # opt-in: real Codex model turns

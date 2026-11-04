@@ -1,0 +1,15 @@
+const PATTERN = /^(?:(\d+)h)?\s*(?:(\d+)m(?!s))?\s*(?:(\d+)s)?\s*(?:(\d+)ms)?$/;
+const FACTORS = [3600000n, 60000n, 1000n, 1n];
+
+export function parseDuration(text: string): number {
+  const trimmed = typeof text === 'string' ? text.trim() : '';
+  const match = PATTERN.exec(trimmed);
+  if (!trimmed || !match) throw new RangeError('Invalid duration');
+  let total = 0n;
+  for (let i = 0; i < 4; i++) {
+    const part = match[i + 1];
+    if (part !== undefined) total += BigInt(part) * FACTORS[i];
+  }
+  if (total > BigInt(Number.MAX_SAFE_INTEGER)) throw new RangeError('Duration too large');
+  return Number(total);
+}

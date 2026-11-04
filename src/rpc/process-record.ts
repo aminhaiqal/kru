@@ -14,7 +14,7 @@ export interface RpcProcessRecord {
   childStartIdentity: string | null;
 }
 
-function processStartIdentity(pid: number): string | null {
+export function processStartIdentity(pid: number): string | null {
   try {
     if (process.platform === "linux") {
       const stat = readFileSync(`/proc/${pid}/stat`, "utf8");

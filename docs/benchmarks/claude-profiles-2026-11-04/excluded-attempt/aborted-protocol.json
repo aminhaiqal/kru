@@ -1,0 +1,5 @@
+{
+  "at": "2026-11-04T13:03:28.305862+00:00",
+  "reason": "Warm-up text says not to solve the task that follows. This introduces a conflicting instruction for the measured turn. The whole attempt is excluded before analyzing performance; preserve all available evidence.",
+  "replacement": "Warm-up instructions apply only to the warm-up turn; exact text will be recorded in the new plan."
+}

@@ -1,0 +1,292 @@
+{
+  "id": "0cd43f38-fde9-4f22-9967-ebf7cea03c89",
+  "warmupPrompt": "This turn is only a cache warm-up. Reply READY without using tools or changing files.",
+  "models": [
+    "claude-sonnet-4-6",
+    "claude-sonnet-5-5"
+  ],
+  "pairs": 5,
+  "measuredRuns": 40,
+  "warmupRuns": 40,
+  "cacheControl": "One READY-only warm-up in each fresh session before the measured task; warm-up usage/cost reported separately.",
+  "common": {
+    "settingSources": [],
+    "clientComposed": true,
+    "autoMemoryDisabled": true,
+    "permissions": "workspace-write/on-request",
+    "task": "archived duration-parser fixture"
+  },
+  "design": "Blocked 2x2 prompt/tool factorial. Reverse all four treatments in alternating blocks. full-controlled differs from production full: settings and context composition are normalized to coding.",
+  "contrasts": [
+    {
+      "a": "full-controlled",
+      "b": "full-restricted",
+      "factor": "tools"
+    },
+    {
+      "a": "full-controlled",
+      "b": "lean-full",
+      "factor": "system prompt"
+    },
+    {
+      "a": "full-restricted",
+      "b": "coding",
+      "factor": "system prompt"
+    },
+    {
+      "a": "lean-full",
+      "b": "coding",
+      "factor": "tools"
+    },
+    {
+      "a": "full-controlled",
+      "b": "coding",
+      "factor": "combined: no single-factor attribution"
+    }
+  ],
+  "runs": [
+    {
+      "model": "claude-sonnet-4-6",
+      "block": 1,
+      "position": 1,
+      "variant": "full-controlled"
+    },
+    {
+      "model": "claude-sonnet-4-6",
+      "block": 1,
+      "position": 2,
+      "variant": "full-restricted"
+    },
+    {
+      "model": "claude-sonnet-4-6",
+      "block": 1,
+      "position": 3,
+      "variant": "lean-full"
+    },
+    {
+      "model": "claude-sonnet-4-6",
+      "block": 1,
+      "position": 4,
+      "variant": "coding"
+    },
+    {
+      "model": "claude-sonnet-4-6",
+      "block": 2,
+      "position": 1,
+      "variant": "coding"
+    },
+    {
+      "model": "claude-sonnet-4-6",
+      "block": 2,
+      "position": 2,
+      "variant": "lean-full"
+    },
+    {
+      "model": "claude-sonnet-4-6",
+      "block": 2,
+      "position": 3,
+      "variant": "full-restricted"
+    },
+    {
+      "model": "claude-sonnet-4-6",
+      "block": 2,
+      "position": 4,
+      "variant": "full-controlled"
+    },
+    {
+      "model": "claude-sonnet-4-6",
+      "block": 3,
+      "position": 1,
+      "variant": "full-controlled"
+    },
+    {
+      "model": "claude-sonnet-4-6",
+      "block": 3,
+      "position": 2,
+      "variant": "full-restricted"
+    },
+    {
+      "model": "claude-sonnet-4-6",
+      "block": 3,
+      "position": 3,
+      "variant": "lean-full"
+    },
+    {
+      "model": "claude-sonnet-4-6",
+      "block": 3,
+      "position": 4,
+      "variant": "coding"
+    },
+    {
+      "model": "claude-sonnet-4-6",
+      "block": 4,
+      "position": 1,
+      "variant": "coding"
+    },
+    {
+      "model": "claude-sonnet-4-6",
+      "block": 4,
+      "position": 2,
+      "variant": "lean-full"
+    },
+    {
+      "model": "claude-sonnet-4-6",
+      "block": 4,
+      "position": 3,
+      "variant": "full-restricted"
+    },
+    {
+      "model": "claude-sonnet-4-6",
+      "block": 4,
+      "position": 4,
+      "variant": "full-controlled"
+    },
+    {
+      "model": "claude-sonnet-4-6",
+      "block": 5,
+      "position": 1,
+      "variant": "full-controlled"
+    },
+    {
+      "model": "claude-sonnet-4-6",
+      "block": 5,
+      "position": 2,
+      "variant": "full-restricted"
+    },
+    {
+      "model": "claude-sonnet-4-6",
+      "block": 5,
+      "position": 3,
+      "variant": "lean-full"
+    },
+    {
+      "model": "claude-sonnet-4-6",
+      "block": 5,
+      "position": 4,
+      "variant": "coding"
+    },
+    {
+      "model": "claude-sonnet-5-5",
+      "block": 1,
+      "position": 1,
+      "variant": "full-controlled"
+    },
+    {
+      "model": "claude-sonnet-5-5",
+      "block": 1,
+      "position": 2,
+      "variant": "full-restricted"
+    },
+    {
+      "model": "claude-sonnet-5-5",
+      "block": 1,
+      "position": 3,
+      "variant": "lean-full"
+    },
+    {
+      "model": "claude-sonnet-5-5",
+      "block": 1,
+      "position": 4,
+      "variant": "coding"
+    },
+    {
+      "model": "claude-sonnet-5-5",
+      "block": 2,
+      "position": 1,
+      "variant": "coding"
+    },
+    {
+      "model": "claude-sonnet-5-5",
+      "block": 2,
+      "position": 2,
+      "variant": "lean-full"
+    },
+    {
+      "model": "claude-sonnet-5-5",
+      "block": 2,
+      "position": 3,
+      "variant": "full-restricted"
+    },
+    {
+      "model": "claude-sonnet-5-5",
+      "block": 2,
+      "position": 4,
+      "variant": "full-controlled"
+    },
+    {
+      "model": "claude-sonnet-5-5",
+      "block": 3,
+      "position": 1,
+      "variant": "full-controlled"
+    },
+    {
+      "model": "claude-sonnet-5-5",
+      "block": 3,
+      "position": 2,
+      "variant": "full-restricted"
+    },
+    {
+      "model": "claude-sonnet-5-5",
+      "block": 3,
+      "position": 3,
+      "variant": "lean-full"
+    },
+    {
+      "model": "claude-sonnet-5-5",
+      "block": 3,
+      "position": 4,
+      "variant": "coding"
+    },
+    {
+      "model": "claude-sonnet-5-5",
+      "block": 4,
+      "position": 1,
+      "variant": "coding"
+    },
+    {
+      "model": "claude-sonnet-5-5",
+      "block": 4,
+      "position": 2,
+      "variant": "lean-full"
+    },
+    {
+      "model": "claude-sonnet-5-5",
+      "block": 4,
+      "position": 3,
+      "variant": "full-restricted"
+    },
+    {
+      "model": "claude-sonnet-5-5",
+      "block": 4,
+      "position": 4,
+      "variant": "full-controlled"
+    },
+    {
+      "model": "claude-sonnet-5-5",
+      "block": 5,
+      "position": 1,
+      "variant": "full-controlled"
+    },
+    {
+      "model": "claude-sonnet-5-5",
+      "block": 5,
+      "position": 2,
+      "variant": "full-restricted"
+    },
+    {
+      "model": "claude-sonnet-5-5",
+      "block": 5,
+      "position": 3,
+      "variant": "lean-full"
+    },
+    {
+      "model": "claude-sonnet-5-5",
+      "block": 5,
+      "position": 4,
+      "variant": "coding"
+    }
+  ],
+  "pricingVerifiedAt": "2026-11-04",
+  "execution": true,
+  "sdk": "0.3.317"
+}

@@ -1,0 +1,54 @@
+{
+  "recordedAt": "2026-11-04T13:01:25.050407+00:00",
+  "gitHead": "0ea4d6657a99f1757ba23290afc47189db33637c",
+  "workingTreeHasUncommittedChanges": true,
+  "bunVersion": "1.4.4",
+  "platform": "Darwin",
+  "architecture": "arm64",
+  "files": [
+    {
+      "path": "scripts/claude-profile-benchmark.ts",
+      "sha256": "7dff36c4bb1027a75fd670d4680c0635b6452932ae355cb2f3459207e0c87236"
+    },
+    {
+      "path": "scripts/benchmark-support.ts",
+      "sha256": "b56b072495739e15245e2a6a2b16b242f83c5258bc2d67f6d4cf4d7ee91be50b"
+    },
+    {
+      "path": "src/providers/claude/adapter.ts",
+      "sha256": "cf1ffa8723c432392c45716bdcc90135e14e0c1bc84e69cd3aec4c8e444c0624"
+    },
+    {
+      "path": "src/providers/claude/input-queue.ts",
+      "sha256": "966b5c5c51ca9b3a51340f84303f9f96ef73d0464590dfc424506bace6c819ed"
+    },
+    {
+      "path": "src/providers/base.ts",
+      "sha256": "a8e2017ba85902c723c56cb7d5cf0af6a32c35590e07422d933a51a1b4a632ae"
+    },
+    {
+      "path": "src/providers/protocol.ts",
+      "sha256": "6265c52d5db7602bf97ff278baea8b12ffc6b11cf87fc6580a834d6ff161b670"
+    },
+    {
+      "path": "src/providers/prompt-profile.ts",
+      "sha256": "3f5883dfbc992c604ba9c289a136636bf1a3d2673c4760f775ba7d32ad39a367"
+    },
+    {
+      "path": "src/providers/token-usage.ts",
+      "sha256": "3a4f8f5cbb3ab75e5bd4296bf25b6884cae7575b6a1234f8fa2321bb40230619"
+    },
+    {
+      "path": "src/providers/permissions.ts",
+      "sha256": "de26e3b8aaff8fcbfc89e45860361f56126bdea6e344b95fc2fb1c2af3b2a497"
+    },
+    {
+      "path": "src/chat/turn.ts",
+      "sha256": "5646418a3992a509f807877aed936d8f8bcd9f3a2c2b910f529bc20927e719f5"
+    },
+    {
+      "path": "src/usage/pricing.ts",
+      "sha256": "ca6782498ac8276da21b9b8eae63d06422a342fabb660d05f41914ea1c68b28a"
+    }
+  ]
+}

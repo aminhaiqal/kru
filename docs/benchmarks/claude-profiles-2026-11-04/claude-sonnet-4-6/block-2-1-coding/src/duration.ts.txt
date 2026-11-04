@@ -1,0 +1,63 @@
+export function parseDuration(text: string): number {
+  const UNITS: { unit: string; mult: number }[] = [
+    { unit: 'h',  mult: 3_600_000 },
+    { unit: 'm',  mult:    60_000 },
+    { unit: 's',  mult:     1_000 },
+    { unit: 'ms', mult:         1 },
+  ];
+
+  const MAX = Number.MAX_SAFE_INTEGER;
+
+  // Strip leading/trailing whitespace then reject empty
+  const trimmed = text.trim();
+  if (trimmed === '') throw new RangeError('Invalid duration: empty input');
+
+  // ms must precede m in the alternation so the regex prefers the longer unit
+  const componentRe = /^(\d+)(h|ms|m|s)/;
+
+  let remaining = trimmed;
+  let total = 0;
+  let lastUnitIndex = -1;
+
+  while (remaining.length > 0) {
+    const match = componentRe.exec(remaining);
+    if (!match) throw new RangeError('Invalid duration: unexpected input');
+
+    const valueStr = match[1];
+    const unitStr  = match[2];
+
+    const unitIndex = UNITS.findIndex(u => u.unit === unitStr);
+
+    // Strictly descending order (also rejects duplicates)
+    if (unitIndex <= lastUnitIndex) {
+      throw new RangeError('Invalid duration: out-of-order or duplicate unit');
+    }
+    lastUnitIndex = unitIndex;
+
+    const value = Number(valueStr);
+
+    // Guard: value itself must not exceed MAX
+    if (value > MAX) throw new RangeError('Invalid duration: component value exceeds MAX_SAFE_INTEGER');
+
+    const mult = UNITS[unitIndex].mult;
+
+    // Guard: value * mult must not exceed MAX (avoid IEEE drift by integer division)
+    if (value > Math.floor(MAX / mult)) {
+      throw new RangeError('Invalid duration: total exceeds MAX_SAFE_INTEGER');
+    }
+    const contribution = value * mult;
+
+    // Guard: running total must not exceed MAX
+    if (contribution > MAX - total) {
+      throw new RangeError('Invalid duration: total exceeds MAX_SAFE_INTEGER');
+    }
+    total += contribution;
+
+    // Consume matched text then skip optional inter-component whitespace
+    remaining = remaining.slice(match[0].length).replace(/^\s+/, '');
+  }
+
+  // We always enter the loop at least once (trimmed is non-empty) and any
+  // failure to match a component throws, so reaching here means we parsed ≥1.
+  return total;
+}

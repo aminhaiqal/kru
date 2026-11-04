@@ -64,7 +64,12 @@ async function handle(message: Record<string, unknown>) {
     } else {
       if (!acknowledged) throw new Error('Not initialized');
       const p = message.params as Record<string, unknown>;
-      if (message.method === 'thread/start' || message.method === 'thread/resume') {
+      if (message.method === 'config/read') {
+        if (process.env.KRU_CONFIG_READ_MODE === 'hang') return;
+        if (process.env.KRU_CONFIG_READ_DELAY_MS) await Bun.sleep(Number(process.env.KRU_CONFIG_READ_DELAY_MS));
+        if (process.env.KRU_CONFIG_READ_MODE === 'error') throw new RpcResponseError(-32603, 'Scripted config read error');
+        result = { config: {} };
+      } else if (message.method === 'thread/start' || message.method === 'thread/resume') {
         if (typeof p.baseInstructions !== 'string' || Buffer.byteLength(p.baseInstructions) >= 8192) throw new Error('Invalid instruction budget');
         if (!['never', 'on-request'].includes(String(p.approvalPolicy)) || !['read-only', 'workspace-write'].includes(String(p.sandbox))) throw new Error('Invalid agent permissions');
         const tools = p.dynamicTools as { type: string; name: string; description: string; inputSchema: Record<string, unknown> }[] | undefined;
@@ -74,10 +79,22 @@ async function handle(message: Record<string, unknown>) {
           permissions: { sandbox: p.sandbox as 'read-only' | 'workspace-write', approvalPolicy: p.approvalPolicy as 'on-request' | 'never',
             writableRoots: ((p.config as Record<string, unknown> | undefined)?.['sandbox_workspace_write.writable_roots'] ?? []) as string[] },
         });
-      } else result = await provider.request(message.method as keyof Methods, p as unknown as Methods['turn/start']['params']);
+      } else {
+        if (message.method === 'turn/start' && (p.input as { text?: string }[] | undefined)?.[0]?.text === 'late-start') {
+          await Bun.sleep(Number(process.env.KRU_LATE_START_MS ?? 250));
+        }
+        result = await provider.request(message.method as keyof Methods, p as unknown as Methods['turn/start']['params']);
+      }
     }
     if (message.method === 'turn/start') {
       const p = message.params as Methods['turn/start']['params'];
+      if (p.input[0]?.text === 'late-start') {
+        const turnId = (result as Methods['turn/start']['result']).turn.id;
+        send({ method: 'item/agentMessage/delta', params: { threadId: p.threadId, turnId, itemId: 'late', delta: 'discard this output' } });
+        for (let i = 0; i < 3; i++) send({ method: 'item/agentMessage/delta', params: { threadId: p.threadId, turnId, itemId: 42, delta: false } });
+        send({ id: `late-approval-${id}`, method: 'item/commandExecution/requestApproval', params: { threadId: p.threadId, turnId, command: 'echo late' } });
+        send({ id: `late-tool-${id}`, method: 'item/tool/call', params: { threadId: p.threadId, turnId, callId: 'late-tool', tool: 'late_tool', arguments: {} } });
+      }
       const nativeCommand = p.input[0]?.text.match(/^native-command:(quiet|post-quiet|output|progress)$/);
       if (nativeCommand) {
         const turnId = (result as Methods['turn/start']['result']).turn.id;
@@ -85,7 +102,7 @@ async function handle(message: Record<string, unknown>) {
           const command = nativeCommand[1];
           const params = { threadId: p.threadId, turnId, item: { id: 'quiet-command', type: 'commandExecution' } };
           if (command === 'quiet' || command === 'post-quiet') {
-            send({ method: 'item/started', params }); await Bun.sleep(240);
+            send({ method: 'item/started', params }); await Bun.sleep(Number(process.env.KRU_NATIVE_COMMAND_DELAY_MS ?? 240));
             send({ method: 'item/completed', params });
           } else for (let i = 0; i < 12; i++) {
             send({ method: command === 'output' ? 'item/commandExecution/outputDelta' : 'item/mcpToolCall/progress', params: { threadId: p.threadId, turnId, itemId: 'quiet-command', delta: '.', progress: i } });

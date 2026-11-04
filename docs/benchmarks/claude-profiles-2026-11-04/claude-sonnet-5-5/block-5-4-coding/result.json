@@ -1,0 +1,84 @@
+{
+  "model": "claude-sonnet-5-5",
+  "block": 5,
+  "position": 4,
+  "variant": "coding",
+  "passed": false,
+  "cacheControl": "One READY-only warm-up in each fresh session before the measured task; warm-up usage/cost reported separately.",
+  "treatment": {
+    "systemPrompt": "You are a Kru coding teammate. Inspect relevant code, make focused changes, and verify them. Use the supplied tools when needed. Report changes, checks, and unresolved failures honestly.",
+    "tools": [
+      "Read",
+      "Edit",
+      "Bash",
+      "Write",
+      "Glob",
+      "Grep"
+    ],
+    "settingSources": []
+  },
+  "error": "You've hit your 5-hour limit · resets 1:50am (Asia/Kuala_Lumpur)",
+  "reply": "",
+  "events": [
+    {
+      "phase": "warmup",
+      "value": {
+        "kind": "sdk-init",
+        "message": "{\"model\":\"claude-sonnet-5-5\",\"version\":\"2.1.317\",\"tools\":[\"Bash\",\"Edit\",\"Glob\",\"Grep\",\"Read\",\"Write\"]}"
+      }
+    },
+    {
+      "phase": "warmup",
+      "value": {
+        "method": "item/started",
+        "params": {
+          "threadId": "4ea371d2-3129-4d78-9cc1-7c473f0adee1",
+          "turnId": "04f8712c-5f07-4001-96d5-c5907721f79e",
+          "item": {
+            "id": "f889ceb7-5ea4-4ee1-ab7c-302017a7cc0c:0",
+            "type": "agentMessage",
+            "text": ""
+          }
+        }
+      }
+    },
+    {
+      "phase": "warmup",
+      "value": {
+        "method": "thread/tokenUsage/updated",
+        "params": {
+          "threadId": "4ea371d2-3129-4d78-9cc1-7c473f0adee1",
+          "turnId": "04f8712c-5f07-4001-96d5-c5907721f79e",
+          "tokenUsage": {
+            "model": "claude-sonnet-5-5",
+            "modelSteps": 1,
+            "toolCalls": 0,
+            "last": {
+              "inputTotal": 0,
+              "cachedRead": 0,
+              "cacheWrite": 0,
+              "output": 0,
+              "totalTokens": 0,
+              "cacheWriteByLifetime": {
+                "fiveMinutes": 0,
+                "oneHour": 0
+              }
+            },
+            "total": {
+              "inputTotal": 0,
+              "cachedRead": 0,
+              "cacheWrite": 0,
+              "output": 0,
+              "totalTokens": 0,
+              "cacheWriteByLifetime": {
+                "fiveMinutes": 0,
+                "oneHour": 0
+              }
+            },
+            "modelContextWindow": null
+          }
+        }
+      }
+    }
+  ]
+}

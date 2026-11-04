@@ -1,0 +1,19 @@
+const PATTERN = /^\s*(?:(\d+)h\s*)?(?:(\d+)m(?!s)\s*)?(?:(\d+)s\s*)?(?:(\d+)ms\s*)?$/;
+const FACTORS = [3_600_000n, 60_000n, 1_000n, 1n];
+const MAX = BigInt(Number.MAX_SAFE_INTEGER);
+
+export function parseDuration(text: string): number {
+  const match = typeof text === 'string' ? PATTERN.exec(text) : null;
+  if (!match) throw new RangeError('Invalid duration');
+  let total = 0n;
+  let found = false;
+  for (let i = 0; i < 4; i++) {
+    const part = match[i + 1];
+    if (part === undefined) continue;
+    found = true;
+    total += BigInt(part) * FACTORS[i];
+    if (total > MAX) throw new RangeError('Duration too large');
+  }
+  if (!found) throw new RangeError('Invalid duration');
+  return Number(total);
+}

@@ -6,6 +6,10 @@ import { SqliteMailbox } from '../mailbox';
 export const mailboxUsage = `Usage: kru init [--db <path>]
        kru agent create <name> --provider fake|codex|claude [--cwd <path>]
        kru agent list
+       kru agent set <agent> [--daily-tokens <count>] [--daily-usd <dollars>] [--provider fake|codex|claude] [--cwd <path>]
+                            [--model <name>] [--prompt-profile minimal|coding|full]
+                            [--sandbox read-only|workspace-write] [--approval-policy on-request|never]
+       kru agent pause|resume <agent>
        kru send <agent[,agent...]> <text> [--lane <id>] [--reply-to <message>] [--expects-reply] [--idempotency-key <key>]
        kru queue <agent> [--lane <id> | --main]
        kru cancel <delivery>
@@ -22,7 +26,7 @@ export function mailboxCommand(args: string[]): number {
   const options = new Map<string, string>();
   const flags = new Set<string>();
   const command = args[0];
-  const valid = new Set(command === 'agent' ? ['--db', '--provider', '--cwd']
+  const valid = new Set(command === 'agent' ? ['--db', '--provider', '--cwd', '--daily-tokens', '--daily-usd', '--model', '--prompt-profile', '--sandbox', '--approval-policy', '--instructions']
     : command === 'send' ? ['--db', '--lane', '--reply-to', '--idempotency-key']
     : command === 'queue' ? ['--db', '--lane'] : ['--db']);
   for (let i = 0; i < args.length; i++) {
@@ -44,9 +48,15 @@ export function mailboxCommand(args: string[]): number {
   if (command === 'init') {
     if (words.length !== 1) throw new Error(mailboxUsage);
   } else if (command === 'agent') {
-    if (words[1] === 'create' && words.length === 3) {
-      if (!['fake', 'codex', 'claude'].includes(options.get('--provider') ?? '')) throw new Error('Expected --provider fake|codex|claude');
-    } else if (words[1] !== 'list' || words.length !== 2 || options.has('--provider') || options.has('--cwd')) throw new Error(mailboxUsage);
+    const action = words[1];
+    if (action === 'create' || action === 'set') {
+      if (words.length !== 3) throw new Error(mailboxUsage);
+      if ((action === 'create' || options.has('--provider')) && !['fake', 'codex', 'claude'].includes(options.get('--provider') ?? '')) throw new Error('Expected --provider fake|codex|claude');
+      if (action === 'set' && [...options.keys()].every(k => k === '--db')) throw new Error('Provide an agent setting to change');
+      if (options.has('--daily-tokens') && (!Number.isSafeInteger(Number(options.get('--daily-tokens'))) || Number(options.get('--daily-tokens')) < 0)) throw new Error('dailyTokens must be a nonnegative safe integer');
+    } else if (action === 'pause' || action === 'resume') {
+      if (words.length !== 3 || [...options.keys()].some(k => k !== '--db')) throw new Error(mailboxUsage);
+    } else if (action !== 'list' || words.length !== 2 || [...options.keys()].some(k => k !== '--db')) throw new Error(mailboxUsage);
   } else if (command === 'send' ? words.length < 3 : words.length !== 2) throw new Error(mailboxUsage);
 
   const path = command === 'init' ? initializeDatabasePath(options.get('--db')) : resolveDatabasePath(options.get('--db'));
@@ -61,10 +71,24 @@ export function mailboxCommand(args: string[]): number {
       return agent.id;
     };
     if (command === 'agent') {
-      if (words[1] === 'create') {
-        const agent = agents.create({ name: words[2]!, provider: options.get('--provider')!,
-          config: { cwd: resolve(options.get('--cwd') ?? process.cwd()) } });
-        console.log(`created agent ${agent.name} ${agent.id} provider=${agent.provider}`);
+      const action = words[1];
+      if (action === 'create' || action === 'set' || action === 'pause' || action === 'resume') {
+        const current = action === 'create' ? null : agents.get(agentId(words[2]!))!;
+        const config: Record<string, unknown> = {};
+        if (action === 'create' || options.has('--cwd')) config.cwd = resolve(options.get('--cwd') ?? process.cwd());
+        if (options.has('--daily-tokens')) config.dailyTokens = Number(options.get('--daily-tokens'));
+        if (options.has('--daily-usd')) config.dailyUsd = Number(options.get('--daily-usd'));
+        for (const [flag, key] of [['--model', 'model'], ['--prompt-profile', 'promptProfile'], ['--instructions', 'instructions']] as const) {
+          if (options.has(flag)) config[key] = options.get(flag);
+        }
+        if (options.has('--sandbox') || options.has('--approval-policy')) config.permissions = {
+          ...(options.has('--sandbox') ? { sandbox: options.get('--sandbox') } : {}),
+          ...(options.has('--approval-policy') ? { approvalPolicy: options.get('--approval-policy') } : {}),
+        };
+        if (action === 'pause' || action === 'resume') config.paused = action === 'pause';
+        const agent = action === 'create' ? agents.create({ name: words[2]!, provider: options.get('--provider')!, config })
+          : agents.update(current!.id, { config, ...(options.has('--provider') ? { provider: options.get('--provider')! } : {}) });
+        console.log(`${action === 'create' ? 'created' : 'updated'} agent ${agent.name} ${agent.id} provider=${agent.provider}`);
       } else {
         for (const agent of agents.list()) console.log(`${agent.id} ${JSON.stringify(agent.name)} ${agent.provider}`);
       }

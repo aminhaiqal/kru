@@ -50,3 +50,23 @@ test('Claude separates per-turn cache counts from cumulative resumed-session usa
     }
   } finally { await provider.stop(); }
 });
+
+test('Claude reports cache lifetimes and counts unique model steps and tool calls per turn', async () => {
+  const provider = new ClaudeProvider({ query: args => {
+    const source = scriptedClaude()(args);
+    return { interrupt: () => source.interrupt(), close: () => source.close(), async *[Symbol.asyncIterator]() {
+      yield { type: 'system', subtype: 'init', session_id: 'fixture', model: 'claude-sonnet-5-5', claude_code_version: 'fixture', tools: ['Read', 'Bash'] } as unknown as import('@anthropic-ai/claude-agent-sdk').SDKMessage;
+      for await (const message of source) {
+        if (message.type === 'result') yield { ...message, usage: { ...message.usage,
+          cache_creation: { ephemeral_5m_input_tokens: 10, ephemeral_1h_input_tokens: 20 } } };
+        else { yield message; if (message.type === 'assistant') yield message; }
+      }
+    } };
+  } });
+  try {
+    await provider.start(); const { thread } = await provider.request('thread/start', {});
+    const result = await runChatTurn(provider, thread.id, 'native-tool');
+    expect(result.usage).toMatchObject({ model: 'claude-sonnet-5-5', modelSteps: 2, toolCalls: 1,
+      last: { cacheWrite: 30, cacheWriteByLifetime: { fiveMinutes: 10, oneHour: 20 } } });
+  } finally { await provider.stop(); }
+});

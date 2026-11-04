@@ -1,0 +1,62 @@
+{
+  "claude-sonnet-4-6": {
+    "model": "claude-sonnet-4-6",
+    "input": 3,
+    "cacheWrite5m": 3.75,
+    "cacheWrite1h": 6,
+    "cacheRead": 0.3,
+    "output": 15,
+    "source": "https://platform.claude.com/docs/en/about-claude/pricing",
+    "verifiedAt": "2026-11-04",
+    "currency": "USD",
+    "unit": "million-tokens"
+  },
+  "claude-sonnet-5-5": {
+    "model": "claude-sonnet-5-5",
+    "input": 2,
+    "cacheWrite5m": 2.5,
+    "cacheWrite1h": 4,
+    "cacheRead": 0.1,
+    "output": 10,
+    "source": "https://platform.claude.com/docs/en/about-claude/pricing",
+    "verifiedAt": "2026-11-04",
+    "currency": "USD",
+    "unit": "million-tokens"
+  },
+  "claude-opus-5-5": {
+    "model": "claude-opus-5-5",
+    "input": 4,
+    "cacheWrite5m": 5,
+    "cacheWrite1h": 8,
+    "cacheRead": 0.2,
+    "output": 20,
+    "source": "https://platform.claude.com/docs/en/about-claude/pricing",
+    "verifiedAt": "2026-11-04",
+    "currency": "USD",
+    "unit": "million-tokens"
+  },
+  "claude-fable-5-1": {
+    "model": "claude-fable-5-1",
+    "input": 10,
+    "cacheWrite5m": 12.5,
+    "cacheWrite1h": 20,
+    "cacheRead": 0.25,
+    "output": 50,
+    "source": "https://platform.claude.com/docs/en/about-claude/pricing",
+    "verifiedAt": "2026-11-04",
+    "currency": "USD",
+    "unit": "million-tokens"
+  },
+  "fake": {
+    "model": "fake",
+    "input": 0,
+    "cacheWrite5m": 0,
+    "cacheWrite1h": 0,
+    "cacheRead": 0,
+    "output": 0,
+    "source": "Kru deterministic fake: no model calls",
+    "verifiedAt": "2026-11-04",
+    "currency": "USD",
+    "unit": "million-tokens"
+  }
+}

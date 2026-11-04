@@ -19,9 +19,9 @@ export interface Methods {
   'turn/start': { params: { threadId: string; input: { type: 'text'; text: string }[] }; result: { turn: Turn } };
   'turn/interrupt': { params: { threadId: string; turnId: string }; result: Record<string, never> };
 }
-export interface TokenUsage { last: TokenCount; total: TokenCount; modelContextWindow?: number | null }
+export interface TokenUsage { model?: string; modelSteps?: number; toolCalls?: number; last: TokenCount; total: TokenCount; modelContextWindow?: number | null }
 /** Cache reads/writes are disjoint subsets of inputTotal, never additions to it. */
-export interface TokenCount { inputTotal: number; cachedRead: number; cacheWrite: number; output: number; totalTokens: number }
+export interface TokenCount { inputTotal: number; cachedRead: number; cacheWrite: number; output: number; totalTokens: number; cacheWriteByLifetime?: { fiveMinutes: number; oneHour: number } }
 export type Notification =
   | { method: 'turn/started' | 'turn/completed'; params: { threadId: string; turn: Turn } }
   | { method: 'item/started' | 'item/completed'; params: { threadId: string; turnId: string; item: AgentItem } }
@@ -45,6 +45,8 @@ export interface ProviderClient {
   start(): Promise<void>;
   stop(): Promise<void>;
   forceStop(): Promise<void>;
+  /** Retire one native thread: suppress late events and cancel it without stopping unrelated threads when possible. */
+  retireThread(threadId: string): Promise<void>;
   request<M extends keyof Methods>(method: M, params: Methods[M]['params'], timeoutMs?: number): Promise<Methods[M]['result']>;
   respond(id: string | number, result: ToolResult | ApprovalResult): void;
   respondError(id: string | number, error: { code: number; message: string }): void;

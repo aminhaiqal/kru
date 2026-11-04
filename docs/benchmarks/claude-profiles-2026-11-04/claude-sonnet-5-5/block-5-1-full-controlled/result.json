@@ -1,0 +1,350 @@
+{
+  "model": "claude-sonnet-5-5",
+  "block": 5,
+  "position": 1,
+  "variant": "full-controlled",
+  "passed": true,
+  "cacheControl": "One READY-only warm-up in each fresh session before the measured task; warm-up usage/cost reported separately.",
+  "treatment": {
+    "systemPrompt": {
+      "type": "preset",
+      "preset": "claude_code"
+    },
+    "tools": {
+      "type": "preset",
+      "preset": "claude_code"
+    },
+    "settingSources": []
+  },
+  "warmup": {
+    "usage": {
+      "model": "claude-sonnet-5-5",
+      "modelSteps": 1,
+      "toolCalls": 0,
+      "last": {
+        "inputTotal": 16833,
+        "cachedRead": 13380,
+        "cacheWrite": 3451,
+        "output": 4,
+        "totalTokens": 16837,
+        "cacheWriteByLifetime": {
+          "fiveMinutes": 0,
+          "oneHour": 3451
+        }
+      },
+      "total": {
+        "inputTotal": 18024,
+        "cachedRead": 13380,
+        "cacheWrite": 3451,
+        "output": 20,
+        "totalTokens": 18044
+      },
+      "modelContextWindow": 1000000
+    },
+    "native": {
+      "cost": 0.0153131,
+      "modelUsage": {
+        "claude-haiku-5-5": {
+          "inputTokens": 1191,
+          "outputTokens": 16,
+          "cacheReadInputTokens": 0,
+          "cacheCreationInputTokens": 0,
+          "webSearchRequests": 0,
+          "costUSD": 0.0001271,
+          "contextWindow": 1000000,
+          "maxOutputTokens": 128000,
+          "thinkingTokens": 0,
+          "cacheCreationEphemeral5mInputTokens": 0,
+          "cacheCreationEphemeral1hInputTokens": 0,
+          "canonicalModel": "claude-haiku-5-5",
+          "provider": "firstParty",
+          "costBasis": "list"
+        },
+        "claude-sonnet-5-5": {
+          "inputTokens": 2,
+          "outputTokens": 4,
+          "cacheReadInputTokens": 13380,
+          "cacheCreationInputTokens": 3451,
+          "webSearchRequests": 0,
+          "costUSD": 0.015186,
+          "contextWindow": 1000000,
+          "maxOutputTokens": 128000,
+          "thinkingTokens": 0,
+          "cacheCreationEphemeral5mInputTokens": 0,
+          "cacheCreationEphemeral1hInputTokens": 3451,
+          "canonicalModel": "claude-sonnet-5-5",
+          "provider": "firstParty",
+          "costBasis": "list"
+        }
+      },
+      "numTurns": 1
+    }
+  },
+  "elapsedMs": 14429,
+  "servedModels": [
+    "claude-sonnet-5-5"
+  ],
+  "cacheHitsObserved": true,
+  "usage": {
+    "model": "claude-sonnet-5-5",
+    "modelSteps": 4,
+    "toolCalls": 3,
+    "last": {
+      "inputTotal": 77578,
+      "cachedRead": 70777,
+      "cacheWrite": 6793,
+      "output": 1052,
+      "totalTokens": 78630,
+      "cacheWriteByLifetime": {
+        "fiveMinutes": 0,
+        "oneHour": 6793
+      }
+    },
+    "total": {
+      "inputTotal": 95602,
+      "cachedRead": 84157,
+      "cacheWrite": 10244,
+      "output": 1072,
+      "totalTokens": 96674
+    },
+    "modelContextWindow": 1000000
+  },
+  "cost": {
+    "model": "claude-sonnet-5-5",
+    "minimumNanoUsd": 44785700,
+    "maximumNanoUsd": 44785700,
+    "unknownCacheWriteTokens": 0,
+    "price": {
+      "model": "claude-sonnet-5-5",
+      "input": 2,
+      "cacheWrite5m": 2.5,
+      "cacheWrite1h": 4,
+      "cacheRead": 0.1,
+      "output": 10,
+      "source": "https://platform.claude.com/docs/en/about-claude/pricing",
+      "verifiedAt": "2026-11-04",
+      "currency": "USD",
+      "unit": "million-tokens"
+    },
+    "estimated": true,
+    "scope": "main-agent-token-usage"
+  },
+  "native": {
+    "cost": 0.060098799999999994,
+    "modelUsage": {
+      "claude-haiku-5-5": {
+        "inputTokens": 1191,
+        "outputTokens": 16,
+        "cacheReadInputTokens": 0,
+        "cacheCreationInputTokens": 0,
+        "webSearchRequests": 0,
+        "costUSD": 0.0001271,
+        "contextWindow": 1000000,
+        "maxOutputTokens": 128000,
+        "thinkingTokens": 0,
+        "cacheCreationEphemeral5mInputTokens": 0,
+        "cacheCreationEphemeral1hInputTokens": 0,
+        "canonicalModel": "claude-haiku-5-5",
+        "provider": "firstParty",
+        "costBasis": "list"
+      },
+      "claude-sonnet-5-5": {
+        "inputTokens": 10,
+        "outputTokens": 1056,
+        "cacheReadInputTokens": 84157,
+        "cacheCreationInputTokens": 10244,
+        "webSearchRequests": 0,
+        "costUSD": 0.0599717,
+        "contextWindow": 1000000,
+        "maxOutputTokens": 128000,
+        "thinkingTokens": 191,
+        "cacheCreationEphemeral5mInputTokens": 0,
+        "cacheCreationEphemeral1hInputTokens": 10244,
+        "canonicalModel": "claude-sonnet-5-5",
+        "provider": "firstParty",
+        "costBasis": "list"
+      }
+    },
+    "numTurns": 4
+  },
+  "nativeEstimatedUsd": 0.0447857,
+  "unchangedFixtures": true,
+  "reply": "`parseDuration` in `src/duration.ts` now accepts the format you described, and `bun test` passes (26 of 26).\n\n- **Accepted input:** one or more components in h, m, s, ms order, with optional whitespace between components and at the ends. No whitespace is allowed between a number and its unit, so `1 s` is rejected, as the existing tests expect.\n- **Rejected input:** empty or blank input, duplicate or out-of-order units, signs, fractions and junk all throw `RangeError`. The input is matched against the whole string, so a partial parse can't succeed.\n- **Overflow:** the total is computed in `BigInt` and checked against `Number.MAX_SAFE_INTEGER` before converting back to a number. That catches both a single huge component, like `9007199254740991h`, and a sum that goes over.\n\nThe `parseDuration` export is unchanged, `src/duration.ts` is the only file I edited, and I added no dependencies.",
+  "events": [
+    {
+      "phase": "warmup",
+      "value": {
+        "kind": "sdk-init",
+        "message": "{\"model\":\"claude-sonnet-5-5\",\"version\":\"2.1.317\",\"tools\":[\"Task\",\"AskUserQuestion\",\"Bash\",\"CronCreate\",\"CronDelete\",\"CronList\",\"DesignSync\",\"Edit\",\"EnterPlanMode\",\"EnterWorktree\",\"ExitPlanMode\",\"ExitWorktree\",\"ListAgents\",\"Monitor\",\"NotebookEdit\",\"PushNotification\",\"Read\",\"RemoteTrigger\",\"ReportFindings\",\"ScheduleWakeup\",\"SendMessage\",\"SendToProject\",\"SendToProjectContext\",\"Skill\",\"TaskStop\",\"ToolSearch\",\"WebFetch\",\"WebSearch\",\"Write\"]}"
+      }
+    },
+    {
+      "phase": "warmup",
+      "value": {
+        "method": "item/started",
+        "params": {
+          "threadId": "156b1ac3-f564-4027-9309-376bf4ec118a",
+          "turnId": "3a154b74-7192-4f48-83ae-d4b1e3d7b400",
+          "item": {
+            "id": "msg_011CghzK5j97K8SWpqTQahiz:0",
+            "type": "agentMessage",
+            "text": ""
+          }
+        }
+      }
+    },
+    {
+      "phase": "warmup",
+      "value": {
+        "method": "thread/tokenUsage/updated",
+        "params": {
+          "threadId": "156b1ac3-f564-4027-9309-376bf4ec118a",
+          "turnId": "3a154b74-7192-4f48-83ae-d4b1e3d7b400",
+          "tokenUsage": {
+            "model": "claude-sonnet-5-5",
+            "modelSteps": 1,
+            "toolCalls": 0,
+            "last": {
+              "inputTotal": 16833,
+              "cachedRead": 13380,
+              "cacheWrite": 3451,
+              "output": 4,
+              "totalTokens": 16837,
+              "cacheWriteByLifetime": {
+                "fiveMinutes": 0,
+                "oneHour": 3451
+              }
+            },
+            "total": {
+              "inputTotal": 18024,
+              "cachedRead": 13380,
+              "cacheWrite": 3451,
+              "output": 20,
+              "totalTokens": 18044
+            },
+            "modelContextWindow": 1000000
+          }
+        }
+      }
+    },
+    {
+      "phase": "measured",
+      "value": {
+        "kind": "sdk-init",
+        "message": "{\"model\":\"claude-sonnet-5-5\",\"version\":\"2.1.317\",\"tools\":[\"Task\",\"AskUserQuestion\",\"Bash\",\"CronCreate\",\"CronDelete\",\"CronList\",\"DesignSync\",\"Edit\",\"EnterPlanMode\",\"EnterWorktree\",\"ExitPlanMode\",\"ExitWorktree\",\"ListAgents\",\"Monitor\",\"NotebookEdit\",\"PushNotification\",\"Read\",\"RemoteTrigger\",\"ReportFindings\",\"ScheduleWakeup\",\"SendMessage\",\"SendToProject\",\"SendToProjectContext\",\"Skill\",\"TaskStop\",\"ToolSearch\",\"WebFetch\",\"WebSearch\",\"Write\"]}"
+      }
+    },
+    {
+      "phase": "measured",
+      "value": {
+        "method": "item/started",
+        "params": {
+          "threadId": "156b1ac3-f564-4027-9309-376bf4ec118a",
+          "turnId": "b40c7dc9-c831-46df-bda6-ca972f054af4",
+          "item": {
+            "id": "toolu_019eExQrtVdFha7mnu5FZFH6",
+            "type": "commandExecution",
+            "text": "Bash",
+            "details": {
+              "name": "Bash",
+              "input": {
+                "command": "cat src/duration.ts; ls; cat CLAUDE.md AGENTS.md 2>/dev/null; ls test* src"
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "phase": "measured",
+      "value": {
+        "method": "item/started",
+        "params": {
+          "threadId": "156b1ac3-f564-4027-9309-376bf4ec118a",
+          "turnId": "b40c7dc9-c831-46df-bda6-ca972f054af4",
+          "item": {
+            "id": "toolu_01Ha5iRjgvYwU21jK8gz91CU",
+            "type": "commandExecution",
+            "text": "Bash",
+            "details": {
+              "name": "Bash",
+              "input": {
+                "command": "cat duration.test.ts; ls src"
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "phase": "measured",
+      "value": {
+        "method": "item/started",
+        "params": {
+          "threadId": "156b1ac3-f564-4027-9309-376bf4ec118a",
+          "turnId": "b40c7dc9-c831-46df-bda6-ca972f054af4",
+          "item": {
+            "id": "toolu_017tJed1dHhVxNMiip2kVoyo",
+            "type": "commandExecution",
+            "text": "Bash",
+            "details": {
+              "name": "Bash",
+              "input": {
+                "command": "cat > src/duration.ts <<'EOF'\nconst PATTERN = /^(?:(\\d+)h)?\\s*(?:(\\d+)m(?!s))?\\s*(?:(\\d+)s)?\\s*(?:(\\d+)ms)?$/;\nconst FACTORS = [3600000n, 60000n, 1000n, 1n];\n\nexport function parseDuration(text: string): number {\n  const trimmed = typeof text === 'string' ? text.trim() : '';\n  const match = PATTERN.exec(trimmed);\n  if (!trimmed || !match) throw new RangeError('Invalid duration');\n  let total = 0n;\n  for (let i = 0; i < 4; i++) {\n    const part = match[i + 1];\n    if (part !== undefined) total += BigInt(part) * FACTORS[i];\n  }\n  if (total > BigInt(Number.MAX_SAFE_INTEGER)) throw new RangeError('Duration too large');\n  return Number(total);\n}\nEOF\nbun test 2>&1 | tail -8"
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "phase": "measured",
+      "value": {
+        "method": "item/started",
+        "params": {
+          "threadId": "156b1ac3-f564-4027-9309-376bf4ec118a",
+          "turnId": "b40c7dc9-c831-46df-bda6-ca972f054af4",
+          "item": {
+            "id": "msg_011CghzLFt7KvRpefkEzC9cc:0",
+            "type": "agentMessage",
+            "text": ""
+          }
+        }
+      }
+    },
+    {
+      "phase": "measured",
+      "value": {
+        "method": "thread/tokenUsage/updated",
+        "params": {
+          "threadId": "156b1ac3-f564-4027-9309-376bf4ec118a",
+          "turnId": "b40c7dc9-c831-46df-bda6-ca972f054af4",
+          "tokenUsage": {
+            "model": "claude-sonnet-5-5",
+            "modelSteps": 4,
+            "toolCalls": 3,
+            "last": {
+              "inputTotal": 77578,
+              "cachedRead": 70777,
+              "cacheWrite": 6793,
+              "output": 1052,
+              "totalTokens": 78630,
+              "cacheWriteByLifetime": {
+                "fiveMinutes": 0,
+                "oneHour": 6793
+              }
+            },
+            "total": {
+              "inputTotal": 95602,
+              "cachedRead": 84157,
+              "cacheWrite": 10244,
+              "output": 1072,
+              "totalTokens": 96674
+            },
+            "modelContextWindow": 1000000
+          }
+        }
+      }
+    }
+  ]
+}

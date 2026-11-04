@@ -1,0 +1,33 @@
+export function parseDuration(text: string): number {
+  // Validate overall structure: optional whitespace at ends, one or more digit+unit
+  // components with optional whitespace between them, no junk anywhere.
+  // 'ms' precedes 'm' and 's' in the alternation so the greedy engine matches it first.
+  const structureRe = /^\s*\d+(?:ms|h|m|s)(?:\s*\d+(?:ms|h|m|s))*\s*$/;
+  if (!structureRe.test(text)) throw new RangeError('Invalid duration');
+
+  const MAX = BigInt(Number.MAX_SAFE_INTEGER);
+  const unitOrder = ['h', 'm', 's', 'ms'] as const;
+  const multipliers: Record<string, bigint> = { h: 3600000n, m: 60000n, s: 1000n, ms: 1n };
+
+  let total = 0n;
+  let lastUnitIndex = -1;
+
+  for (const match of text.matchAll(/(\d+)(ms|h|m|s)/g)) {
+    const value = BigInt(match[1]);
+    const unit = match[2];
+
+    if (value > MAX) throw new RangeError('Invalid duration');
+
+    const unitIndex = unitOrder.indexOf(unit as typeof unitOrder[number]);
+    if (unitIndex <= lastUnitIndex) throw new RangeError('Invalid duration');
+    lastUnitIndex = unitIndex;
+
+    const contribution = value * multipliers[unit];
+    if (contribution > MAX) throw new RangeError('Invalid duration');
+
+    total += contribution;
+    if (total > MAX) throw new RangeError('Invalid duration');
+  }
+
+  return Number(total);
+}

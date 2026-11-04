@@ -18,6 +18,7 @@ export abstract class ProviderBase extends EventEmitter<ProviderEvents> implemen
   abstract start(): Promise<void>;
   abstract stop(): Promise<void>;
   abstract forceStop(): Promise<void>;
+  async retireThread(_threadId: string): Promise<void> { await this.forceStop(); }
   abstract request<M extends keyof Methods>(method: M, params: Methods[M]['params'], timeoutMs?: number): Promise<Methods[M]['result']>;
   protected begin(): number {
     if (this.phase !== 'stopped') throw new Error('Provider is already started or stopping');
@@ -66,6 +67,11 @@ export abstract class ProviderBase extends EventEmitter<ProviderEvents> implemen
         catch (error) { finish(error); }
       }
     });
+  }
+  protected cancelThreadCalls(threadId: string): void {
+    for (const reply of [...this.replies.values()]) {
+      if (reply.params.threadId === threadId) reply.controller.abort(new Error('Thread retired'));
+    }
   }
   protected cancelTurnCalls(threadId: string, turnId: string): void {
     for (const reply of [...this.replies.values()]) {

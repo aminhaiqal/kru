@@ -1,0 +1,38 @@
+export function parseDuration(text: string): number {
+  // Full-string pattern: optional leading/trailing whitespace, one or more
+  // components (digits immediately followed by a unit), optional whitespace
+  // between components. Units tried longest-first so "ms" beats "m".
+  const FULL = /^\s*\d+(?:ms|h|m|s)(?:\s*\d+(?:ms|h|m|s))*\s*$/;
+  if (!FULL.test(text)) throw new RangeError('Invalid duration');
+
+  const COMPONENT = /\d+(?:ms|h|m|s)/g;
+  const components = text.match(COMPONENT)!;
+
+  const ORDER: Record<string, number> = { h: 0, m: 1, s: 2, ms: 3 };
+  const MULT: Record<string, number> = { h: 3600000, m: 60000, s: 1000, ms: 1 };
+  const MAX = Number.MAX_SAFE_INTEGER;
+
+  let lastOrder = -1;
+  let total = 0;
+
+  for (const comp of components) {
+    const unit = comp.endsWith('ms') ? 'ms' : comp.slice(-1);
+    const numStr = unit === 'ms' ? comp.slice(0, -2) : comp.slice(0, -1);
+
+    // Strictly descending order (also rejects duplicates)
+    const ord = ORDER[unit];
+    if (ord <= lastOrder) throw new RangeError('Invalid duration');
+    lastOrder = ord;
+
+    const value = Number(numStr);
+    if (value > MAX) throw new RangeError('Invalid duration');
+
+    const contribution = value * MULT[unit];
+    if (contribution > MAX) throw new RangeError('Invalid duration');
+
+    total += contribution;
+    if (total > MAX) throw new RangeError('Invalid duration');
+  }
+
+  return total;
+}

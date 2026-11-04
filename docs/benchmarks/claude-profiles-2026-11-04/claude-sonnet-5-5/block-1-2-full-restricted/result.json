@@ -1,0 +1,354 @@
+{
+  "model": "claude-sonnet-5-5",
+  "block": 1,
+  "position": 2,
+  "variant": "full-restricted",
+  "passed": true,
+  "cacheControl": "One READY-only warm-up in each fresh session before the measured task; warm-up usage/cost reported separately.",
+  "treatment": {
+    "systemPrompt": {
+      "type": "preset",
+      "preset": "claude_code"
+    },
+    "tools": [
+      "Read",
+      "Edit",
+      "Bash",
+      "Write",
+      "Glob",
+      "Grep"
+    ],
+    "settingSources": []
+  },
+  "warmup": {
+    "usage": {
+      "model": "claude-sonnet-5-5",
+      "modelSteps": 1,
+      "toolCalls": 0,
+      "last": {
+        "inputTotal": 8144,
+        "cachedRead": 5150,
+        "cacheWrite": 2992,
+        "output": 4,
+        "totalTokens": 8148,
+        "cacheWriteByLifetime": {
+          "fiveMinutes": 0,
+          "oneHour": 2992
+        }
+      },
+      "total": {
+        "inputTotal": 9335,
+        "cachedRead": 5150,
+        "cacheWrite": 2992,
+        "output": 20,
+        "totalTokens": 9355
+      },
+      "modelContextWindow": 1000000
+    },
+    "native": {
+      "cost": 0.0126541,
+      "modelUsage": {
+        "claude-haiku-5-5": {
+          "inputTokens": 1191,
+          "outputTokens": 16,
+          "cacheReadInputTokens": 0,
+          "cacheCreationInputTokens": 0,
+          "webSearchRequests": 0,
+          "costUSD": 0.0001271,
+          "contextWindow": 1000000,
+          "maxOutputTokens": 128000,
+          "thinkingTokens": 0,
+          "cacheCreationEphemeral5mInputTokens": 0,
+          "cacheCreationEphemeral1hInputTokens": 0,
+          "canonicalModel": "claude-haiku-5-5",
+          "provider": "firstParty",
+          "costBasis": "list"
+        },
+        "claude-sonnet-5-5": {
+          "inputTokens": 2,
+          "outputTokens": 4,
+          "cacheReadInputTokens": 5150,
+          "cacheCreationInputTokens": 2992,
+          "webSearchRequests": 0,
+          "costUSD": 0.012527,
+          "contextWindow": 1000000,
+          "maxOutputTokens": 128000,
+          "thinkingTokens": 0,
+          "cacheCreationEphemeral5mInputTokens": 0,
+          "cacheCreationEphemeral1hInputTokens": 2992,
+          "canonicalModel": "claude-sonnet-5-5",
+          "provider": "firstParty",
+          "costBasis": "list"
+        }
+      },
+      "numTurns": 1
+    }
+  },
+  "elapsedMs": 17008,
+  "servedModels": [
+    "claude-sonnet-5-5"
+  ],
+  "cacheHitsObserved": true,
+  "usage": {
+    "model": "claude-sonnet-5-5",
+    "modelSteps": 4,
+    "toolCalls": 3,
+    "last": {
+      "inputTotal": 49256,
+      "cachedRead": 43989,
+      "cacheWrite": 5259,
+      "output": 950,
+      "totalTokens": 50206,
+      "cacheWriteByLifetime": {
+        "fiveMinutes": 0,
+        "oneHour": 5259
+      }
+    },
+    "total": {
+      "inputTotal": 58591,
+      "cachedRead": 49139,
+      "cacheWrite": 8251,
+      "output": 970,
+      "totalTokens": 59561
+    },
+    "modelContextWindow": 1000000
+  },
+  "cost": {
+    "model": "claude-sonnet-5-5",
+    "minimumNanoUsd": 34950900,
+    "maximumNanoUsd": 34950900,
+    "unknownCacheWriteTokens": 0,
+    "price": {
+      "model": "claude-sonnet-5-5",
+      "input": 2,
+      "cacheWrite5m": 2.5,
+      "cacheWrite1h": 4,
+      "cacheRead": 0.1,
+      "output": 10,
+      "source": "https://platform.claude.com/docs/en/about-claude/pricing",
+      "verifiedAt": "2026-11-04",
+      "currency": "USD",
+      "unit": "million-tokens"
+    },
+    "estimated": true,
+    "scope": "main-agent-token-usage"
+  },
+  "native": {
+    "cost": 0.04760500000000001,
+    "modelUsage": {
+      "claude-haiku-5-5": {
+        "inputTokens": 1191,
+        "outputTokens": 16,
+        "cacheReadInputTokens": 0,
+        "cacheCreationInputTokens": 0,
+        "webSearchRequests": 0,
+        "costUSD": 0.0001271,
+        "contextWindow": 1000000,
+        "maxOutputTokens": 128000,
+        "thinkingTokens": 0,
+        "cacheCreationEphemeral5mInputTokens": 0,
+        "cacheCreationEphemeral1hInputTokens": 0,
+        "canonicalModel": "claude-haiku-5-5",
+        "provider": "firstParty",
+        "costBasis": "list"
+      },
+      "claude-sonnet-5-5": {
+        "inputTokens": 10,
+        "outputTokens": 954,
+        "cacheReadInputTokens": 49139,
+        "cacheCreationInputTokens": 8251,
+        "webSearchRequests": 0,
+        "costUSD": 0.0474779,
+        "contextWindow": 1000000,
+        "maxOutputTokens": 128000,
+        "thinkingTokens": 104,
+        "cacheCreationEphemeral5mInputTokens": 0,
+        "cacheCreationEphemeral1hInputTokens": 8251,
+        "canonicalModel": "claude-sonnet-5-5",
+        "provider": "firstParty",
+        "costBasis": "list"
+      }
+    },
+    "numTurns": 4
+  },
+  "nativeEstimatedUsd": 0.03495090000000001,
+  "unchangedFixtures": true,
+  "reply": "I rewrote `parseDuration` in `src/duration.ts`, and `bun test` passes (26 tests, 0 failures).\n\n- **Accepted input:** one or more components in strict `h`, `m`, `s`, `ms` order. Whitespace is allowed between components and at both ends, but not between a number and its unit, so `1 s` is rejected.\n- **Rejected with `RangeError`:** empty or blank input, duplicate or out-of-order units, signs, fractions, junk, and any total above `Number.MAX_SAFE_INTEGER`.\n- **Large values:** the total is computed with `BigInt`, so huge inputs can't lose precision before the range check.\n- **Constraints:** the `parseDuration` export is unchanged, `src/duration.ts` is the only file touched, and there are no new dependencies.",
+  "events": [
+    {
+      "phase": "warmup",
+      "value": {
+        "kind": "sdk-init",
+        "message": "{\"model\":\"claude-sonnet-5-5\",\"version\":\"2.1.317\",\"tools\":[\"Bash\",\"Edit\",\"Glob\",\"Grep\",\"Read\",\"Write\"]}"
+      }
+    },
+    {
+      "phase": "warmup",
+      "value": {
+        "method": "item/started",
+        "params": {
+          "threadId": "1747625d-711b-4852-bbe3-bed4df799b21",
+          "turnId": "fab83ffb-6c9a-412e-9978-cb9a81e9b77e",
+          "item": {
+            "id": "msg_011CghytAEK6FUTFZNbLUosa:0",
+            "type": "agentMessage",
+            "text": ""
+          }
+        }
+      }
+    },
+    {
+      "phase": "warmup",
+      "value": {
+        "method": "thread/tokenUsage/updated",
+        "params": {
+          "threadId": "1747625d-711b-4852-bbe3-bed4df799b21",
+          "turnId": "fab83ffb-6c9a-412e-9978-cb9a81e9b77e",
+          "tokenUsage": {
+            "model": "claude-sonnet-5-5",
+            "modelSteps": 1,
+            "toolCalls": 0,
+            "last": {
+              "inputTotal": 8144,
+              "cachedRead": 5150,
+              "cacheWrite": 2992,
+              "output": 4,
+              "totalTokens": 8148,
+              "cacheWriteByLifetime": {
+                "fiveMinutes": 0,
+                "oneHour": 2992
+              }
+            },
+            "total": {
+              "inputTotal": 9335,
+              "cachedRead": 5150,
+              "cacheWrite": 2992,
+              "output": 20,
+              "totalTokens": 9355
+            },
+            "modelContextWindow": 1000000
+          }
+        }
+      }
+    },
+    {
+      "phase": "measured",
+      "value": {
+        "kind": "sdk-init",
+        "message": "{\"model\":\"claude-sonnet-5-5\",\"version\":\"2.1.317\",\"tools\":[\"Bash\",\"Edit\",\"Glob\",\"Grep\",\"Read\",\"Write\"]}"
+      }
+    },
+    {
+      "phase": "measured",
+      "value": {
+        "method": "item/started",
+        "params": {
+          "threadId": "1747625d-711b-4852-bbe3-bed4df799b21",
+          "turnId": "8737a762-6fc5-481c-a257-7965298eeb39",
+          "item": {
+            "id": "toolu_01PXCm5n8zX8YMRidMWUs44g",
+            "type": "commandExecution",
+            "text": "Bash",
+            "details": {
+              "name": "Bash",
+              "input": {
+                "command": "cat src/duration.ts; ls; cat CLAUDE.md AGENTS.md 2>/dev/null; ls test* src"
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "phase": "measured",
+      "value": {
+        "method": "item/started",
+        "params": {
+          "threadId": "1747625d-711b-4852-bbe3-bed4df799b21",
+          "turnId": "8737a762-6fc5-481c-a257-7965298eeb39",
+          "item": {
+            "id": "toolu_01BGnAbJebxY9ME7ywXJrRzS",
+            "type": "commandExecution",
+            "text": "Bash",
+            "details": {
+              "name": "Bash",
+              "input": {
+                "command": "cat duration.test.ts | head -40"
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "phase": "measured",
+      "value": {
+        "method": "item/started",
+        "params": {
+          "threadId": "1747625d-711b-4852-bbe3-bed4df799b21",
+          "turnId": "8737a762-6fc5-481c-a257-7965298eeb39",
+          "item": {
+            "id": "toolu_01DgZVx6trcd2HfMMr437Kv7",
+            "type": "commandExecution",
+            "text": "Bash",
+            "details": {
+              "name": "Bash",
+              "input": {
+                "command": "cat > src/duration.ts <<'EOF'\nconst PATTERN = /^\\s*(?:(\\d+)h)?\\s*(?:(\\d+)m(?!s))?\\s*(?:(\\d+)s)?\\s*(?:(\\d+)ms)?\\s*$/;\nconst FACTORS = [3600000n, 60000n, 1000n, 1n];\n\nexport function parseDuration(text: string): number {\n  const match = PATTERN.exec(text);\n  if (!match || match.slice(1).every((part) => part === undefined)) {\n    throw new RangeError('Invalid duration');\n  }\n  let total = 0n;\n  for (let i = 0; i < FACTORS.length; i++) {\n    const part = match[i + 1];\n    if (part !== undefined) total += BigInt(part) * FACTORS[i];\n  }\n  if (total > BigInt(Number.MAX_SAFE_INTEGER)) {\n    throw new RangeError('Duration exceeds Number.MAX_SAFE_INTEGER');\n  }\n  return Number(total);\n}\nEOF\nbun test 2>&1 | tail -8"
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "phase": "measured",
+      "value": {
+        "method": "item/started",
+        "params": {
+          "threadId": "1747625d-711b-4852-bbe3-bed4df799b21",
+          "turnId": "8737a762-6fc5-481c-a257-7965298eeb39",
+          "item": {
+            "id": "msg_011Cghyu1ZCUc3Qt6JHxQQ6k:0",
+            "type": "agentMessage",
+            "text": ""
+          }
+        }
+      }
+    },
+    {
+      "phase": "measured",
+      "value": {
+        "method": "thread/tokenUsage/updated",
+        "params": {
+          "threadId": "1747625d-711b-4852-bbe3-bed4df799b21",
+          "turnId": "8737a762-6fc5-481c-a257-7965298eeb39",
+          "tokenUsage": {
+            "model": "claude-sonnet-5-5",
+            "modelSteps": 4,
+            "toolCalls": 3,
+            "last": {
+              "inputTotal": 49256,
+              "cachedRead": 43989,
+              "cacheWrite": 5259,
+              "output": 950,
+              "totalTokens": 50206,
+              "cacheWriteByLifetime": {
+                "fiveMinutes": 0,
+                "oneHour": 5259
+              }
+            },
+            "total": {
+              "inputTotal": 58591,
+              "cachedRead": 49139,
+              "cacheWrite": 8251,
+              "output": 970,
+              "totalTokens": 59561
+            },
+            "modelContextWindow": 1000000
+          }
+        }
+      }
+    }
+  ]
+}

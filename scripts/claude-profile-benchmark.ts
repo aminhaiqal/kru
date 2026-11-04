@@ -1,72 +1,130 @@
-import { appendFileSync, cpSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
-import { dirname, join, resolve } from 'node:path';
-import { fileURLToPath } from 'node:url';
-import { ClaudeProvider } from '../src/providers/claude/adapter';
+import { appendFileSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { resolve, join } from 'node:path';
+import { randomUUID } from 'node:crypto';
+import { ClaudeProvider, type ClaudeQueryFactory } from '../src/providers/claude/adapter';
+import { installRpcSignalHandlers } from '../src/rpc';
 import { runChatTurn } from '../src/chat/turn';
+import { estimateCost, modelPrices } from '../src/usage/pricing';
+import { schedule, summarize, treatment, markdownReport, measurementsComplete, isAccountOrAvailabilityError, type BenchmarkRow } from './benchmark-support';
 
-// Explicitly invoked only: this makes two model calls using the operator's login.
-const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
-const output = resolve(process.argv[2] ?? join(root, '.kru/benchmarks', new Date().toISOString().replaceAll(':', '-')));
-const model = process.env.KRU_BENCHMARK_MODEL ?? 'claude-sonnet-4-6';
-const prompt = 'Fix src/duration.ts so parseDuration accepts one or more nonnegative integer duration components in strictly descending h, m, s, ms order, with optional whitespace between components and at the ends. Reject empty input, duplicates, out-of-order units, signs, fractions, junk, and values or totals exceeding Number.MAX_SAFE_INTEGER with RangeError. Preserve the public API. Read project instructions, change only src/duration.ts, and run bun test. Finish with a brief result. Do not use network or delegate.';
-const source = `export function parseDuration(text: string): number {
-  const match = /^(d+)ms$/.exec(text);
-  if (!match) throw new RangeError('Invalid duration');
-  return Number(match[1]);
+const args = process.argv.slice(2), values = new Map<string, string>();
+let execute = false;
+for (let i = 0; i < args.length; i++) {
+  const arg = args[i]!;
+  if (arg === '--run') execute = true;
+  else if (arg === '--plan') execute = false;
+  else if (['--pairs', '--models', '--output'].includes(arg)) {
+    const value = args[++i]; if (!value || value.startsWith('--') || values.has(arg)) throw new Error(`Invalid ${arg}`);
+    values.set(arg, value);
+  } else throw new Error(`Unknown argument ${arg}; use --pairs N --models id,id --output path [--run]`);
 }
-`;
-const tests = `import { expect, test } from 'bun:test';
-import { parseDuration } from './src/duration';
-for (const [input, expected] of [ ['0ms',0], ['7ms',7], ['2s',2000], ['3m',180000], ['1h',3600000], ['1h2m3s4ms',3723004], [' 1h 2m 3s 4ms ',3723004], ['0h0m0s0ms',0], ['1m4ms',60004], ['9007199254740991ms',9007199254740991] ] as const)
-  test('accept '+JSON.stringify(input), () => expect(parseDuration(input)).toBe(expected));
-for (const input of ['', ' ', '-1s', '+1s', '1.5s', '1', '1d', '1s2s', '1ms1s', '2m1h', '1s junk', '1 s', '9007199254740992ms', '9007199254740991ms1ms', '2501999792984h', '9007199254740991h'])
-  test('reject '+JSON.stringify(input), () => expect(() => parseDuration(input)).toThrow(RangeError));
-`;
-const instructions = '# Project instructions\nKeep this library dependency-free. Preserve the parseDuration export. Validate the entire input, never accept a partial parse. Use RangeError for invalid durations. Change implementation only; do not weaken tests. Run bun test.\n';
-const rows: Record<string, unknown>[] = [];
+const pairs = Number(values.get('--pairs') ?? 5);
+const models = (values.get('--models') ?? process.env.KRU_BENCHMARK_MODELS ?? process.env.KRU_BENCHMARK_MODEL ?? 'claude-sonnet-4-6,claude-sonnet-5-5').split(',');
+if (new Set(models).size !== models.length || models.some(m => !m.trim())) throw new Error('Provide distinct model ids');
+const runs = schedule(models, pairs);
+const warmupPrompt = 'This turn is only a cache warm-up. Reply READY without using tools or changing files.';
+const plan = {
+  id: randomUUID(), warmupPrompt, models, pairs, measuredRuns: runs.length, warmupRuns: runs.length,
+  cacheControl: 'One READY-only warm-up in each fresh session before the measured task; warm-up usage/cost reported separately.',
+  common: { settingSources: [], clientComposed: true, autoMemoryDisabled: true, permissions: 'workspace-write/on-request', task: 'archived duration-parser fixture' },
+  design: 'Blocked 2x2 prompt/tool factorial. Reverse all four treatments in alternating blocks. full-controlled differs from production full: settings and context composition are normalized to coding.',
+  contrasts: [
+    { a: 'full-controlled', b: 'full-restricted', factor: 'tools' },
+    { a: 'full-controlled', b: 'lean-full', factor: 'system prompt' },
+    { a: 'full-restricted', b: 'coding', factor: 'system prompt' },
+    { a: 'lean-full', b: 'coding', factor: 'tools' },
+    { a: 'full-controlled', b: 'coding', factor: 'combined: no single-factor attribution' },
+  ], runs, pricingVerifiedAt: '2026-11-04', execution: execute,
+};
+if (!execute) { console.log(JSON.stringify(plan, null, 2)); process.exit(0); }
+// Only --run imports/starts the native CLI and spends model quota.
+process.env.CLAUDE_CODE_DISABLE_AUTO_MEMORY = '1';
+const sdk = await import('@anthropic-ai/claude-agent-sdk');
+const task = JSON.parse(readFileSync(new URL('../docs/benchmarks/claude-profiles-2026-11-03/task.json', import.meta.url), 'utf8')) as {
+  prompt: string; source: string; tests: string; instructions: string; settings: unknown;
+};
+const output = resolve(values.get('--output') ?? join('.kru/benchmarks', `factorial-${new Date().toISOString().replaceAll(':', '-')}`));
 mkdirSync(output, { recursive: true });
-writeFileSync(join(output, 'task.json'), JSON.stringify({ model, prompt, source, tests, instructions,
-  order: ['full', 'coding'], settings: { permissions: { allow: ['Read', 'Edit', 'Write', 'Bash(bun test*)'] } },
-  sdk: JSON.parse(readFileSync(join(root, 'node_modules/@anthropic-ai/claude-agent-sdk/package.json'), 'utf8')).version,
-  autoMemoryDisabled: process.env.CLAUDE_CODE_DISABLE_AUTO_MEMORY === '1' }, null, 2));
-for (const profile of ['full', 'coding'] as const) {
-  const cwd = join(output, profile);
+writeFileSync(join(output, 'plan.json'), JSON.stringify({ ...plan, sdk: JSON.parse(readFileSync(new URL('../node_modules/@anthropic-ai/claude-agent-sdk/package.json', import.meta.url), 'utf8')).version }, null, 2));
+writeFileSync(join(output, 'price-snapshot.json'), JSON.stringify(modelPrices, null, 2));
+writeFileSync(join(output, 'task.json'), JSON.stringify(task, null, 2));
+const activeProviders = new Set<ClaudeProvider>();
+const shutdown = installRpcSignalHandlers(activeProviders);
+const blockedModels = new Set<string>();
+const rows: (BenchmarkRow & Record<string, unknown>)[] = [];
+for (const run of runs) {
+  if (shutdown.exitCode !== undefined) break;
+  if (blockedModels.has(run.model)) continue;
+  const cwd = join(output, run.model.replace(/[^A-Za-z0-9_-]/g, '_'), `block-${run.block}-${run.position}-${run.variant}`);
   mkdirSync(join(cwd, 'src'), { recursive: true }); mkdirSync(join(cwd, '.claude'));
-  writeFileSync(join(cwd, 'src/duration.ts'), source);
-  writeFileSync(join(cwd, 'duration.test.ts'), tests);
-  writeFileSync(join(cwd, 'CLAUDE.md'), instructions);
-  writeFileSync(join(cwd, '.claude/settings.json'), JSON.stringify({ permissions: { allow: ['Read', 'Edit', 'Write', 'Bash(bun test*)'] } }));
-  const initial = Bun.spawnSync([process.execPath, 'test'], { cwd });
-  if (initial.exitCode === 0) throw new Error('Benchmark fixture must fail before the fix');
-  const provider = new ClaudeProvider({ processRecordDir: join(output, 'processes') });
-  const events: unknown[] = []; let usage: unknown; let reply = ''; let error: string | undefined;
-  const record = (event: unknown) => { events.push(event); appendFileSync(join(cwd, 'events.ndjson'), JSON.stringify(event) + '\n'); };
-  provider.on('diagnostic', d => { if (d.kind === 'sdk-init') { record(d); console.log(`${profile}: ${d.message}`); } });
-  provider.on('notification', n => { if (n.method === 'item/started' && n.params.item.type === 'tool') { record(n); console.log(`${profile}: ${n.params.item.text}`); } });
+  const protectedFiles = { 'duration.test.ts': task.tests, 'CLAUDE.md': task.instructions, '.claude/settings.json': JSON.stringify(task.settings) };
+  for (const [path, text] of Object.entries(protectedFiles)) writeFileSync(join(cwd, path), text);
+  writeFileSync(join(cwd, 'src/duration.ts'), task.source);
+  if (Bun.spawnSync([process.execPath, 'test'], { cwd }).exitCode === 0) throw new Error('Fixture must initially fail');
+  let native: { cost?: number; modelUsage?: unknown; numTurns?: number } = {};
+  const servedModels = new Set<string>();
+  const query: ClaudeQueryFactory = args => {
+    const stream = sdk.query({ prompt: args.prompt, options: { ...args.options, ...treatment(run.variant) } });
+    return { interrupt: () => stream.interrupt(), close: () => stream.close(), async *[Symbol.asyncIterator]() {
+      for await (const message of stream) {
+        if (phase === 'measured' && message.type === 'assistant' && !message.parent_tool_use_id && message.message.model) servedModels.add(message.message.model);
+        if (message.type === 'result') native = { cost: message.total_cost_usd, modelUsage: message.modelUsage, numTurns: message.num_turns };
+        yield message;
+      }
+    } };
+  };
+  const provider = new ClaudeProvider({ query, processRecordDir: join(output, 'processes') });
+  activeProviders.add(provider);
+  const events: unknown[] = []; let phase = 'warmup';
+  const record = (value: unknown) => { events.push({ phase, value }); appendFileSync(join(cwd, 'events.ndjson'), JSON.stringify({ phase, value }) + '\n'); };
+  provider.on('diagnostic', d => { if (d.kind === 'sdk-init') record(d); });
+  provider.on('notification', n => { if (['item/started', 'thread/tokenUsage/updated'].includes(n.method)) record(n); });
   provider.on('request', r => {
-    if (r.method === 'approval/request') provider.respond(r.id, { decision: 'accept' });
-    else provider.respond(r.id, { success: false, contentItems: [{ type: 'inputText', text: 'No Kru tools registered' }] });
+    if (r.method === 'approval/request') provider.respond(r.id, { decision: phase === 'warmup' ? 'decline' : 'accept' });
+    else provider.respondError(r.id, { code: -32601, message: 'No Kru tools registered' });
   });
-  const started = performance.now(); let metadata: unknown;
+  const row: BenchmarkRow & Record<string, unknown> = { ...run, passed: false, cacheControl: plan.cacheControl, treatment: treatment(run.variant) };
+  let reply = '', fatal = false;
   try {
     await provider.start();
-    const { thread } = await provider.request('thread/start', { cwd, model, promptProfile: profile,
-      permissions: { sandbox: 'workspace-write', approvalPolicy: 'on-request' } });
-    const result = await runChatTurn(provider, thread.id, prompt, { idleTimeoutMs: 120_000,
-      onUsage: value => { usage = value; }, onDelta: text => { reply += text; } });
-    usage = result.usage;
-    metadata = (await provider.request('thread/resume', { threadId: thread.id })).thread.prompt;
-  } catch (e) { error = String(e); }
-  finally { await provider.stop(); }
-  const elapsedMs = Math.round(performance.now() - started);
-  const checked = Bun.spawnSync([process.execPath, 'test'], { cwd });
-  writeFileSync(join(cwd, 'acceptance.log'), checked.stdout.toString() + checked.stderr.toString());
-  const unchangedTests = readFileSync(join(cwd, 'duration.test.ts'), 'utf8') === tests;
-  const passed = checked.exitCode === 0 && unchangedTests && !error;
-  const row = { profile, passed, unchangedTests, elapsedMs, usage, metadata, error, reply, events };
-  rows.push(row); writeFileSync(join(output, 'results.json'), JSON.stringify({ model, prompt, rows }, null, 2));
-  cpSync(join(cwd, 'src/duration.ts'), join(output, `${profile}-duration.ts`));
-  console.log(JSON.stringify({ profile, passed, elapsedMs, usage }));
+    // Coding supplies client_composed=true/settings=[] uniformly; only the benchmark query wrapper varies prompt/tools.
+    const { thread } = await provider.request('thread/start', { cwd, model: run.model, promptProfile: 'coding', permissions: { sandbox: 'workspace-write', approvalPolicy: 'on-request' } });
+    const warmup = await runChatTurn(provider, thread.id, warmupPrompt, { idleTimeoutMs: 120_000 });
+    row.warmup = { usage: warmup.usage, native: structuredClone(native) };
+    if (readFileSync(join(cwd, 'src/duration.ts'), 'utf8') !== task.source) throw new Error('Warm-up changed the fixture');
+    if (warmup.usage?.toolCalls) throw new Error('Warm-up violated the no-tools condition');
+    if (!Object.entries(protectedFiles).every(([path, text]) => readFileSync(join(cwd, path), 'utf8') === text)) throw new Error('Warm-up changed protected fixtures');
+    const baseline = native.cost; phase = 'measured'; const started = performance.now();
+    const result = await runChatTurn(provider, thread.id, task.prompt, { idleTimeoutMs: 120_000, onDelta: s => { reply += s; } });
+    row.elapsedMs = Math.round(performance.now() - started);
+    if (!result.usage || !result.usage.modelSteps) throw new Error('Missing measured usage or model-step instrumentation');
+    row.servedModels = [...servedModels];
+    if ([...servedModels].some(model => model !== run.model)) throw new Error(`Requested ${run.model}, received ${[...servedModels].join(',')}`);
+    if (result.usage.model && result.usage.model !== run.model) throw new Error(`Requested ${run.model}, received ${result.usage.model}`);
+    row.cacheHitsObserved = result.usage.last.cachedRead > 0;
+    row.usage = result.usage; row.cost = estimateCost(result.usage.model ?? run.model, result.usage.last);
+    row.native = structuredClone(native);
+    if (baseline !== undefined && native.cost !== undefined && native.cost >= baseline) row.nativeEstimatedUsd = native.cost - baseline;
+    const checked = Bun.spawnSync([process.execPath, 'test'], { cwd });
+    writeFileSync(join(cwd, 'acceptance.log'), checked.stdout.toString() + checked.stderr.toString());
+    row.unchangedFixtures = Object.entries(protectedFiles).every(([path, value]) => readFileSync(join(cwd, path), 'utf8') === value);
+    row.passed = checked.exitCode === 0 && row.unchangedFixtures === true;
+    writeFileSync(join(cwd, 'duration.ts.txt'), readFileSync(join(cwd, 'src/duration.ts')));
+  } catch (error) {
+    row.error = error instanceof Error ? error.message : String(error);
+    fatal = isAccountOrAvailabilityError(row.error);
+  } finally {
+    try { await provider.stop(); } catch (error) { row.passed = false; row.error = String(error); }
+    activeProviders.delete(provider);
+  }
+  row.reply = reply; row.events = events; rows.push(row);
+  writeFileSync(join(cwd, 'result.json'), JSON.stringify(row, null, 2));
+  writeFileSync(join(output, 'results.json'), JSON.stringify({ plan, rows, summary: summarize(rows, pairs), incomplete: !measurementsComplete(rows, runs.length) }, null, 2));
+  writeFileSync(join(output, 'summary.md'), markdownReport(rows, pairs));
+  console.log(JSON.stringify({ model: run.model, block: run.block, variant: run.variant, passed: row.passed, elapsedMs: row.elapsedMs, modelSteps: row.usage?.modelSteps, toolCalls: row.usage?.toolCalls, error: row.error }));
+  if (fatal) { blockedModels.add(run.model); console.error('Skipping this model after an availability/account error; incomplete evidence is retained.'); }
 }
+shutdown.dispose();
 console.log(`Evidence: ${output}`);
-if (rows.some(row => !row.passed)) process.exitCode = 1;
+if (shutdown.exitCode !== undefined) process.exitCode = shutdown.exitCode;
+else if (rows.length !== runs.length || rows.some(r => !r.passed)) process.exitCode = 1;

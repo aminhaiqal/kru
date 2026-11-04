@@ -1,5 +1,5 @@
 import packageJson from '../../../package.json';
-import { RpcResponseError, type RpcConnection, type RpcRequest } from '../../rpc';
+import { RpcResponseError, RequestTimeoutError, type RpcConnection, type RpcRequest, type RpcRequestOptions } from '../../rpc';
 import { ProviderBase } from '../base';
 import type { Methods, Notification, ThreadParams, ApprovalCall } from '../protocol';
 import { prepareThread, promptMetadata, type PreparedThread } from '../prompt-profile';
@@ -15,12 +15,19 @@ export class CodexRuntime {
   private registration = Promise.resolve();
   private registering: CodexProvider | undefined;
   private bad = 0;
-  constructor(options: { transport?: CodexConnectionOptions; maxBadNotifications?: number } = {}) {
+  private generation = 0;
+  private readonly retiredThreads = new Map<string, Set<string>>();
+  private checking: Promise<void> | undefined;
+  private checkingGeneration = -1;
+  private readonly answerTimeoutMs: number;
+  constructor(options: { transport?: CodexConnectionOptions; maxBadNotifications?: number; answerTimeoutMs?: number } = {}) {
     const threshold = options.maxBadNotifications ?? 3;
     if (!Number.isSafeInteger(threshold) || threshold < 1) throw new RangeError('maxBadNotifications must be positive');
+    this.answerTimeoutMs = options.answerTimeoutMs ?? 2_000;
+    if (!Number.isSafeInteger(this.answerTimeoutMs) || this.answerTimeoutMs < 1 || this.answerTimeoutMs > 2_147_483_647) throw new RangeError('answerTimeoutMs must be a positive timer duration');
     this.connection = createCodexRpcConnection(options.transport);
     this.connection.on('exit', error => {
-      this.initialized = undefined; this.bad = 0;
+      this.initialized = undefined; this.bad = 0; this.generation++; this.retiredThreads.clear();
       const clients = [...this.clients]; this.clients.clear(); this.owners.clear();
       for (const client of clients) client.exited(error);
     });
@@ -28,6 +35,13 @@ export class CodexRuntime {
     this.connection.on('notification', n => {
       let raw: Record<string, unknown> | undefined;
       try { raw = object(n.params); } catch { /* handled by boundary decoder */ }
+      if (typeof raw?.threadId === 'string' && this.retiredThreads.has(raw.threadId)) {
+        if (n.method === 'turn/started') {
+          const id = (raw.turn as { id?: unknown } | undefined)?.id;
+          if (typeof id === 'string') this.interruptRetired(raw.threadId, id);
+        }
+        return; // Includes output, usage and malformed notifications from abandoned work.
+      }
       const owner = typeof raw?.threadId === 'string' ? this.owners.get(raw.threadId) : undefined;
       try {
         const notification = decodeNotification(n.method, n.params);
@@ -43,11 +57,56 @@ export class CodexRuntime {
     this.connection.onRequest(async request => {
       const raw = object(request.params);
       if (typeof raw.threadId !== 'string') throw new RpcResponseError(-32602, 'Missing request threadId');
+      if (this.retiredThreads.has(raw.threadId)) {
+        if (['item/commandExecution/requestApproval', 'item/fileChange/requestApproval'].includes(request.method)) return { decision: 'decline' };
+        if (request.method === 'item/permissions/requestApproval') return { permissions: {}, scope: 'turn' };
+        if (request.method === 'mcpServer/elicitation/request') return { action: 'decline', content: null };
+        if (request.method === 'item/tool/requestUserInput') return { answers: {} };
+        throw new RpcResponseError(-32601, 'Thread retired');
+      }
       let owner = this.owners.get(raw.threadId);
       if (!owner && this.registering) { owner = this.registering; this.claim(raw.threadId, owner); }
       if (!owner) throw new RpcResponseError(-32601, 'No owner for provider request');
       return owner.handleNativeRequest(request);
     });
+  }
+  /** A timed-out model request does not imply that the shared server is dead. */
+  async request<T = unknown>(method: string, params: unknown, options?: RpcRequestOptions<T>): Promise<T> {
+    try { return await this.connection.request<T>(method, params, options); }
+    catch (error) {
+      if (error instanceof RequestTimeoutError) this.probe();
+      throw error;
+    }
+  }
+  private probe(): void {
+    void this.checkAnswering().catch(error => {
+      for (const client of this.clients) client.emit('diagnostic', { kind: 'liveness-error', message: String(error) });
+    });
+  }
+  checkAnswering(): Promise<void> {
+    const generation = this.generation;
+    if (this.checking && this.checkingGeneration === generation) return this.checking;
+    this.checkingGeneration = generation;
+    const pending = this.connection.request('config/read', { includeLayers: false }, { timeoutMs: this.answerTimeoutMs })
+      .then(() => {}, async error => {
+        // Even an RPC error proves the server is answering. Local failures do not prove a hang.
+        if (error instanceof RequestTimeoutError && this.generation === generation) await this.connection.forceStop();
+      }).finally(() => { if (this.checking === pending) this.checking = undefined; });
+    this.checking = pending;
+    return pending;
+  }
+  retireThread(threadId: string, turnId?: string): void {
+    if (!this.retiredThreads.has(threadId)) this.retiredThreads.set(threadId, new Set());
+    this.owners.delete(threadId);
+    if (turnId) this.interruptRetired(threadId, turnId);
+    this.probe();
+  }
+  isRetired(threadId: string): boolean { return this.retiredThreads.has(threadId); }
+  interruptRetired(threadId: string, turnId: string): void {
+    const turns = this.retiredThreads.get(threadId);
+    if (!turns || turns.has(turnId)) return;
+    turns.add(turnId);
+    void this.request('turn/interrupt', { threadId, turnId }, { timeoutMs: this.answerTimeoutMs }).catch(() => {});
   }
   async acquire(client: CodexProvider): Promise<void> {
     await this.shutdown;
@@ -57,6 +116,7 @@ export class CodexRuntime {
     catch (error) { this.clients.delete(client); throw error; }
   }
   private async initialize(): Promise<void> {
+    this.generation++;
     this.connection.start();
     await this.connection.request('initialize', { clientInfo: { name: 'kru', title: 'Kru', version: packageJson.version }, capabilities: { experimentalApi: true } }, {
       decode: value => { if (typeof object(value).userAgent !== 'string') throw new TypeError('Missing initialize userAgent'); return value; },
@@ -64,6 +124,7 @@ export class CodexRuntime {
     await this.connection.notify('initialized');
   }
   claim(id: string, client: CodexProvider): void {
+    if (this.retiredThreads.has(id)) throw new RpcResponseError(-32602, 'Native thread was retired');
     if (this.owners.has(id) && this.owners.get(id) !== client) throw new Error('Thread already belongs to another provider view');
     this.owners.set(id, client);
   }
@@ -87,7 +148,7 @@ export class CodexRuntime {
   }
 }
 let sharedRuntime: CodexRuntime | undefined;
-export interface CodexProviderOptions { transport?: CodexConnectionOptions; runtime?: CodexRuntime; maxBadNotifications?: number; toolTimeoutMs?: number }
+export interface CodexProviderOptions { transport?: CodexConnectionOptions; runtime?: CodexRuntime; maxBadNotifications?: number; toolTimeoutMs?: number; answerTimeoutMs?: number }
 export class CodexProvider extends ProviderBase {
   readonly provider = 'codex';
   readonly capabilities = Object.freeze({ steering: false, subagents: false, compaction: 'none' as const });
@@ -99,7 +160,7 @@ export class CodexProvider extends ProviderBase {
   private parameters = new Map<string, ThreadParams>();
   constructor(options: CodexProviderOptions = {}) {
     super(options.toolTimeoutMs);
-    this.runtime = options.runtime ?? (options.transport || options.maxBadNotifications ? new CodexRuntime(options) : (sharedRuntime ??= new CodexRuntime()));
+    this.runtime = options.runtime ?? (options.transport || options.maxBadNotifications || options.answerTimeoutMs ? new CodexRuntime(options) : (sharedRuntime ??= new CodexRuntime()));
   }
   exited(error: Error): void { this.activeTurns.clear(); this.failedTurns.clear(); this.ended(error); }
   receive(notification: Notification): void {
@@ -124,7 +185,7 @@ export class CodexProvider extends ProviderBase {
     if (!turnId || this.failedTurns.has(turnId)) return;
     this.failedTurns.add(turnId); this.cancelTurnCalls(threadId, turnId);
     this.emit('notification', { method: 'turn/completed', params: { threadId, turn: { id: turnId, status: 'failed', error: { message: `Invalid provider notification: ${message}` } } } });
-    void this.connection.request('turn/interrupt', { threadId, turnId }).catch(() => {});
+    void this.runtime.request('turn/interrupt', { threadId, turnId }).catch(() => {});
   }
   async handleNativeRequest(request: RpcRequest): Promise<unknown> {
     this.requireReady();
@@ -160,7 +221,7 @@ export class CodexProvider extends ProviderBase {
     this.phase = 'stopping';
     const interrupts = [...this.activeTurns].map(([threadId, turn]) => {
       if (turn.id) this.cancelTurnCalls(threadId, turn.id);
-      return turn.id ? this.connection.request('turn/interrupt', { threadId, turnId: turn.id }) : Promise.resolve();
+      return turn.id ? this.runtime.request('turn/interrupt', { threadId, turnId: turn.id }) : Promise.resolve();
     });
     const interrupted = Promise.allSettled(interrupts);
     await this.runtime.release(this);
@@ -168,6 +229,12 @@ export class CodexProvider extends ProviderBase {
     await interrupted;
   }
   async forceStop(): Promise<void> { await this.connection.forceStop(); this.exited(new Error('Codex provider force-stopped')); }
+  override async retireThread(threadId: string): Promise<void> {
+    const turnId = this.activeTurns.get(threadId)?.id;
+    this.cancelThreadCalls(threadId);
+    this.activeTurns.delete(threadId); this.configs.delete(threadId); this.parameters.delete(threadId);
+    if (this.phase !== 'stopped') this.runtime.retireThread(threadId, turnId);
+  }
   async request<M extends keyof Methods>(method: M, params: Methods[M]['params'], timeoutMs?: number): Promise<Methods[M]['result']> {
     this.requireReady();
     if (!['thread/start', 'thread/resume', 'turn/start', 'turn/interrupt'].includes(method)) throw new RpcResponseError(-32601, `Method not found: ${method}`);
@@ -178,7 +245,7 @@ export class CodexProvider extends ProviderBase {
       const prepared = prepareThread(effective);
       const { tools: _tools, instructions: _instructions, promptProfile: _profile, permissions: _permissions, ...rest } = p;
       if (p.threadId) this.runtime.claim(p.threadId, this);
-      const result = await this.connection.request(method, { ...rest, sandbox: prepared.permissions.sandbox, approvalPolicy: prepared.permissions.approvalPolicy,
+      const result = await this.runtime.request(method, { ...rest, sandbox: prepared.permissions.sandbox, approvalPolicy: prepared.permissions.approvalPolicy,
         config: { 'sandbox_workspace_write.writable_roots': prepared.permissions.writableRoots,
           'sandbox_workspace_write.exclude_tmpdir_env_var': true, 'sandbox_workspace_write.exclude_slash_tmp': true },
         baseInstructions: prepared.instructions,
@@ -195,10 +262,14 @@ export class CodexProvider extends ProviderBase {
       this.activeTurns.set(p.threadId, reservation);
     }
     try {
-      const result = await this.connection.request(method, params, { ...(timeoutMs === undefined ? {} : { timeoutMs }), decode: value => decodeResult(method, value) });
+      const result = await this.runtime.request(method, params, { ...(timeoutMs === undefined ? {} : { timeoutMs }), decode: value => decodeResult(method, value) });
+      if (method === 'turn/start' && this.runtime.isRetired(p.threadId)) {
+        const { turn } = result as Methods['turn/start']['result'];
+        if (turn.status === 'inProgress') this.runtime.interruptRetired(p.threadId, turn.id);
+      }
       if (method === 'turn/start' && this.phase !== 'ready') {
         const { turn } = result as Methods['turn/start']['result'];
-        if (turn.status === 'inProgress') void this.connection.request('turn/interrupt', { threadId: p.threadId, turnId: turn.id }).catch(() => {});
+        if (turn.status === 'inProgress') void this.runtime.request('turn/interrupt', { threadId: p.threadId, turnId: turn.id }).catch(() => {});
       }
       if (method === 'turn/start' && this.activeTurns.get(p.threadId) === reservation) {
         const { turn } = result as Methods['turn/start']['result'];

@@ -1,0 +1,37 @@
+const UNITS = ['h', 'm', 's', 'ms'] as const;
+type Unit = (typeof UNITS)[number];
+const MS: Record<Unit, number> = { h: 3600000, m: 60000, s: 1000, ms: 1 };
+const COMPONENT_RE = /^(\d+)(h|ms|m|s)/;
+const MAX = Number.MAX_SAFE_INTEGER;
+
+export function parseDuration(text: string): number {
+  let pos = /^\s*/.exec(text)![0].length;
+  let lastUnitIndex = -1;
+  let total = 0;
+  let parsed = false;
+
+  while (pos < text.length) {
+    const match = COMPONENT_RE.exec(text.slice(pos));
+    if (!match) throw new RangeError('Invalid duration');
+
+    const value = Number(match[1]);
+    if (value > MAX) throw new RangeError('Invalid duration');
+
+    const unit = match[2] as Unit;
+    const unitIndex = UNITS.indexOf(unit);
+    if (unitIndex <= lastUnitIndex) throw new RangeError('Invalid duration');
+    lastUnitIndex = unitIndex;
+
+    const contribution = value * MS[unit];
+    if (contribution > MAX) throw new RangeError('Invalid duration');
+    total += contribution;
+    if (total > MAX) throw new RangeError('Invalid duration');
+
+    pos += match[0].length;
+    parsed = true;
+    pos += /^\s*/.exec(text.slice(pos))![0].length;
+  }
+
+  if (!parsed) throw new RangeError('Invalid duration');
+  return total;
+}

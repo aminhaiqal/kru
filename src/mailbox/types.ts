@@ -24,6 +24,7 @@ export interface Delivery {
   expectsReply: boolean;
   status: DeliveryStatus;
   turnId: string | null;
+  batchId: string | null;
   error: string | null;
   retryOf: string | null;
   chainId: string;
@@ -32,10 +33,21 @@ export interface Delivery {
   createdAt: string;
   updatedAt: string;
 }
+export interface Batch { id: string; agentId: string; laneId: string | null; deliveries: Delivery[] }
+export interface LaneHead { agentId: string; laneId: string | null; head: Delivery | null }
+export interface ActiveLane { agentId: string; laneId: string | null; batchId: string; turnId: string | null; startedAt: string }
 export interface MailboxChange { deliveryId: string; status: DeliveryStatus }
 /** The engine port. Implementations store work; they never start providers. */
 export interface Mailbox {
   enqueue(input: EnqueueInput): EnqueueReceipt;
+  claimBatch(agentId: string, laneId: string | null): Batch | null;
+  markBatchRunning(batchId: string, turnId: string): void;
+  finishBatch(batchId: string, status: Exclude<FinalStatus, 'cancelled'>, error?: string): void;
+  restoreBatch(batchId: string): void;
+  laneBusy(agentId: string, laneId: string | null): boolean;
+  activeLanes(): ActiveLane[];
+  listLanes(): LaneHead[];
+  recoverInterrupted(): number;
   claimNext(agentId: string, laneId: string | null): Delivery | null;
   markRunning(deliveryId: string, turnId: string): void;
   finish(deliveryId: string, status: Exclude<FinalStatus, 'cancelled'>, error?: string): void;
