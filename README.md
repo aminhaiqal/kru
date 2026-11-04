@@ -1,11 +1,12 @@
 # Kru
 
 Kru is a headless, local-first engine for running AI agent CLIs as persistent
-teammates. **M0 and M1 are implemented:** a generic JSON-RPC transport, a typed
-provider port with fake, Codex and Claude adapters, and streaming terminal chat.
+teammates. **M0–M2 are implemented:** a generic JSON-RPC transport, a typed
+provider port with fake, Codex and Claude adapters, streaming terminal chat,
+and a durable SQLite mailbox.
 
-Persistence, mailboxes, and scheduling come in later milestones.
-The roadmap is in [the project plan](docs/Kru%20-%20Project%20Plan%20%26%20Milestones.pdf).
+Scheduling comes in M3.
+The roadmap is in [the project plan](docs/Kru%20%E2%80%94%20Project%20Plan%20%26%20Milestones.pdf).
 
 ## Try M0
 
@@ -106,6 +107,29 @@ process and isolate thread events. Claude uses the official Agent SDK, a streami
 input queue and in-process MCP tools. See [M1 implementation notes](docs/m1.md)
 for configuration, permissions, idle deadlines and failure isolation.
 
+## Try M2
+
+```sh
+bun run dev -- init
+bun run dev -- agent create reviewer --provider fake
+bun run dev -- send reviewer "review the latest commit" --idempotency-key review-1
+bun run dev -- queue reviewer
+# <delivery-id> queued user "review the latest commit"
+bun run dev -- cancel <delivery-id>
+bun run dev -- retry <delivery-id>
+```
+
+Run `init` once at the project root. Commands search upward for `.kru/`, so
+subfolders use the same `.kru/kru.sqlite` mailbox. Outside a project, commands
+ask you to initialize one. Use `--db <path>` or `KRU_DB` to override discovery. Repeating the same idempotency key returns
+the first receipt; using it with different content is refused.
+`send reviewer,coder "review this"` creates one message with independent deliveries.
+
+M2 stores work and enforces delivery transitions. It does not run queued work;
+M3 adds the scheduler. `chat` remains the direct M1 chat command.
+See [M2 implementation notes](docs/m2.md) for the mailbox port, state machine,
+migrations, CLI options and acceptance coverage.
+
 ## Transport API
 
 ```ts
@@ -181,7 +205,7 @@ See [M0 implementation notes](docs/m0.md) for lifecycle behavior and test covera
 
 ## Versioning
 
-The current release is **0.0.3**, tagged `v0.0.3`. `package.json` is the source
+The current release is **0.0.4**, tagged `v0.0.4`. `package.json` is the source
 of the version printed by `kru --version` (or `bun run dev -- --version`).
 Each release records its changes in [CHANGELOG.md](CHANGELOG.md) and receives
 an annotated Git tag matching the package version.
@@ -195,6 +219,8 @@ for M7. Within a release line, fixes increment the patch version.
 bun test            # transport, provider conformance, runtime and CLI tests
 bun run typecheck  # strict TypeScript
 bun run check      # both; also run in CI
+bun run test:mailbox # M2 store, mailbox acceptance and CLI tests
+bun run test:mailbox:repeat # repeat every M2 test ten times
 bun run test:codex # optional: real initialize + tool registration, no model call
 bun run test:providers # fake, Codex and Claude conformance; no model or credentials
 bun run test:codex-chat # opt-in: real Codex model turns

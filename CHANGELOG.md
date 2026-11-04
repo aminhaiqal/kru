@@ -1,9 +1,23 @@
 # Changelog
 
-## Unreleased
+## [0.0.4] - 2026-11-04
+
+M2 — the durable mailbox, project discovery and CLI, plus interactive chat approvals.
 
 ### Added
 
+- M2 durable mailbox port and SQLite adapter with independent messages/deliveries,
+  transactional idempotency, atomic lane claims and sequence-based queue order.
+- Central delivery state machine, final-state immutability, explicit retry lineage
+  and change notifications published after commit.
+- Project discovery by ancestor `.kru/`, explicit `init`, and database overrides,
+  preventing accidental empty mailboxes when running commands from subfolders.
+- Persistent agent registry and `agent create`, `agent list`, `send`, `queue`,
+  `cancel` and `retry` commands, with configurable database paths.
+- Version-1 migrations, WAL/full synchronization, busy timeout, foreign-key
+  validation and a frozen schema fixture with migration parity coverage.
+- All 13 M2 acceptance cases, process contention checks and CLI integration tests;
+  `test:mailbox:repeat` repeats the M2 suite ten times.
 - Interactive command/file approval prompts for `kru chat` with `on-request`.
   Show action details on stderr and accept explicit `y`/`yes` for one action.
 - Shared terminal input routing for chat and approval answers, with sequential
