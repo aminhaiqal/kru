@@ -1,5 +1,18 @@
 # Changelog
 
+## Unreleased
+
+### Added
+
+- Interactive command/file approval prompts for `kru chat` with `on-request`.
+  Show action details on stderr and accept explicit `y`/`yes` for one action.
+- Shared terminal input routing for chat and approval answers, with sequential
+  prompts, default refusal, EOF handling, cancellation and deadline cleanup.
+- Regression tests for approval decisions, non-terminal/never refusal, queued
+  requests, pretyped consent and terminal control escaping.
+- Codex native-peer approval regression and real-terminal yes/no/Ctrl+C evidence,
+  with a documented command for exercising explicit Codex approvals.
+
 ## [0.0.3] - 2026-11-03
 
 M1 — one provider port with fake, Codex and Claude adapters.

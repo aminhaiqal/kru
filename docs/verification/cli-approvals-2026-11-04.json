@@ -1,0 +1,28 @@
+{
+  "provider": "claude",
+  "sandbox": "workspace-write",
+  "approvalPolicy": "on-request",
+  "checks": [
+    {
+      "answer": "yes",
+      "prompted": true,
+      "exitCode": 0,
+      "markerContents": "approved\n",
+      "transcript": "\r\nApproval requested (command):\r\n{\r\n  \"name\": \"Bash\",\r\n  \"input\": {\r\n    \"command\": \"printf 'approved\\\\n' > approved-marker.txt\",\r\n    \"description\": \"Write approved marker file\"\r\n  }\r\n}\r\nAllow this action? [y/N] yes\r\r\nApproved once.\r\nI ran the command once and it finished without errors, so `approved-marker.txt` should now be in the working directory, containing `approved`. As you asked, I used no file tools, so I didn't separately check the file.\r\nusage: inputTotal=14475 cachedRead=10622 cacheWrite=3849 output=157 total=14632\r\n"
+    },
+    {
+      "answer": "no",
+      "prompted": true,
+      "exitCode": 0,
+      "markerContents": null,
+      "transcript": "\r\nApproval requested (command):\r\n{\r\n  \"name\": \"Bash\",\r\n  \"input\": {\r\n    \"command\": \"printf 'approved\\\\n' > approved-marker.txt\",\r\n    \"description\": \"Write approved marker file\"\r\n  }\r\n}\r\nAllow this action? [y/N] no\r\r\nDeclined.\r\nThe command was denied: a `PreToolUse:Bash` hook blocked it with the error \"Blocked by hook\". As you asked, I stopped there and didn't retry or use another tool, so `approved-marker.txt` was not created.\r\nusage: inputTotal=14490 cachedRead=10621 cacheWrite=3865 output=167 total=14657\r\n"
+    },
+    {
+      "answer": "SIGINT",
+      "prompted": true,
+      "exitCode": 130,
+      "markerContents": null,
+      "transcript": "\r\nApproval requested (command):\r\n{\r\n  \"name\": \"Bash\",\r\n  \"input\": {\r\n    \"command\": \"printf 'approved\\\\n' > approved-marker.txt\",\r\n    \"description\": \"Write approved line to marker file\"\r\n  }\r\n}\r\nAllow this action? [y/N] \r\nApproval cancelled or expired; input closed.\r\n\r\nusage: unavailable\r\n"
+    }
+  ]
+}

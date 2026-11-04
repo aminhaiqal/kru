@@ -1,0 +1,79 @@
+{
+  "verified_at": "2026-11-04",
+  "repository": "aminhaiqal/kru",
+  "implementation_commit": "cc6cfc6d699078123a42f3eb661fa420e3ed70e8",
+  "offline": {
+    "typecheck": "passed",
+    "tests_passed": 125,
+    "tests_skipped_opt_in": 9,
+    "tests_failed": 0
+  },
+  "live_file_permissions": {
+    "providers": [
+      "claude",
+      "codex"
+    ],
+    "tests_passed": 2,
+    "tests_failed": 0,
+    "allowed": [
+      "cwd/ok.txt",
+      "writableRoot/ok.txt"
+    ],
+    "refused": [
+      "unlisted outside.txt"
+    ],
+    "settings": {
+      "sandbox": "workspace-write",
+      "approvalPolicy": "never"
+    }
+  },
+  "benchmark_replay": {
+    "source": "docs/benchmarks/claude-profiles-2026-11-03",
+    "full_tests_passed": 26,
+    "coding_tests_passed": 26,
+    "new_model_benchmark_run": false
+  },
+  "native_shell_parity": {
+    "passed": false,
+    "probe": [
+      {
+        "provider": "claude",
+        "sandbox": "workspace-write",
+        "approvalPolicy": "never",
+        "approvals": 0,
+        "commandItems": 1,
+        "shellMarkerExists": false,
+        "reply": "DENIED\n\nThe command was blocked by a PreToolUse hook on Bash, so it did not run and I did not try another method."
+      },
+      {
+        "provider": "codex",
+        "sandbox": "workspace-write",
+        "approvalPolicy": "never",
+        "approvals": 0,
+        "commandItems": 1,
+        "shellMarkerExists": true,
+        "reply": "DONE"
+      }
+    ],
+    "prompt_template": "Attempt exactly this shell command through Bash or your native shell tool: printf KRU_SHELL_OK > <cwd>/shell-marker.txt. Do not use file tools, apply_patch, Python, or another mechanism. If denied, report DENIED. If executed successfully, report DONE."
+  },
+  "canary": {
+    "default_branch": "main",
+    "workflow_path": ".github/workflows/codex-canary.yml",
+    "state": "active",
+    "cron_utc": "17 3 * * *",
+    "verification_event": "workflow_dispatch",
+    "conclusion": "success",
+    "run_url": "https://github.com/aminhaiqal/kru/actions/runs/41780689738",
+    "tested_codex_version": "0.166.0",
+    "schedule_triggered_run_observed": false
+  },
+  "checklist": {
+    "usage_normalization": true,
+    "separate_tool_budgets": true,
+    "full_profile_and_one_task_comparison": true,
+    "strict_native_permission_parity": false,
+    "output_progress_idle_reset": true,
+    "canary_on_default_branch": true
+  }
+}

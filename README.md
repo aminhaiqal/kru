@@ -51,7 +51,10 @@ counts are subsets of input, so they are never added to it twice.
 Agent configuration includes `promptProfile` (`minimal`, `coding` or Claude's `full`), sandbox
 (`read-only` or `workspace-write`) and approval policy (`on-request` or `never`).
 Defaults are minimal, read-only and on-request. Hosts answer typed approval
-requests; the CLI declines requests without an approval UI. Kru instructions must
+requests; the CLI prompts for command and file approvals when stdin and stderr
+are terminals. Enter `y` or `yes` to approve once; all other answers decline.
+Piped/non-terminal runs and `--approval-policy never` decline requests.
+Kru instructions must
 be under 8,000 bytes and there may be at most six Kru-declared tools. Claude's
 profile selects built-ins independently and reports their count separately in
 thread prompt metadata; they do not consume the Kru tool budget. Provider-owned
@@ -59,11 +62,37 @@ context and native Codex tools are not included in that measurement.
 
 `workspace-write` permits Claude file tools inside `cwd` and extra roots supplied
 with repeatable `--writable-root <path>` flags, without a host approval listener.
-Outside writes and shell commands need approval; the CLI declines those requests.
+Outside writes and shell commands need approval. For an interactive Claude shell
+approval, run:
+
+```sh
+bun run dev -- chat --provider claude --prompt-profile coding --sandbox workspace-write --approval-policy on-request "Run echo hello using Bash"
+```
+
+The CLI shows the requested action before asking `Allow this action? [y/N]` on
+stderr. Approval is per action, not a session-wide grant. EOF declines; cancellation
+or the provider's request deadline closes input so late consent cannot approve
+another request. Structured permission grants, elicitation and tool input requests
+still require an embedding host and are declined by the CLI.
+
 Codex receives the same roots in its native sandbox. Implicit temporary-directory
 write grants are disabled; add a temporary root explicitly if required. Idle
 timeouts pause during explicitly running native commands, even without output,
 and resume after command completion. Cancellation remains available.
+Codex can execute native commands inside its sandbox without asking, while Claude
+asks the host for shell access. This prompt does not establish strict native shell
+permission parity between the providers.
+
+To exercise Codex's approval prompt with a harmless command, explicitly request
+approval for running outside its sandbox:
+
+```sh
+bun run dev -- chat --provider codex --prompt-profile coding --sandbox workspace-write --approval-policy on-request 'Run echo hello once using the shell executor with sandbox_permissions="require_escalated" and justification="May I run echo hello?". If denied, stop without retrying.'
+```
+
+This exercises a native approval request; the prompt instruction does not enforce
+approval for every Codex command. Ordinary sandboxed commands can run automatically.
+See [OpenAI's sandbox and approvals documentation](https://learn.chatgpt.com/docs/agent-approvals-security#sandbox-and-approvals).
 
 Claude's `full` profile uses the native Claude Code prompt and standard tools,
 loads project/local settings and CLAUDE.md, and retains native context attachments.

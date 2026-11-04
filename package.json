@@ -23,6 +23,7 @@
     "check": "bun run typecheck && bun test",
     "test:claude-chat": "KRU_TEST_CLAUDE_CHAT=1 bun test test/claude-live.test.ts",
     "test:permissions-live": "KRU_TEST_PERMISSIONS=1 bun test test/permissions-live.test.ts",
+    "test:shell-parity-live": "bun scripts/check-shell-parity.ts",
     "benchmark:claude-profiles": "CLAUDE_CODE_DISABLE_AUTO_MEMORY=1 bun scripts/claude-profile-benchmark.ts"
   },
   "engines": {

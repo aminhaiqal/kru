@@ -1,7 +1,8 @@
-import { createInterface } from 'node:readline';
 import { runChatTurn } from '../chat/turn';
 import { createProvider } from '../providers/registry';
 import { installRpcSignalHandlers } from '../rpc';
+import { attachApprovals } from './approvals';
+import { TerminalInput } from './terminal-input';
 
 export const chatUsage = 'Usage: kru chat [--provider fake|codex|claude] [--model <name>] [--idle-timeout-ms <ms>] [--prompt-profile minimal|coding|full] [--sandbox read-only|workspace-write] [--approval-policy on-request|never] [--writable-root <path>] [--] [prompt]';
 export async function chat(args: string[]): Promise<number> {
@@ -35,8 +36,9 @@ export async function chat(args: string[]): Promise<number> {
   const prompt = words.length ? words.join(' ') : interactive ? '' : await Bun.stdin.text();
   if (!interactive && !prompt.trim()) throw new Error('Provide a prompt as an argument or stdin');
   const shutdown = installRpcSignalHandlers([provider]);
-  let readline: ReturnType<typeof createInterface> | undefined;
-  const closeInput = () => readline?.close();
+  const terminal = process.stdin.isTTY ? new TerminalInput(process.stdin, process.stderr, Boolean(process.stderr.isTTY)) : undefined;
+  const detachApprovals = attachApprovals(provider, approvalPolicy, process.stderr.isTTY ? terminal : undefined);
+  const closeInput = () => terminal?.close();
   process.on('SIGINT', closeInput); process.on('SIGTERM', closeInput);
   try {
     await provider.start();
@@ -48,14 +50,13 @@ export async function chat(args: string[]): Promise<number> {
     };
     if (!interactive) await send(prompt);
     else {
-      readline = createInterface({ input: process.stdin, output: process.stdout, terminal: true });
-      readline.on('SIGINT', () => process.emit('SIGINT'));
-      readline.setPrompt('you> '); readline.prompt();
-      for await (const line of readline) {
+      if (!terminal) throw new Error('Interactive chat requires terminal input');
+      for (;;) {
+        const line = await terminal.read('you> ');
+        if (line === undefined) break;
         if (line.trim() === '/quit' || line.trim() === '/exit') break;
         if (line.trim()) { process.stdout.write('assistant> '); await send(line); }
         if (shutdown.exitCode !== undefined) break;
-        readline.prompt();
       }
     }
     return shutdown.exitCode ?? 0;
@@ -63,7 +64,7 @@ export async function chat(args: string[]): Promise<number> {
     if (shutdown.exitCode !== undefined) return shutdown.exitCode;
     throw error;
   } finally {
-    readline?.close(); await provider.stop(); shutdown.dispose();
+    detachApprovals(); await provider.stop(); shutdown.dispose();
     process.removeListener('SIGINT', closeInput); process.removeListener('SIGTERM', closeInput);
   }
 }
