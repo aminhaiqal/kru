@@ -35,5 +35,5 @@ events, raw provider stderr and user-written notes can contain secrets. Do not
 publish databases or raw diagnostic artifacts without reviewing them.
 
 For operational recovery, use `kru recovery inspect --json`, `kru log <agent>`
-and [the recovery workflow](docs/m7.md). A usage acknowledgement cannot bypass
+and [the recovery specification](docs/Kru_Project_Plan_and_Milestones.pdf#page=67). A usage acknowledgement cannot bypass
 unresolved process containment.

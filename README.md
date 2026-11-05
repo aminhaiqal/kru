@@ -11,8 +11,7 @@ verified process cleanup and explicit usage gaps.
 The roadmap is in [the project plan](docs/Kru_Project_Plan_and_Milestones.pdf).
 The expanded M6 implementation includes durable session generations, guarded
 setup/activation, frozen handoffs and snapshot-bound history retrieval. See the
-[M6 acceptance report](docs/m6.md) for the eighteen-case verification and the
-[original conformance audit](docs/m6-conformance-review.md) for the resolved gaps.
+[M6 acceptance results](docs/verification/m6-expanded-2026-11-05.json).
 
 ## Try M0
 
@@ -116,7 +115,7 @@ completed Sonnet 5.5 pairs. Coding remains opt-in.
 All three adapters use the same chat consumer and conformance suite, including
 explicit prefix-stability and context-budget tests. Default Codex views share one
 process and isolate thread events. Claude uses the official Agent SDK, a streaming
-input queue and in-process MCP tools. See [M1 implementation notes](docs/m1.md)
+input queue and in-process MCP tools. See [M1 specification](docs/Kru_Project_Plan_and_Milestones.pdf)
 for configuration, permissions, idle deadlines and failure isolation.
 
 ## Try M2
@@ -139,7 +138,7 @@ the first receipt; using it with different content is refused.
 
 M2 stores work and enforces delivery transitions. The M3 daemon runs queued work.
 `chat` remains the direct M1 chat command.
-See [M2 implementation notes](docs/m2.md) for the mailbox port, state machine,
+See [M2 specification](docs/Kru_Project_Plan_and_Milestones.pdf) for the mailbox port, state machine,
 migrations, CLI options and acceptance coverage.
 
 ## Try M3
@@ -161,10 +160,10 @@ single daemon watches committed work from other terminals, runs up to two turns
 at once, and batches consecutive user messages in each lane. `status` explains
 paused, provider readiness, lane, budget and slot holds. Budget days use local
 time by default; `daemon --budget-timezone Asia/Kuala_Lumpur` sets an explicit
-zone. Daemon counters and estimated token costs now persist in the [usage ledger](docs/usage-and-pricing.md). Every turn has a delivery behind it; uncertain turns become
+zone. Daemon counters and estimated token costs now persist in the [usage ledger](#cost-and-dollar-budgets). Every turn has a delivery behind it; uncertain turns become
 interrupted and require an explicit retry. Stop the daemon with Ctrl+C.
 
-See [M3 implementation notes](docs/m3.md) for session bindings, atomic batches,
+See [M3 specification](docs/Kru_Project_Plan_and_Milestones.pdf) for session bindings, atomic batches,
 shutdown, crash recovery, command options and acceptance tests.
 
 ## Try M4
@@ -181,7 +180,7 @@ restart. Domain writes append versioned events and update projections in the
 same transaction. Replay verification now rebuilds twenty-two projection tables in an
 isolated database and reports drift without changing live state. Existing v1–v3
 databases upgrade through migration v4 with genesis events preserving queue order.
-See [M4 implementation notes](docs/m4.md) and `bun run test:history:repeat`.
+See [M4 specification](docs/Kru_Project_Plan_and_Milestones.pdf) and `bun run test:history:repeat`.
 
 ## Try M5
 
@@ -196,7 +195,7 @@ receive `list_agents` and `send_message`. Replies are opt-in and never request a
 answer back; the default four-hop limit stops repeated forwarding.
 
 Use `daemon --max-hops <count>` to configure the limit and `cost --by chain`
-to inspect an exchange. See [M5 implementation notes](docs/m5.md) for tool arguments,
+to inspect an exchange. See [M5 specification](docs/Kru_Project_Plan_and_Milestones.pdf) for tool arguments,
 return lanes, idempotency, atomic replies, and acceptance tests.
 
 ## Try M6
@@ -218,7 +217,7 @@ Packets default to 12,000 Unicode code points, with current-input room reserved
 under the runner/provider byte limits. Configure with
 `daemon --handoff-chars 12000` (512–16000). Session generations and exact packet
 use are replayable; history cursors retain one committed snapshot.
-See [M6 implementation notes](docs/m6.md) for recovery, limits and verification.
+See [M6 specification](docs/Kru_Project_Plan_and_Milestones.pdf) for recovery, limits and verification.
 
 ## Try M7
 
@@ -237,9 +236,9 @@ continues after recovery; unknown attempts require an explicit `retry`. Partial
 output and observed usage remain labelled. Unknown usage holds finite budgets
 until a conservative bound is recorded with `cost acknowledge`.
 Linux and macOS containment are tested with real child processes; unsupported
-or unverifiable ownership blocks startup. See [M7 notes](docs/m7.md),
-[architecture](docs/architecture.md), [security boundaries](SECURITY.md) and
-the [v0.2 release audit](docs/release-check-v0.2.0.md).
+or unverifiable ownership blocks startup. See the [recovery specification](docs/Kru_Project_Plan_and_Milestones.pdf#page=67),
+[security boundaries](SECURITY.md) and
+[verification results](docs/verification/m6-expanded-2026-11-05.json).
 
 ## Cost and dollar budgets
 
@@ -254,7 +253,7 @@ Both limits apply and survive daemon restarts. Costs are estimated main-agent
 token costs at dated list prices, with separate cache-read and write-lifetime
 rates. Missing lifetimes produce a range; the dollar gate uses its upper bound.
 Unknown/unpriced usage is held rather than assumed free. These are not hard caps
-on all account charges. See [pricing and ledger scope](docs/usage-and-pricing.md).
+on all account charges. See [pricing implementation](src/usage/pricing.ts).
 
 ## Transport API
 
@@ -328,9 +327,9 @@ Normal cleanup removes the record; SIGKILL leaves it for M7 boot recovery.
 Daemon children use a database-scoped directory beside the database and a durable
 cleanup journal, with host, epoch, runtime and process-group membership evidence.
 Recovery verifies process start identities before signalling; an unverified tree
-keeps the boot barrier closed. See [M7](docs/m7.md) for paths and limits.
+keeps the boot barrier closed. See the [security boundaries](SECURITY.md) for supported platforms and limits.
 
-See [M0 implementation notes](docs/m0.md) for lifecycle behavior and test coverage.
+See [M0 specification](docs/Kru_Project_Plan_and_Milestones.pdf) for lifecycle behavior and test coverage.
 
 ## Versioning
 
