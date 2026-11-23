@@ -44,7 +44,7 @@ for the Multica reference and how it maps to KRU.
 
 The UI also includes streamed conversations, steps and explicit completion,
 expiring approvals, daily/interval/webhook routines, per-agent MCP connections,
-browser sessions with saved cookies, automatic per-bot memory, reusable skills, and activity
+browser sessions with saved cookies, automatic per-bot memory, visual Skills workflows, and activity
 and estimated usage. Install Chromium once for browser sessions:
 
 ```sh
@@ -52,8 +52,9 @@ bunx playwright-core install chromium
 ```
 
 Read the [workspace guide](docs/WORKSPACE.md) for setup, credentials, automation
-semantics, API usage and verification. Workspace state is included in event replay;
-existing databases upgrade transactionally through migration 10.
+semantics, API usage and verification. The [workflow architecture](docs/WORKFLOW_ARCHITECTURE.md)
+explains the n8n-inspired builder and how it reuses existing connectors. Workspace state is included in event replay;
+existing databases upgrade transactionally through migration 12.
 
 ## Try M0
 
@@ -219,7 +220,7 @@ bun run dev -- replay --verify
 
 Daemon inputs, assistant answers, tool/command details, turns and usage survive
 restart. Domain writes append versioned events and update projections in the
-same transaction. Replay verification now rebuilds twenty-seven projection tables in an
+same transaction. Replay verification now rebuilds thirty projection tables in an
 isolated database and reports drift without changing live state. Existing v1–v3
 databases upgrade through migration v4 with genesis events preserving queue order.
 See [M4 specification](docs/Kru_Project_Plan_and_Milestones.pdf) and `bun run test:history:repeat`.

@@ -285,9 +285,33 @@ included in the general UI state response. The existing authenticated maintenanc
 API remains available; removal is reflected in replay, while previous versions
 remain in the event history.
 
-Skills store a name, description and reusable instructions. The Skills page can
-edit or remove them, and Run skill creates a work item. Bots can also save their
-own reusable skills.
+## Skills: visual workflows
+
+Open **Skills → New workflow** and choose a workflow bot. The canvas starts with
+a Trigger connected to a Bot task. Drag nodes to arrange them. Add Bot task, App
+tool, Edit data or Condition nodes from the palette. Click an output circle and
+then a target input circle to connect them. Select a connection to remove it.
+
+Select a node to configure its parameters. App tool nodes list the existing
+connectors available to the workflow bot; **Load app tools** reads the actual MCP
+tool list. Use JSON mappings such as `{{input.message}}` and
+`{{steps.agent.result}}` to pass earlier data into a node. **Apply node** updates
+the draft, and **Save** persists it. **Run workflow** accepts JSON input and uses
+the saved graph. The Input/Output inspector and Executions tab show real node
+results, errors and timings. Export JSON downloads the workflow definition.
+
+Workflow settings provide an optional interval and an explicit activation switch.
+Schedules run only while KRU runs. Bot steps use the existing bounded task runner;
+app steps use existing Connector permissions. Ask-before-action requests appear
+in the bot's conversation and link back through the reminder. Stop run cancels
+pending work. Interrupted or failed runs can be explicitly resumed after checking
+effects, while completed steps remain recorded.
+
+Existing prompt-based skills import once into Trigger → Bot task workflows, with
+their original instructions and bot assignment preserved. Bots can still maintain
+their own reusable prompt skills through `workspace`; these remain distinct from
+the operator's editable execution graph. See [Workflow architecture](WORKFLOW_ARCHITECTURE.md)
+for n8n source research, data conventions and the supported first-version scope.
 
 ## API and storage
 
@@ -309,6 +333,11 @@ Core routes:
 | GET | `/api/events` | Authenticated server-sent events |
 | POST / PATCH | `/api/agents[/:id]` | Create or configure a teammate |
 | POST / GET | `/api/agents/:id/messages` | Queue text or retrieve a lane |
+| GET / POST | `/api/workflows` | List workflow definitions/runs or create a draft |
+| GET / PATCH | `/api/workflows/:id` | Read or revision-guard a workflow definition |
+| POST | `/api/workflows/:id/run` | Start with JSON input and `Idempotency-Key` |
+| GET | `/api/workflows/runs/:id` | Frozen graph and per-node execution data |
+| POST | `/api/workflows/runs/:id/cancel\|resume` | Stop or explicitly resume execution |
 | GET | `/api/work` | Projects and work items with execution state |
 | POST / PATCH | `/api/work/projects[/:id]` | Create a project or update its workflow |
 | POST | `/api/work/items` | Create work (human or agent-assigned) |
@@ -329,8 +358,9 @@ Core routes:
 Migration 10 adds `workspace_records`. Versioned workspace events participate in
 the same transaction, ownership fence and replay verification as core domain
 events. Migration 11 adds projects, work items, stage runs and activity, all
-event-backed. Replay now verifies 27 projection tables. This upgrade is forward-only;
-an older KRU binary rejects a database with migration 11. Back up the database
+event-backed. Migration 12 adds workflow definitions, runs and node execution
+state. Replay now verifies 30 projection tables. This upgrade is forward-only;
+an older KRU binary rejects a database with migration 12. Back up the database
 before returning to an older checkout.
 
 ## Verification

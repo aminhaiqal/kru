@@ -137,7 +137,7 @@ export class WorkService {
     });
   }
   importTasks(): void {
-    const missing = this.store.db.query<{ id: string }, []>("SELECT w.id FROM workspace_records w LEFT JOIN work_runs r ON r.task_id=w.id WHERE w.kind='task' AND r.task_id IS NULL ORDER BY w.created_at,w.id").all();
+    const missing = this.store.db.query<{ id: string }, []>("SELECT w.id FROM workspace_records w LEFT JOIN work_runs r ON r.task_id=w.id WHERE w.kind='task' AND r.task_id IS NULL AND NOT EXISTS (SELECT 1 FROM workflow_node_runs n WHERE n.task_id=w.id) ORDER BY w.created_at,w.id").all();
     if (!missing.length) return;
     this.store.atomic(() => {
       const project = this.defaultProject(), active = project.stages.find(s => s.category === 'active')!, review = project.stages.find(s => s.category === 'review')!;

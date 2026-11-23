@@ -16,6 +16,7 @@ import { IntegrationGateway } from './integrations';
 import { BrowserGateway, browserActionSchema } from './browser';
 import { canonical } from '../store/events';
 import { WorkService } from '../work/service';
+import { WorkflowService } from '../workflows/service';
 
 const result = (success: boolean, value: unknown, limit = 26000): ToolResult => {
   const text = JSON.stringify(value);
@@ -51,6 +52,7 @@ export class WorkspaceRuntime {
   readonly work: WorkService;
   readonly routines: RoutineRunner;
   readonly integrations: IntegrationGateway;
+  readonly workflows: WorkflowService;
   readonly browser: BrowserGateway;
   readonly tools: AgentTools;
   readonly live = new Map<string, { agentId: string; laneId: string | null; items: Map<string, { id: string; type: string; text?: string; details?: unknown }> }>();
@@ -62,6 +64,7 @@ export class WorkspaceRuntime {
     this.tasks = new TaskRunner(this.records); this.routines = new RoutineRunner(this.records);
     this.work = new WorkService(store, interrupt);
     this.integrations = new IntegrationGateway(this.records, scope); this.browser = new BrowserGateway(store.path, scope);
+    this.workflows = new WorkflowService(store, this.integrations, interrupt, () => { scope(); });
     const base = new ToolRouter(new SqliteMailbox(store), new AgentRegistry(store), new SqliteToolState(store), { history: new SqliteHistory(store), ...(maxHops === undefined ? {} : { maxHops }) });
     this.tools = {
       definitions: [...base.definitions, workspaceDefinition, taskDefinition, useDefinition],
@@ -153,7 +156,7 @@ export class WorkspaceRuntime {
     if (notification.method === 'turn/completed') this.live.delete(turnId);
   }
   onEvent(listener: (event: LiveEvent) => void): () => void { this.listeners.add(listener); return () => { this.listeners.delete(listener); }; }
-  start(): void { this.approvals.recover(); }
-  tick(): void { this.tasks.tick(); this.work.tick(); this.routines.tick(); }
-  async close(): Promise<void> { this.approvals.close(); await Promise.all([this.integrations.close(), this.browser.close()]); this.live.clear(); this.calls.clear(); }
+  start(): void { this.approvals.recover(); this.workflows.recover(); }
+  tick(): void { this.tasks.tick(); this.work.tick(); this.routines.tick(); this.workflows.tick(); }
+  async close(): Promise<void> { this.approvals.close(); await this.workflows.close(); await Promise.all([this.integrations.close(), this.browser.close()]); this.live.clear(); this.calls.clear(); }
 }

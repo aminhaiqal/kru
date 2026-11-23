@@ -59,6 +59,12 @@ async function refresh() {
       const selected = W.selected;
       if (selected) { const detail = await api('/work/items/' + selected); if (W.selected === selected) W.detail = detail; }
     }
+    if (S.view === 'skill') {
+      F.data = await api('/workflows');
+      const saved = F.data.workflows.find(flow => flow.id === F.id);
+      if (saved && !F.dirty && !F.busy && !F.dragging) F.draft = structuredClone(saved);
+      const requestedRun = F.runId; if (requestedRun) { const detail = await api('/workflows/runs/' + requestedRun); if (F.runId === requestedRun) F.run = detail; }
+    }
     setConnection(true); draw();
     $('#banner').hidden = true;
   } catch (error) { setConnection(false); $('#banner').textContent = error.message; $('#banner').hidden = false; }
@@ -120,10 +126,11 @@ function renderApproval(entry) {
   return `<article class="conversation-approval" data-approval-id="${entry.id}" aria-label="${escape(name(entry.agentId))} approval request"><header>${author}<span>Waiting for you</span></header><p>I need your approval before I can continue.</p>${details}<footer><span>Expires ${stamp(data.expiresAt)}</span><div>${actions('decline', 'Decline', entry.id)}${actions('approve', 'Allow once', entry.id, 'primary')}</div></footer></article>`;
 }
 function draw() {
-  if (!S.state || (S.view === 'work' && W.dragging)) return;
+  if (!S.state || (S.view === 'work' && W.dragging) || (S.view === 'skill' && F.dragging)) return;
   $('.mobile-menu').setAttribute('aria-expanded', String($('.workspace').classList.contains('menu-open')));
   const focus = document.activeElement, focusId = focus?.id, selection = focus?.selectionStart, end = focus?.selectionEnd;
   const wasComposer = focusId === 'message-input';
+  const workflowScroll = $('.wf-inspector')?.scrollTop || 0;
   const workScroll = { board: $('.work-board')?.scrollLeft || 0, detail: $('.work-detail-scroll')?.scrollTop || 0, columns: [...document.querySelectorAll('[data-column-scroll]')].map(el => [el.dataset.columnScroll, el.scrollTop]) };
   const openDetails = new Set([...document.querySelectorAll('details[open][data-detail]')].map(el => el.dataset.detail));
   const oldMessages = $('.messages'), scroll = oldMessages?.scrollTop || 0, sticky = !oldMessages || oldMessages.scrollHeight - oldMessages.clientHeight - scroll < 90;
@@ -144,6 +151,7 @@ function draw() {
     for (const [id, top] of workScroll.columns) { const el = [...document.querySelectorAll('[data-column-scroll]')].find(e => e.dataset.columnScroll === id); if (el) el.scrollTop = top; }
     if (focusId && $('#'+focusId)) { $('#'+focusId).focus({ preventScroll: true }); if (typeof selection === 'number' && typeof $('#'+focusId).setSelectionRange === 'function') $('#'+focusId).setSelectionRange(selection, end); }
   }
+  if (S.view === 'skill') { if ($('.wf-inspector')) $('.wf-inspector').scrollTop = workflowScroll; if (focusId?.startsWith('wf-') && $('#'+focusId)) { $('#'+focusId).focus({ preventScroll: true }); if (typeof selection === 'number' && typeof $('#'+focusId).setSelectionRange === 'function') $('#'+focusId).setSelectionRange(selection, end); } }
   if (wasComposer && $('#message-input')) { $('#message-input').focus({ preventScroll: true }); if (selection !== null) $('#message-input').setSelectionRange(selection, end); }
 }
 function empty(title, text, action, button) { return `<div class="empty"><div class="empty-symbol">k</div><h2>${title}</h2><p>${text}</p>${action ? `<button class="primary" data-action="${action}">${button}</button>` : ''}</div>`; }
@@ -159,7 +167,7 @@ function renderChat() {
   const task = S.lane?.startsWith('task:') ? records('task').find(t => t.id === S.lane.slice(5)) : null;
   const lanes = [null, ...(S.messages?.lanes.map(l => l.id).filter(Boolean) || [])];
   if (S.lane && !lanes.includes(S.lane)) lanes.push(S.lane);
-  const laneName = id => id?.startsWith('task:') ? records('task').find(t => t.id === id.slice(5))?.data.title || 'Task' : id?.startsWith('routine:') ? records('routine').find(r => r.id === id.slice(8))?.data.name || 'Routine' : id || 'Main conversation';
+  const laneName = id => id?.startsWith('task:') ? records('task').find(t => t.id === id.slice(5))?.data.title || 'Task' : id?.startsWith('workflow:') ? 'Workflow · ' + (S.state.workflowRuns?.find(run => run.id === id.slice(9))?.name || 'Execution') : id?.startsWith('routine:') ? records('routine').find(r => r.id === id.slice(8))?.data.name || 'Routine' : id || 'Main conversation';
   $('#content').innerHTML = `<div class="chat-layout"><div class="chat-main">
     <div class="chat-heading"><span class="avatar large">${escape(agent.name[0].toUpperCase())}</span><div class="chat-title"><h1>${escape(agent.name)}</h1><p>${escape(agent.provider)} · ${escape(agent.config.promptProfile || 'minimal')} · ${agent.config.paused ? 'Paused' : !connected ? escape(connectionLabel(agent.provider)) : lane ? escape(lane.reason || lane.state) : 'Connected'}</p></div><button class="quiet" data-action="agent-settings" data-id="${agent.id}">Settings</button></div>
     <div class="chat-lanes"><label for="lane-select">Thread</label><select id="lane-select">${lanes.map(id => `<option value="${escape(id || '')}" ${id === S.lane ? 'selected' : ''}>${escape(laneName(id))}</option>`).join('')}</select><button class="quiet small" data-action="work-new">New work</button><button class="quiet small" data-action="browser-controls" data-id="${agent.id}">Browser</button></div>
@@ -184,6 +192,7 @@ function scopeFilter() { return `<div class="filter"><label class="subtext" for=
 function renderPage() {
   if (S.view === 'work') { renderWork(); return; }
   if (S.view === 'connector') { renderConnectors(); return; }
+  if (S.view === 'skill') { renderWorkflows(); return; }
   const info = {
     routine: ['Routines', 'Run useful work on a schedule or when an event arrives.', 'new-routine', 'New routine'],
     skill: ['Skills', 'Save a workflow once, then assign it whenever you need it.', 'new-skill', 'New skill'],
@@ -345,7 +354,7 @@ document.addEventListener('click', async event => {
   const agent = event.target.closest('[data-agent]'); if (agent) { selectAgent(agent.dataset.agent); return; }
   const button = event.target.closest('[data-action]'); if (!button) return;
   const { action, id } = button.dataset;
-  if (action.startsWith('work-')) return;
+  if (action.startsWith('work-') || action.startsWith('wf-')) return;
   try {
     if (action === 'menu') { const open = $('.workspace').classList.toggle('menu-open'); $('.mobile-menu').setAttribute('aria-expanded', String(open)); return; }
     if (action === 'close-dialog') { if (!dialogBusy) $('#dialog').close(); return; }

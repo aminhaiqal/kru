@@ -28,6 +28,7 @@ export function createWebServer(options: { store: Store; daemon: Daemon; port?: 
   const agents = new AgentRegistry(store), mailbox = new SqliteMailbox(store);
   const token = randomBytes(32).toString('hex');
   const assets = new Map([
+    ['/workflows.js', { body: readFileSync(new URL('./public/workflows.js', import.meta.url)), type: 'text/javascript; charset=utf-8' }],
     ['/navigation.css', { body: readFileSync(new URL('./public/navigation.css', import.meta.url)), type: 'text/css; charset=utf-8' }],
     ['/work.js', { body: readFileSync(new URL('./public/work.js', import.meta.url)), type: 'text/javascript; charset=utf-8' }],
     ['/work.css', { body: readFileSync(new URL('./public/work.css', import.meta.url)), type: 'text/css; charset=utf-8' }],
@@ -42,7 +43,10 @@ export function createWebServer(options: { store: Store; daemon: Daemon; port?: 
   const json = (body: unknown, status = 200) => Response.json(body, { status, headers: security });
   const requireAgent = (id: string) => { const a = agents.get(id); if (!a) throw new HttpError(404, 'Agent not found'); return a; };
   const requireRecord = (kind: Kind, id: string) => { const r = workspace.records.get(kind, id); if (!r) throw new HttpError(404, `${kind} not found`); return r; };
-  const approvalView = (entry: RecordEntry<'approval'>) => ({ ...entry, laneId: store.db.query<{ lane_id: string | null }, [string, string | null]>('SELECT lane_id FROM deliveries WHERE batch_id=? AND recipient_id=? LIMIT 1').get(entry.data.executionId, entry.agentId)?.lane_id ?? null });
+  const approvalView = (entry: RecordEntry<'approval'>) => {
+    const workflow = store.db.query<{ run_id: string }, [string, string]>('SELECT run_id FROM workflow_node_runs WHERE id=? AND node_id=?').get(entry.data.executionId, entry.data.turnId);
+    return { ...entry, laneId: workflow ? 'workflow:' + workflow.run_id : store.db.query<{ lane_id: string | null }, [string, string | null]>('SELECT lane_id FROM deliveries WHERE batch_id=? AND recipient_id=? LIMIT 1').get(entry.data.executionId, entry.agentId)?.lane_id ?? null };
+  };
   const clients = new Set<ReadableStreamDefaultController<Uint8Array>>();
   const encoder = new TextEncoder();
   const broadcast = (event: string, value: unknown) => {
@@ -86,6 +90,23 @@ export function createWebServer(options: { store: Store; daemon: Daemon; port?: 
           } catch (error) { throw new HttpError(error instanceof Error && error.message === 'Invalid webhook token' ? 401 : 400, error instanceof Error ? error.message : 'Webhook rejected'); }
         }
         if (!equal(request.headers.get('x-kru-token') ?? '', token)) throw new HttpError(401, 'Open the KRU UI to authenticate');
+        if (path[1] === 'workflows') {
+          const workflows = workspace.workflows; workflows.importSkills();
+          if (request.method === 'GET' && path.length === 2) return json({ workflows: workflows.list(), runs: workflows.recentRuns() });
+          if (request.method === 'POST' && path.length === 2) return json(workflows.save(await body(request)), 201);
+          if (path[2] === 'runs' && path.length >= 4) {
+            if (request.method === 'GET' && path.length === 4) return json(workflows.detail(path[3]!));
+            if (request.method === 'POST' && path.length === 5 && ['cancel', 'resume'].includes(path[4]!)) { await body(request); return json(path[4] === 'cancel' ? workflows.cancel(path[3]!) : workflows.resume(path[3]!)); }
+          }
+          if (request.method === 'GET' && path.length === 3) return json(workflows.get(path[2]!));
+          if (request.method === 'PATCH' && path.length === 3) { const { revision, ...input } = await body(request); return json(workflows.save(input, path[2]!, z.number().int().positive().parse(revision))); }
+          if (request.method === 'POST' && path.length === 4 && path[3] === 'run') {
+            const input = z.object({ input: z.record(z.string(), z.unknown()).default({}) }).strict().parse(await body(request));
+            const key = z.string().min(1).max(200).parse(request.headers.get('idempotency-key'));
+            return json(workflows.start(path[2]!, input.input, key), 202);
+          }
+          throw new HttpError(404, 'Unknown workflow route');
+        }
         if (path[1] === 'work') {
           const work = workspace.work;
           work.importTasks();
@@ -144,6 +165,7 @@ export function createWebServer(options: { store: Store; daemon: Daemon; port?: 
             records: Object.fromEntries(kinds.filter(kind => kind !== 'memory').map(kind => [kind, workspace.records.list(kind).slice(-500).map(entry => kind === 'routine' ? { ...entry, data: { ...entry.data, tokenHash: undefined } } : kind === 'approval' ? approvalView(entry as RecordEntry<'approval'>) : entry)])),
             browsers: Object.fromEntries(allAgents.map(agent => [agent.id, workspace.browser.status(agent.id)])),
             connectorStatus: Object.fromEntries(workspace.records.list('connector').map(entry => [entry.id, workspace.integrations.status(entry.id)])),
+            workflowRuns: workspace.workflows.recentRuns(),
             usage: store.db.query('SELECT agent_id AS agentId,sum(coalesce(input_total,0)+coalesce(output,0)) AS tokens,sum(cost_usd) AS usd,count(*) AS turns,sum(CASE WHEN complete=0 THEN 1 ELSE 0 END) AS incomplete FROM usage_records GROUP BY agent_id').all(),
             activity: store.db.query('SELECT id,agent_id,lane_key,provider,model,status,error,started_at,duration_ms FROM turns ORDER BY started_at DESC LIMIT 100').all(),
           });
@@ -173,7 +195,9 @@ export function createWebServer(options: { store: Store; daemon: Daemon; port?: 
               else entries.push({ id, agentId: agent.id, laneId: lane, role: item.type === 'agentMessage' ? 'assistant' : item.type, text: item.text ?? null, details: item.details, turnId, timestamp: new Date().toISOString(), partial: true });
             }
             const approvals = workspace.records.list('approval', agent.id).map(approvalView).filter(entry => entry.laneId === lane).slice(-200);
-            return json({ entries, approvals, deliveries: mailbox.listQueue(agent.id, lane).slice(-100), lanes: store.db.query('SELECT DISTINCT lane_id AS id FROM deliveries WHERE recipient_id=?').all(agent.id) });
+            const lanes = store.db.query<{ id: string | null }, [string]>('SELECT DISTINCT lane_id AS id FROM deliveries WHERE recipient_id=?').all(agent.id);
+            for (const record of workspace.records.list('approval', agent.id).map(approvalView)) if (record.laneId && !lanes.some(lane => lane.id === record.laneId)) lanes.push({ id: record.laneId });
+            return json({ entries, approvals, deliveries: mailbox.listQueue(agent.id, lane).slice(-100), lanes });
           }
           if (path[3] === 'browser') {
             if (request.method === 'GET' && path[4] === 'screenshot') return new Response(await workspace.browser.screenshot(agent.id), { headers: { ...security, 'Content-Type': 'image/png' } });

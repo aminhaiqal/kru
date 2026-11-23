@@ -40,7 +40,8 @@ export class ApprovalBroker {
     return this.records.store.atomic(() => {
       const entry = this.records.require('approval', id);
       const active = this.records.store.db.query('SELECT 1 FROM active_lanes WHERE batch_id=? AND turn_id=?').get(entry.data.executionId, entry.data.turnId);
-      if (entry.data.status !== 'pending' || Date.parse(entry.data.expiresAt) <= Date.now() || !active) throw new Error('Approval is no longer active');
+      const workflow = this.records.store.db.query("SELECT 1 FROM workflow_node_runs n JOIN workflow_runs r ON r.id=n.run_id WHERE n.id=? AND n.node_id=? AND n.approval_id=? AND n.status='waiting' AND r.status='waiting' AND r.agent_id=?").get(entry.data.executionId, entry.data.turnId, id, entry.agentId);
+      if (entry.data.status !== 'pending' || Date.parse(entry.data.expiresAt) <= Date.now() || (!active && !workflow)) throw new Error('Approval is no longer active');
       if (this.pending.get(id)?.signal.aborted) throw new Error('Approval request was cancelled');
       return this.records.put('approval', entry.agentId, { ...entry.data, status: decision === 'accept' ? 'accepted' : 'declined', reason: 'User decision' }, id);
     });

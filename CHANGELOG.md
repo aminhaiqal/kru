@@ -7,6 +7,13 @@ Planned release line v0.2.
 
 ### Added
 
+- Turn Skills into a visual workflow builder inspired by n8n's graph/execution
+  separation: draggable nodes, wired ports, manual/interval triggers, bot tasks,
+  existing Connector tools, mapped data, conditions and execution inspection.
+- Add event-backed workflow definitions and frozen runs in migration 12; preserve
+  existing prompt skills, route app approval requests through bot conversations,
+  stop uncertain runs on restart, and replay all 30 projection tables.
+
 - Replace Tools & browser with Connector for third-party app connections via
   remote/local MCP servers. Add verified connection status, available tools,
   reconnect/disconnect controls and app-focused setup. Move browser controls to

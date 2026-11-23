@@ -56,7 +56,7 @@
     "test:release:repeat": "bun test --rerun-each 10 test/release.test.ts test/messaging.test.ts test/messaging-providers.test.ts test/threads.test.ts test/threads-providers.test.ts test/m6-expanded.test.ts test/boot/recovery.test.ts",
     "check:release": "bun run check && bun run test:release:repeat && bun run demo:recovery && git diff --check",
     "ui": "bun src/cli/index.ts ui",
-    "test:workspace": "bun test test/workspace.test.ts test/memory.test.ts test/work.test.ts test/web.test.ts",
+    "test:workspace": "bun test test/workspace.test.ts test/memory.test.ts test/work.test.ts test/workflows.test.ts test/web.test.ts",
     "test:ui": "bun scripts/check-workspace-ui.ts",
     "build:css": "tailwindcss -i ./src/web/styles/navigation.css -o ./src/web/public/navigation.css --minify",
     "dev:css": "tailwindcss -i ./src/web/styles/navigation.css -o ./src/web/public/navigation.css --watch"

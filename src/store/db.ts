@@ -23,6 +23,7 @@ const migrations = [
   { version: 9, sql: readFileSync(new URL('./migrations/009-session-history.sql', import.meta.url), 'utf8') },
   { version: 10, sql: readFileSync(new URL('./migrations/010-workspace.sql', import.meta.url), 'utf8') },
   { version: 11, sql: readFileSync(new URL('./migrations/011-work.sql', import.meta.url), 'utf8') },
+  { version: 12, sql: readFileSync(new URL('./migrations/012-workflows.sql', import.meta.url), 'utf8') },
 ];
 
 export interface StoreChange { topic: string; id: string; value?: unknown }
