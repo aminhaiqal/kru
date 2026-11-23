@@ -15,11 +15,16 @@ import type { Batch } from '../mailbox';
 import { basename } from 'node:path';
 import { WorkspaceRuntime } from '../workspace';
 import type { ProcessScope } from '../boot/types';
+import { ProviderConnections, type ConnectionOptions } from '../providers/connections';
+import { CodexRuntime, type CodexProviderOptions } from '../providers/codex/adapter';
 
-export interface DaemonOptions extends SchedulerOptions { pollMs?: number; heartbeatMs?: number; shutdownGraceMs?: number; recovery?:RecoveryOptions }
+export interface DaemonOptions extends SchedulerOptions { pollMs?: number; heartbeatMs?: number; shutdownGraceMs?: number; recovery?:RecoveryOptions; connections?: ConnectionOptions }
 export class Daemon {
   readonly scheduler: Scheduler;
   readonly workspace: WorkspaceRuntime;
+  readonly connections: ProviderConnections;
+  readonly connectionsEnabled: boolean;
+  private unsubscribeConnections: (() => void) | undefined;
   private nextWorkspaceTick = 0;
   readonly closed: Promise<void>;
   readonly ready:Promise<void>;
@@ -59,8 +64,11 @@ export class Daemon {
     });
     const agents = new AgentRegistry(store);
     this.workspace = new WorkspaceRuntime(store, () => this.processScope(), options.maxHops);
+    this.connections = new ProviderConnections(store.path, store.databaseId, () => this.processScope(), options.connections);
+    this.connectionsEnabled = !factory || options.connections !== undefined;
     const tools = options.tools ?? this.workspace.tools;
     const runtimeIds=new WeakMap<ProviderClient,string>();
+    const codexRuntimes = new Map<string, CodexRuntime>();
     const guard=()=>this.lock.assertOwner(true);
     const guardExecution=(batch:Batch)=>{
       guard();
@@ -70,11 +78,23 @@ export class Daemon {
     };
     this.scheduler = new Scheduler(this.mailbox, agents, new SqliteSessions(store),
       (agent,lane)=>{
-        guard();const provider=factory?factory(agent,lane):createProvider(agent.provider, { codex: { toolTimeoutMs: 15 * 60_000 }, claude: { toolTimeoutMs: 15 * 60_000 } });
+        guard();
+        const codex = this.connections.binary('codex'), claude = this.connections.binary('claude');
+        const codexOptions: CodexProviderOptions = { toolTimeoutMs: 15 * 60_000 };
+        if (!factory && agent.provider === 'codex' && codex) {
+          let runtime = codexRuntimes.get(codex.command);
+          if (!runtime) { runtime = new CodexRuntime({ transport: { command: codex.command } }); codexRuntimes.set(codex.command, runtime); }
+          codexOptions.runtime = runtime;
+        }
+        const provider=factory?factory(agent,lane):createProvider(agent.provider, {
+          codex: codexOptions,
+          claude: { toolTimeoutMs: 15 * 60_000, ...(claude ? { executablePath: claude.command } : {}) },
+        });
         const scope = this.processScope();
         runtimeIds.set(provider,provider.setProcessScope?.(scope)??scope.runtimeId);return provider;
       }, {
         ...options, tools, ledger: this.ledger, turns: options.turns ?? this.history,
+        ...(options.providerReadiness ? {} : this.connectionsEnabled ? { providerReadiness: agent => this.connections.readiness(agent.provider) } : {}),
         guard,guardExecution,
         onApproval: options.onApproval ?? ((context, call, signal) => this.workspace.approval(context, call, signal)),
         onNotification: (batch, notification) => { this.workspace.observe(batch.agentId, batch.laneId, notification); options.onNotification?.(batch, notification); },
@@ -83,6 +103,13 @@ export class Daemon {
         onState: () => { options.onState?.(); this.queueSnapshot(); },
         onError: error => { this.failure = error; options.onError?.(error); void this.stop(0); },
       });
+    const revisions = new Map<string, string>();
+    this.unsubscribeConnections = this.connections.onChange(id => {
+      if (this.stopping) return;
+      const state = this.connections.snapshot().find(s => s.id === id)!;
+      const revision = JSON.stringify([state.status, state.executable, state.authMethod]);
+      if (revisions.get(id) !== revision) { revisions.set(id, revision); if (id === 'codex') codexRuntimes.clear(); this.scheduler.reconnectProvider(id); }
+    });
   }
   processScope(): ProcessScope {
     this.lock.assertOwner(true);
@@ -144,7 +171,8 @@ export class Daemon {
     this.stopping = true; clearInterval(this.poll); clearInterval(this.heartbeat);
     clearInterval(this.usageTimer);
     this.workspace.approvals.close();
-    this.stopPromise = Promise.resolve(this.bootTask).catch(()=>{}).then(async () => { try { await this.scheduler.stop(graceMs); } finally { await this.workspace.close(); } }).catch(error => { this.failure ??= error; }).finally(() => {
+    this.unsubscribeConnections?.();
+    this.stopPromise = Promise.resolve(this.bootTask).catch(()=>{}).then(async () => { try { await this.scheduler.stop(graceMs); } finally { await Promise.all([this.workspace.close(), this.connections.close()]); } }).catch(error => { this.failure ??= error; }).finally(() => {
       try { this.lock.release(); } catch (error) { this.failure ??= error; }
       this.store.setWriteFence();
       this.resolveClosed();

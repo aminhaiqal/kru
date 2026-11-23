@@ -6,12 +6,32 @@ import { Store } from '../src/store';
 import { Daemon } from '../src/daemon';
 import { FakeProvider } from '../src/providers/fake/adapter';
 import { createWebServer } from '../src/web/server';
+import type { ConnectedProvider } from '../src/providers/connections';
 
 const executable = process.env.KRU_BROWSER_EXECUTABLE || chromium.executablePath();
 if (!existsSync(executable)) throw new Error('Install Chromium with bunx playwright-core install chromium, or set KRU_BROWSER_EXECUTABLE.');
 const dir = mkdtempSync(join(tmpdir(), 'kru-ui-')), store = new Store(join(dir, 'db.sqlite'));
 const artifactDir = process.env.KRU_UI_ARTIFACT_DIR || join(tmpdir(), 'kru-workspace-verification'); mkdirSync(artifactDir, { recursive: true });
-const daemon = new Daemon(store, { pollMs: 10 }, () => new FakeProvider({ script: async (prompt, call) => {
+const signedIn = { codex: false, claude: false }, installed = { codex: true, claude: false };
+const completeLogin: Partial<Record<ConnectedProvider, () => void>> = {};
+const daemon = new Daemon(store, { pollMs: 10, connections: {
+  find: id => installed[id] ? { command: '/test/' + id, source: id === 'claude' ? 'managed' : 'system' } : null,
+  npm: () => '/test/npm',
+  run: async command => {
+    if (command.command === '/test/npm') { installed.claude = true; return { code: 0, stdout: '', stderr: '' }; }
+    const id: ConnectedProvider = command.command.endsWith('codex') ? 'codex' : 'claude';
+    if (command.args.includes('status')) return id === 'codex'
+      ? { code: signedIn[id] ? 0 : 1, stdout: '', stderr: signedIn[id] ? 'Logged in using ChatGPT' : 'Not logged in' }
+      : { code: signedIn[id] ? 0 : 1, stdout: JSON.stringify({ loggedIn: signedIn[id], authMethod: 'claude.ai' }), stderr: '' };
+    command.onOutput?.(id === 'codex' ? 'https://auth.openai.com/codex/device\nABCD-EFGH' : 'https://claude.ai/oauth/authorize?state=ui-test');
+    return new Promise(resolve => {
+      const finish = () => { signedIn[id] = true; resolve({ code: 0, stdout: '', stderr: '' }); };
+      completeLogin[id] = finish;
+      if (id === 'claude') command.onInput?.(() => finish());
+      command.signal.addEventListener('abort', () => resolve({ code: -1, stdout: '', stderr: '' }), { once: true });
+    });
+  },
+} }, () => new FakeProvider({ script: async (prompt, call) => {
   if (prompt.includes('This is turn ')) {
     const result = await call('task_update', { status: 'completed', result: 'Verified the task through the workspace tool.', steps: [{ text: 'Verify the requested outcome', done: true }] });
     if (!result.success) throw new Error(result.contentItems[0]?.text);
@@ -37,6 +57,23 @@ try {
   page.on('pageerror', error => errors.push(error.message));
   page.on('console', message => { if (message.type() === 'error' && !message.text().includes('favicon')) errors.push(message.text()); });
   await page.goto(web.url);
+  await page.getByRole('button', { name: 'AI connections', exact: true }).click();
+  const codex = page.locator('[data-provider="codex"]'), claude = page.locator('[data-provider="claude"]');
+  await codex.getByText('Not connected', { exact: true }).waitFor();
+  await claude.getByText('Not installed', { exact: true }).waitFor();
+  checks.push('AI connections shows checked signed-out and missing CLI states');
+  await page.screenshot({ path: join(artifactDir, 'connections-before.png'), fullPage: true });
+  await codex.getByRole('button', { name: 'Sign in', exact: true }).click(); await codex.getByText('ABCD-EFGH', { exact: true }).waitFor();
+  completeLogin.codex!(); await codex.getByText('Connected', { exact: true }).waitFor();
+  checks.push('Codex device sign-in transitions from not connected to connected');
+  await claude.getByRole('button', { name: 'Install Claude Code', exact: true }).click();
+  await claude.getByRole('button', { name: 'Sign in', exact: true }).click();
+  await claude.getByRole('button', { name: 'Enter a sign-in code', exact: true }).click();
+  await page.getByLabel('Sign-in code', { exact: true }).fill('ui-test-private-code'); await saveDialog(page, 'Complete sign-in');
+  await claude.getByText('Connected', { exact: true }).waitFor();
+  checks.push('Missing Claude Code installs and accepts its native sign-in completion');
+  await page.screenshot({ path: join(artifactDir, 'connections.png'), fullPage: true });
+  await page.getByRole('button', { name: 'Conversations', exact: true }).click();
   await page.getByRole('button', { name: 'Create teammate', exact: true }).last().click();
   await page.getByLabel('Name', { exact: true }).fill('Morgan'); await page.getByLabel('Provider', { exact: true }).selectOption('fake');
   await page.getByLabel('Enable this teammate’s browser').check();
@@ -90,7 +127,7 @@ try {
   await page.getByRole('button', { name: 'Toggle navigation' }).click(); await page.getByRole('button', { name: 'Approvals', exact: true }).click(); await waitText(page, 'Review the exact action');
   await page.screenshot({ path: join(artifactDir, 'mobile.png'), fullPage: true });
   await check(errors.length === 0, 'No browser JavaScript or console errors: ' + errors.join('; '));
-  await Bun.write(join(artifactDir, 'result.json'), JSON.stringify({ checkedAt: new Date().toISOString(), checks, screenshots: ['desktop.png', 'mobile.png'] }, null, 2) + '\n');
+  await Bun.write(join(artifactDir, 'result.json'), JSON.stringify({ checkedAt: new Date().toISOString(), checks, screenshots: ['connections-before.png', 'connections.png', 'desktop.png', 'mobile.png'] }, null, 2) + '\n');
   console.log(JSON.stringify({ passed: checks.length, artifactDir, checks }, null, 2));
 } catch (error) {
   await page?.screenshot({ path: join(artifactDir, 'failure.png'), fullPage: true }).catch(() => {});

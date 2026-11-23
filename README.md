@@ -29,7 +29,10 @@ database first. Use `bun run ui --port 4311 --db /path/to/kru.sqlite` to choose
 another port or database. Keep the command running for background work.
 
 Create a teammate using **Codex**, **Claude**, or **Demo**. Real providers use
-their existing local login; Demo echoes messages without model calls. Choose
+their existing local login. Open **AI connections** to check their actual local
+sign-in status, install a missing CLI, or complete the provider's sign-in flow.
+Disconnected providers hold queued work until connected. Demo echoes messages
+without model calls. Choose
 the coding profile and workspace write access when a teammate should edit code.
 
 The UI includes streamed conversations, tasks with steps and explicit completion,

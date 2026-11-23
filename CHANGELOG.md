@@ -7,6 +7,11 @@ Planned release line v0.2.
 
 ### Added
 
+- Add an AI connections page with actual Codex/Claude Code authentication checks,
+  project-local CLI installation, native sign-in flows, cancellation and recheck.
+  Disconnected providers hold queued work and no longer appear ready in chat.
+  Managed or explicitly configured executables are used by the provider runtime.
+
 - Add `kru ui` / `kru serve`: a local operator UI and authenticated HTTP/SSE API
   for conversations, teammate configuration, tasks, approvals, routines, tools,
   browser sessions, memory, skills and execution activity.

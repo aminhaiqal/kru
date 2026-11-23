@@ -24,12 +24,14 @@ export interface LaneStatus {
   usedTokens: number; dailyTokens?: number; usedUsd?: number; dailyUsd?: number; budgetDetail?: string;
 }
 interface Runtime {
+  reconnect?: boolean;
   waiting: number;
   active?: ToolContext;
   provider: ProviderClient; configHash: string; ready: boolean; starting: boolean; retryAt: number;
   error?: string; threadId?: string;
 }
 export interface SchedulerOptions {
+  providerReadiness?: (agent: Agent) => { ready: boolean; message?: string };
   onApproval?: (context: ToolContext, call: ApprovalCall, signal: AbortSignal) => Promise<ApprovalResult>;
   onNotification?: (batch: Batch, notification: Notification) => void;
   guard?:()=>void;
@@ -129,6 +131,11 @@ export class Scheduler {
   }
   status(): LaneStatus[] { return [...this.states.values()].sort((a, b) => keyOf(a.agentId, a.laneId).localeCompare(keyOf(b.agentId, b.laneId))).map(s => ({ ...s })); }
   cancelLane(agentId: string, laneId: string | null): void { this.laneControllers.get(keyOf(agentId, laneId))?.abort(); }
+  reconnectProvider(provider: string): void {
+    if (!this.started || this.stopped) return;
+    for (const runtime of this.runtimes.values()) if (runtime.provider.provider === provider) runtime.reconnect = true;
+    this.refresh();
+  }
   get activeTurns(): number { return this.slots.active; }
 
   private today(): string { return this.calendar.day(this.now()); }
@@ -170,7 +177,7 @@ export class Scheduler {
     this.options.guard?.();
     const hash = sessionConfigHash(agent, this.options.tools);
     const old = this.runtimes.get(key);
-    if (old && old.configHash === hash) {
+    if (old && old.configHash === hash && !old.reconnect) {
       if (!old.ready && !old.starting && this.now() >= old.retryAt) this.beginProvider(old, key);
       return old;
     }
@@ -263,7 +270,11 @@ export class Scheduler {
       let runtime: Runtime | undefined;
       let error: string | undefined;
       if (!agent.config.paused) {
-        try { runtime = this.runtime(key, agent, lane.laneId); }
+        try {
+          const connection = this.options.providerReadiness?.(agent);
+          if (connection && !connection.ready) error = connection.message ?? 'Connect this provider before running work';
+          else runtime = this.runtime(key, agent, lane.laneId);
+        }
         catch (e) { error = errorText(e); }
       }
       const total = this.ledger.totals(agent.id, this.calendar, this.now());

@@ -9,6 +9,49 @@ is required. Work runs while the host and command remain running.
 
 ## Teammates and conversations
 
+### Connect Codex and Claude Code
+
+Open **AI connections**. KRU checks `codex login status` and
+`claude auth status --json` on this computer. The page starts in Checking and
+distinguishes Not installed, Not connected, Connected, and Needs attention.
+Executable presence or an imported SDK alone never produces Connected. A status
+check confirms the local CLI reports authentication; it does not make a paid
+model request or guarantee quota, network access or model entitlement.
+
+Use **Install** when a CLI is missing. KRU runs npm against the official
+`@openai/codex` or `@anthropic-ai/claude-code` package in a project-private
+`providers/<database-id>/<provider>` directory beside the database. Existing
+global installations are not overwritten. Node.js with npm is required for this
+installation path. Update CLI uses the same private installation when the
+existing CLI cannot report its authentication state.
+
+Use **Sign in** for an installed provider. Codex starts its native device flow
+and displays the provider's verification link and one-time code. Claude Code
+starts `claude auth login`, opens its normal browser sign-in, and exposes an
+official sign-in link when the CLI prints one. If Claude asks for a returned code,
+**Enter a sign-in code** forwards it directly to that running CLI. Setup can be
+cancelled and expires after ten minutes (five minutes for installation).
+
+Completing setup triggers another status check. **Recheck** also picks up sign-in
+or sign-out performed in another terminal; checks refresh every thirty seconds
+while the UI runs. Disconnected providers hold queued work, and the conversation
+composer links to the connection page. Reconnecting refreshes idle provider
+runtimes so newly installed executables and credentials are used. Existing active
+turns finish normally. Demo teammates require no connection.
+
+KRU uses the detected executable, including managed installations, for Codex and
+Claude Code execution. `KRU_CODEX_EXECUTABLE` and `KRU_CLAUDE_EXECUTABLE` override
+discovery; remove or correct an invalid override before reinstalling. Provider
+authentication follows the current process's normal home/config directory and
+environment. API-key authentication is labelled separately from saved account
+sign-in. KRU does not copy account tokens or persist sign-in codes in SQLite.
+Only recognized official sign-in hosts are presented as clickable links.
+
+See the providers' [Codex authentication guide](https://learn.chatgpt.com/docs/auth)
+and [Claude Code CLI reference](https://code.claude.com/docs/en/cli-reference)
+for the native commands and account options. The browser smoke check simulates
+installation and account sign-in; it never changes your real accounts.
+
 Create a teammate in the UI and choose Codex, Claude, or Demo (`fake`). Codex and
 Claude use the installed provider's existing authentication. No provider/model
 credentials are stored by this UI. Demo exercises the conversation/queue path
@@ -163,6 +206,9 @@ Core routes:
 | Method | Route | Purpose |
 | --- | --- | --- |
 | GET | `/api/state` | Agents, lanes, workspace records, usage and activity |
+| GET | `/api/providers` | Checked local CLI connection states |
+| POST | `/api/providers/codex\|claude/refresh\|install\|login\|cancel` | Check or set up an account connection |
+| POST | `/api/providers/claude/code` | Forward a sign-in code to the active Claude login |
 | GET | `/api/events` | Authenticated server-sent events |
 | POST / PATCH | `/api/agents[/:id]` | Create or configure a teammate |
 | POST / GET | `/api/agents/:id/messages` | Queue text or retrieve a lane |

@@ -24,6 +24,7 @@ const equal = (a: string, b: string) => { const left = Buffer.from(a), right = B
 /** Loopback-only operator API. No cross-origin access or unauthenticated agent actions. */
 export function createWebServer(options: { store: Store; daemon: Daemon; port?: number }) {
   const { store, daemon } = options, workspace = daemon.workspace;
+  if (daemon.connectionsEnabled) daemon.connections.start();
   const agents = new AgentRegistry(store), mailbox = new SqliteMailbox(store);
   const token = randomBytes(32).toString('hex');
   const assets = new Map([
@@ -46,6 +47,7 @@ export function createWebServer(options: { store: Store; daemon: Daemon; port?: 
   };
   const unsubscribe = workspace.onEvent(event => broadcast('turn', event));
   const unsubscribeStore = store.onChange(() => broadcast('change', {}));
+  const unsubscribeConnections = daemon.connections.onChange(() => broadcast('change', {}));
   const heartbeat = setInterval(() => broadcast('change', {}), 5000); heartbeat.unref();
 
   async function body(request: Request): Promise<Record<string, unknown>> {
@@ -80,6 +82,20 @@ export function createWebServer(options: { store: Store; daemon: Daemon; port?: 
           } catch (error) { throw new HttpError(error instanceof Error && error.message === 'Invalid webhook token' ? 401 : 400, error instanceof Error ? error.message : 'Webhook rejected'); }
         }
         if (!equal(request.headers.get('x-kru-token') ?? '', token)) throw new HttpError(401, 'Open the KRU UI to authenticate');
+        if (path[1] === 'providers') {
+          if (request.method === 'GET' && path.length === 2) return json({ providers: daemon.connections.snapshot() });
+          const id = z.enum(['codex', 'claude']).parse(path[2]);
+          if (request.method === 'POST' && path.length === 4) {
+            if (path[3] === 'refresh') return json(await daemon.connections.refresh(id));
+            if (path[3] === 'install' || path[3] === 'login') return json(await daemon.connections.begin(id, path[3]), 202);
+            if (path[3] === 'cancel') { await daemon.connections.cancel(id); return json({ cancelled: true }); }
+            if (path[3] === 'code') {
+              const input = z.object({ code: z.string().trim().min(1).max(4096) }).strict().parse(await body(request));
+              daemon.connections.submitCode(id, input.code); return json({ submitted: true });
+            }
+          }
+          throw new HttpError(404, 'Unknown provider action');
+        }
         if (request.method === 'GET' && path[1] === 'events' && path.length === 2) {
           if (clients.size >= 16) throw new HttpError(429, 'Too many event streams');
           server.timeout(request, 0);
@@ -91,7 +107,7 @@ export function createWebServer(options: { store: Store; daemon: Daemon; port?: 
         }
         if (request.method === 'GET' && path[1] === 'state' && path.length === 2) {
           const allAgents = agents.list();
-          return json({ agents: allAgents, lanes: daemon.scheduler.status(), activeTurns: daemon.scheduler.activeTurns,
+          return json({ agents: allAgents, providers: daemon.connections.snapshot(), lanes: daemon.scheduler.status(), activeTurns: daemon.scheduler.activeTurns,
             recovery: recoveryReport(store),
             records: Object.fromEntries(kinds.map(kind => [kind, workspace.records.list(kind).slice(-500).map(entry => kind === 'routine' ? { ...entry, data: { ...entry.data, tokenHash: undefined } } : entry)])),
             browsers: Object.fromEntries(allAgents.map(agent => [agent.id, workspace.browser.status(agent.id)])),
@@ -194,6 +210,6 @@ export function createWebServer(options: { store: Store; daemon: Daemon; port?: 
     },
   });
   return { server, url: `http://127.0.0.1:${server.port}`, token,
-    async close() { unsubscribe(); unsubscribeStore(); clearInterval(heartbeat); for (const c of clients) { try { c.close(); } catch {} } clients.clear(); await server.stop(true); },
+    async close() { unsubscribe(); unsubscribeStore(); unsubscribeConnections(); clearInterval(heartbeat); for (const c of clients) { try { c.close(); } catch {} } clients.clear(); await server.stop(true); },
   };
 }

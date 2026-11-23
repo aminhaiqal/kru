@@ -7,8 +7,9 @@ const icons = {
   approval: '<path d="M12 3 3 7v5c0 5 9 9 9 9s9-4 9-9V7z"/><path d="m8 12 3 3 5-6"/>', routine: '<circle cx="12" cy="12" r="9"/><path d="M12 6v6l4 2"/>',
   tool: '<path d="M14 6a5 5 0 0 0-6 6L3 18l3 3 6-6a5 5 0 0 0 6-6l-4 4-3-3z"/>', memory: '<path d="M12 3v18M12 6C5 0 2 7 5 10c-5 4 0 12 7 8M12 6c7-6 10 1 7 4 5 4 0 12-7 8"/>',
   skill: '<path d="m12 2 3 7 7 3-7 3-3 7-3-7-7-3 7-3z"/>', activity: '<path d="M2 12h4l3-8 6 16 3-8h4"/>',
+  connections: '<path d="m8 8 8 8M14 4l6 6M4 14l6 6M16 2l-4 4 6 6 4-4M2 16l4-4 6 6-4 4M12 12l-3 3"/>',
 };
-const views = [['chat', 'Conversations'], ['task', 'Tasks'], ['approval', 'Approvals'], ['routine', 'Routines'], ['tool', 'Tools & browser'], ['memory', 'Memory'], ['skill', 'Skills'], ['activity', 'Activity']];
+const views = [['chat', 'Conversations'], ['task', 'Tasks'], ['approval', 'Approvals'], ['routine', 'Routines'], ['connections', 'AI connections'], ['tool', 'Tools & browser'], ['memory', 'Memory'], ['skill', 'Skills'], ['activity', 'Activity']];
 const S = { state: null, agent: localStorage.getItem('kru-agent') || '', view: 'chat', lane: null, scope: '', messages: null, draft: '', sending: false, online: false, screenshot: null, refreshing: false, refreshAgain: false };
 const seenMessages = new Set();
 let refreshTimer, toastTimer, dialogSubmit, dialogBusy = false;
@@ -21,6 +22,9 @@ async function api(path, options = {}) {
 const post = (path, body = {}) => api(path, { method: 'POST', body });
 const patch = (path, body) => api(path, { method: 'PATCH', body });
 const current = () => S.state?.agents.find(a => a.id === S.agent);
+const connection = id => S.state?.providers?.find(p => p.id === id);
+const providerConnected = id => id === 'fake' || connection(id)?.status === 'connected';
+const connectionLabel = id => id === 'fake' ? 'Demo' : ({ connected: 'Connected', not_connected: 'Not connected', not_installed: 'Not installed', checking: 'Checking', error: 'Needs attention' }[connection(id)?.status] || 'Checking');
 const name = id => S.state?.agents.find(a => a.id === id)?.name || 'Unknown teammate';
 const records = kind => S.state?.records[kind] || [];
 const scoped = kind => records(kind).filter(r => !S.scope || r.agentId === S.scope);
@@ -28,7 +32,7 @@ const stamp = value => value ? new Date(value).toLocaleString([], { month: 'shor
 const status = value => `<span class="status ${escape(value)}">${escape(value)}</span>`;
 const actions = (action, label, id, css = '') => `<button class="small ${css}" data-action="${action}" data-id="${escape(id)}">${label}</button>`;
 function toast(text) { clearTimeout(toastTimer); $('#toast').textContent = text; $('#toast').hidden = false; toastTimer = setTimeout(() => { $('#toast').hidden = true; }, 4500); }
-function setConnection(online) { S.online = online; $('#connection').className = 'connection' + (online ? ' online' : ''); $('#connection').textContent = online ? 'Engine connected' : 'Reconnecting…'; }
+function setConnection(online) { S.online = online; $('#connection').className = 'connection' + (online ? ' online' : ''); $('#connection').textContent = online ? 'Local engine online' : 'Reconnecting…'; }
 function scheduleRefresh() { clearTimeout(refreshTimer); refreshTimer = setTimeout(refresh, 180); }
 async function refresh() {
   if (S.refreshing) { S.refreshAgain = true; return; }
@@ -74,16 +78,18 @@ function renderChat() {
   const queued = S.messages?.deliveries.filter(d => d.status === 'queued').length || 0;
   const usage = S.state.usage.find(u => u.agentId === agent.id);
   const browser = S.state.browsers[agent.id];
+  const connected = providerConnected(agent.provider);
   const task = S.lane?.startsWith('task:') ? records('task').find(t => t.id === S.lane.slice(5)) : null;
   const lanes = [null, ...(S.messages?.lanes.map(l => l.id).filter(Boolean) || [])];
   if (S.lane && !lanes.includes(S.lane)) lanes.push(S.lane);
   const laneName = id => id?.startsWith('task:') ? records('task').find(t => t.id === id.slice(5))?.data.title || 'Task' : id?.startsWith('routine:') ? records('routine').find(r => r.id === id.slice(8))?.data.name || 'Routine' : id || 'Main conversation';
   $('#content').innerHTML = `<div class="chat-layout"><div class="chat-main">
-    <div class="chat-heading"><span class="avatar large">${escape(agent.name[0].toUpperCase())}</span><div class="chat-title"><h1>${escape(agent.name)}</h1><p>${escape(agent.provider)} · ${escape(agent.config.promptProfile || 'minimal')} · ${agent.config.paused ? 'Paused' : lane ? escape(lane.reason || lane.state) : 'Ready for work'}</p></div><button class="quiet" data-action="agent-settings" data-id="${agent.id}">Settings</button></div>
+    <div class="chat-heading"><span class="avatar large">${escape(agent.name[0].toUpperCase())}</span><div class="chat-title"><h1>${escape(agent.name)}</h1><p>${escape(agent.provider)} · ${escape(agent.config.promptProfile || 'minimal')} · ${agent.config.paused ? 'Paused' : !connected ? escape(connectionLabel(agent.provider)) : lane ? escape(lane.reason || lane.state) : 'Connected'}</p></div><button class="quiet" data-action="agent-settings" data-id="${agent.id}">Settings</button></div>
     <div class="chat-lanes"><label for="lane-select">Thread</label><select id="lane-select">${lanes.map(id => `<option value="${escape(id || '')}" ${id === S.lane ? 'selected' : ''}>${escape(laneName(id))}</option>`).join('')}</select><button class="quiet small" data-action="new-task">New task</button></div>
     <div class="messages" role="log" aria-label="Conversation">${S.messages?.entries.length ? S.messages.entries.map(renderMessage).join('') : empty('Give ' + escape(agent.name) + ' a task', agent.provider === 'fake' ? 'This is a demo teammate. It echoes messages without calling an AI model.' : 'Messages, work and decisions stay with this teammate across sessions.', null, '')}</div>
     ${pending.length ? `<div class="busy-indicator"><button class="small" data-view="approval">${pending.length} action${pending.length > 1 ? 's' : ''} waiting for your approval</button></div>` : lane ? `<div class="busy-indicator">${escape(lane.reason || lane.state)}${lane.error ? ': ' + escape(lane.error) : ''}${lane.turnId ? ' ' + actions('stop-lane', 'Stop', lane.batchId, 'quiet') : ''}</div>` : queued ? '<div class="busy-indicator">Message queued</div>' : ''}
-    <form id="composer" class="composer"><textarea id="message-input" aria-label="Message teammate" placeholder="Message ${escape(agent.name)}…" rows="2">${escape(S.draft)}</textarea><div class="composer-footer"><span>Enter to send · Shift + Enter for a new line</span><button class="primary" type="submit">Send message</button></div></form>
+    ${!connected ? `<div class="connection-notice"><span>${escape(connection(agent.provider)?.message || 'Checking this provider before it can run work.')}</span><button type="button" class="small" data-view="connections">Connect provider</button></div>` : ''}
+    <form id="composer" class="composer"><textarea id="message-input" aria-label="Message teammate" placeholder="Message ${escape(agent.name)}…" rows="2">${escape(S.draft)}</textarea><div class="composer-footer"><span>Enter to send · Shift + Enter for a new line</span><button class="primary" type="submit" ${!connected || S.sending ? 'disabled' : ''}>Send message</button></div></form>
     </div><aside class="inspector" aria-label="Teammate details"><div class="inspector-section"><h2>Teammate</h2><div class="detail-row"><span>Provider</span><span>${escape(agent.provider)}</span></div><div class="detail-row"><span>File access</span><span>${escape(agent.config.permissions?.sandbox || 'read-only')}</span></div><div class="detail-row"><span>Turns</span><span>${usage?.turns || 0}</span></div><div class="detail-row"><span>Estimated spend</span><span>${usage?.usd == null ? 'Unpriced' : '$' + usage.usd.toFixed(4)}</span></div>${usage?.incomplete ? '<p class="subtext">Some usage is incomplete.</p>' : ''}<button class="small fullwidth" data-action="pause-agent" data-id="${agent.id}">${agent.config.paused ? 'Resume teammate' : 'Pause teammate'}</button></div>
     ${task ? `<div class="inspector-section"><h2>Current task</h2><p class="subtext">${escape(task.data.title)}</p>${renderSteps(task.data.steps)}${status(task.data.status)}<div class="detail-row"><span>Turns</span><span>${task.data.attempts} / ${task.data.maxTurns}</span></div></div>` : ''}
     <div class="inspector-section"><h2>Connected tools</h2><p class="subtext">${records('connector').filter(c => c.agentId === agent.id && c.data.enabled).map(c => escape(c.data.name)).join(', ') || 'No external tools connected.'}</p><button class="small" data-view="tool">Manage tools</button></div>
@@ -107,6 +113,7 @@ function renderPage() {
     memory: ['Memory', 'Facts and preferences your teammates can retrieve in future conversations.', 'new-memory', 'Add memory'],
     skill: ['Skills', 'Save a workflow once, then assign it whenever you need it.', 'new-skill', 'New skill'],
     activity: ['Activity', 'Execution history and estimated usage across your workspace.', null, null],
+    connections: ['AI connections', 'Connect your local Codex and Claude Code accounts so teammates can start working.', null, null],
   }[S.view];
   const [title, subtitle, action, label] = info;
   let content = '';
@@ -123,7 +130,18 @@ function renderPage() {
   if (S.view === 'memory') content = scoped('memory').map(r => `<article class="record-row"><div><div class="record-title">${escape(r.data.key)}</div><div class="record-description">${escape(r.data.text)}</div><div class="record-meta"><span>${escape(name(r.agentId))}</span><span>Updated ${stamp(r.updatedAt)}</span></div></div><div class="row-actions">${actions('edit-memory', 'Edit', r.id)}${actions('delete-record', 'Remove', 'memory:' + r.id, 'quiet')}</div></article>`).join('') || empty('A little context goes a long way', 'Save preferences, project facts, or decisions. Teammates can also save memories while they work.', 'new-memory', 'Add memory');
   if (S.view === 'skill') content = scoped('skill').map(r => `<article class="record-row"><div><div class="record-title">${escape(r.data.name)}</div><div class="record-description">${escape(r.data.description)}</div><div class="record-meta"><span>${escape(name(r.agentId))}</span></div><details class="evidence"><summary>Workflow instructions</summary><pre>${escape(r.data.instructions)}</pre></details></div><div class="row-actions">${actions('run-skill', 'Run skill', r.id, 'primary')}${actions('edit-skill', 'Edit', r.id)}${actions('delete-record', 'Remove', 'skill:' + r.id, 'quiet')}</div></article>`).join('') || empty('Keep your best workflows', 'Write reusable instructions for research, reviews, reporting, or any repeatable task.', 'new-skill', 'Create skill');
   if (S.view === 'activity') content = renderActivity();
-  $('#content').innerHTML = `<div class="page"><div class="page-heading"><div><h1>${title}</h1><p>${subtitle}</p></div>${action ? `<button class="primary" data-action="${action}">${label}</button>` : ''}</div>${scopeFilter()}<div class="record-list">${content}</div></div>`;
+  if (S.view === 'connections') content = renderConnections();
+  $('#content').innerHTML = `<div class="page"><div class="page-heading"><div><h1>${title}</h1><p>${subtitle}</p></div>${action ? `<button class="primary" data-action="${action}">${label}</button>` : ''}</div>${S.view === 'connections' ? '' : scopeFilter()}<div class="record-list">${content}</div></div>`;
+}
+function renderConnections() {
+  return `<p class="connection-intro">KRU checks the accounts signed in on this computer. Connect a provider to enable its teammates.</p>` + (S.state.providers || []).map(p => {
+    const busy = p.action?.status === 'running', connected = p.status === 'connected';
+    const label = busy ? p.action.kind === 'install' ? 'Installing' : 'Signing in' : connectionLabel(p.id);
+    return `<article class="provider-row" data-provider="${p.id}"><div class="provider-identity"><div class="provider-logo">${p.id === 'codex' ? 'C' : '✳'}</div><div><h2>${escape(p.name)}</h2><p>${p.id === 'codex' ? 'Your ChatGPT or Codex CLI account' : 'Your Claude Code account'}</p></div></div><div class="provider-state">${status(connected ? 'connected' : busy ? 'pending' : p.status)}<strong>${escape(label)}</strong><p>${escape(busy ? p.action.message : p.message)}</p>${p.checkedAt ? `<span class="provider-checked">Checked ${stamp(p.checkedAt)}</span>` : ''}</div><div class="provider-actions">${busy ? actions('provider-cancel', 'Cancel setup', p.id) : p.status === 'checking' && !p.checkedAt ? '<span class="subtext">Checking local setup…</span>' : `${!connected ? actions(p.installed && p.status !== 'error' ? 'provider-login' : 'provider-install', p.installed && p.status !== 'error' ? 'Sign in' : p.installed ? 'Update CLI' : 'Install ' + p.name, p.id, 'primary') : ''}${actions('provider-refresh', 'Recheck', p.id)}${connected ? actions('provider-login', 'Sign in again', p.id, 'quiet') : ''}`}</div>
+    ${busy && p.action.verificationUrl ? `<div class="provider-signin"><p>Continue sign-in with ${escape(p.name)}.</p>${p.action.deviceCode ? `<div class="device-code"><code>${escape(p.action.deviceCode)}</code>${actions('provider-copy-code', 'Copy code', p.id)}</div>` : ''}<a class="button-link" href="${escape(p.action.verificationUrl)}" target="_blank" rel="noopener noreferrer">Open sign-in page</a>${p.id === 'claude' ? actions('provider-code', 'Enter a sign-in code', p.id, 'quiet') : ''}</div>` : busy && p.id === 'claude' ? `<div class="provider-signin">${actions('provider-code', 'Enter a sign-in code', p.id)}</div>` : ''}
+    ${p.action && !busy ? `<p class="provider-action-result ${p.action.status === 'failed' ? 'record-error' : ''}">${escape(p.action.message)}</p>` : ''}
+    <details class="provider-details" data-detail="provider:${p.id}"><summary>Connection details & terminal setup</summary><div class="detail-row"><span>Installation</span><span>${p.source === 'managed' ? 'Installed by KRU' : p.source === 'system' ? 'Local CLI' : p.source === 'override' ? 'Configured executable' : 'Not found'}</span></div>${p.executable ? `<p class="provider-path">${escape(p.executable)}</p>` : ''}<p class="help">You can also set up this provider in your terminal, then select Recheck.</p><pre class="token-output">${escape(!p.installed ? p.installCommand + '\n' : '')}${escape(p.loginCommand)}</pre><p class="help">Sign-in stays with the provider. KRU does not copy your account tokens into its database. A connected status confirms the local CLI reports a signed-in account; model access and account limits are checked when work runs.</p></details></article>`;
+  }).join('');
 }
 function renderTask(r) {
   const d = r.data;
@@ -167,6 +185,7 @@ function showInfo(title, markup) { dialogSubmit = null; $('#dialog-content').inn
 function openAgent(id) {
   const agent = S.state.agents.find(a => a.id === id), c = agent?.config || {};
   openForm(agent ? 'Teammate settings' : 'Create teammate',
+    '<p class="help">Codex and Claude Code need a connected account. Manage your sign-ins on the AI connections page.</p>' +
     (agent ? '' : field('Name', 'name', '', { required: true })) +
     '<div class="field-grid">' + field('Provider', 'provider', agent?.provider || 'codex', { options: [['codex', 'Codex'], ['claude', 'Claude'], ['fake', 'Demo (no model calls)']] }) + field('Tool profile', 'profile', c.promptProfile || 'coding', { options: [['coding', 'Coding'], ['minimal', 'Minimal'], ['full', 'Full (Claude)']] }) + '</div>' +
     field('Model', 'model', c.model || '', { help: 'Leave blank to use the provider default.' }) + field('Instructions', 'instructions', c.instructions || '', { area: true, help: 'Describe the teammate’s role and how it should work.' }) +
@@ -257,8 +276,15 @@ document.addEventListener('click', async event => {
     if (action === 'new-memory' || action === 'edit-memory') { openKnowledge('memory', id); return; }
     if (action === 'new-skill' || action === 'edit-skill') { openKnowledge('skill', id); return; }
     if (action === 'run-skill') { openTask(records('skill').find(r => r.id === id)); return; }
+    if (action === 'provider-code') {
+      openForm('Finish Claude Code sign-in', field('Sign-in code', 'code', '', { required: true, type: 'password', help: 'Paste the code provided by Claude’s sign-in page. It is sent directly to the running sign-in process.' }), async form => { await post('/providers/claude/code', { code: form.get('code') }); toast('Sign-in code submitted'); }, 'Complete sign-in'); return;
+    }
     button.disabled = true;
-    if (action === 'pause-agent') { const a = S.state.agents.find(a => a.id === id); await patch('/agents/' + id, { config: { paused: !a.config.paused } }); }
+    if (action === 'provider-refresh') { await post('/providers/' + id + '/refresh'); toast('Connection checked'); }
+    else if (action === 'provider-install' || action === 'provider-login') { await post('/providers/' + id + '/' + (action === 'provider-install' ? 'install' : 'login')); toast(action === 'provider-install' ? 'Installation started' : 'Sign-in started'); }
+    else if (action === 'provider-cancel') { await post('/providers/' + id + '/cancel'); toast('Setup cancelled'); }
+    else if (action === 'provider-copy-code') { await navigator.clipboard.writeText(connection(id)?.action?.deviceCode || ''); toast('Code copied'); }
+    else if (action === 'pause-agent') { const a = S.state.agents.find(a => a.id === id); await patch('/agents/' + id, { config: { paused: !a.config.paused } }); }
     else if (action === 'approve' || action === 'decline') { await post('/records/approval/' + id + '/decide', { decision: action === 'approve' ? 'accept' : 'decline' }); toast(action === 'approve' ? 'Action allowed once' : 'Action declined'); }
     else if (action === 'task-chat') { const r = records('task').find(r => r.id === id); selectAgent(r.agentId, 'task:' + id); }
     else if (action === 'routine-chat') { const r = records('routine').find(r => r.id === id); selectAgent(r.agentId, 'routine:' + id); }
@@ -284,6 +310,7 @@ document.addEventListener('submit', async event => {
   event.preventDefault();
   const form = event.target;
   if (form.id === 'composer') {
+    if (!providerConnected(current()?.provider)) { S.view = 'connections'; draw(); return; }
     if (S.sending) return;
     const text = $('#message-input').value.trim(); if (!text) return;
     S.sending = true;

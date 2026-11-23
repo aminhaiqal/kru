@@ -14,7 +14,7 @@ import { addTokens, claudeTokens, zeroTokens } from '../token-usage';
 
 export type ClaudeQuery = AsyncIterable<SDKMessage> & { interrupt(): Promise<unknown>; close(): void };
 export type ClaudeQueryFactory = (args: { prompt: AsyncIterable<SDKUserMessage>; options: Options }) => ClaudeQuery;
-export interface ClaudeProviderOptions { query?: ClaudeQueryFactory; processRecordDir?: string; stopGraceMs?: number; toolTimeoutMs?: number }
+export interface ClaudeProviderOptions { query?: ClaudeQueryFactory; processRecordDir?: string; stopGraceMs?: number; toolTimeoutMs?: number; executablePath?: string }
 interface Active {
   id: string; controller: AbortController; interrupted: boolean; messageId: string;
   blocks: Map<string, { text: string; completed: boolean }>;
@@ -158,6 +158,7 @@ export class ClaudeProvider extends ProviderBase {
         kind: file ? 'file' : name === 'Bash' ? 'command' : 'tool', input: { name, input } }, signal)).decision === 'accept';
     };
     const options: Options = {
+      ...(this.options.executablePath ? { pathToClaudeCodeExecutable: this.options.executablePath } : {}),
       ...(session.params.cwd ? { cwd: session.params.cwd } : {}), ...(session.params.model ? { model: session.params.model } : {}),
       ...(session.nativeId ? { resume: session.nativeId } : { sessionId: session.id }),
       systemPrompt: session.profile.promptProfile === 'full'
