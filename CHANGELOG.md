@@ -7,6 +7,10 @@ Planned release line v0.2.
 
 ### Added
 
+- Use one compact navigation rail and header across all workspace pages, with
+  stable icon positions, active labels, accessible teammate avatars and a mobile
+  drawer. Add Tailwind CSS tooling and shared semantic sidebar tokens.
+
 - Replace Tasks with Work: project sidebar, Kanban/list views, editable workflow
   stages, priorities, labels, due dates, agent assignment, activity and comments.
   Stage entry starts an agent run, results carry into the next stage, and Review

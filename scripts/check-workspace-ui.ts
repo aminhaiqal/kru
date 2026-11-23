@@ -57,6 +57,19 @@ try {
   page.on('pageerror', error => errors.push(error.message));
   page.on('console', message => { if (message.type() === 'error' && !message.text().includes('favicon')) errors.push(message.text()); });
   await page.goto(web.url);
+  await page.locator('#navigation .nav-item').first().waitFor();
+  const shellGeometry = () => page!.evaluate(() => {
+    const document = (globalThis as any).document;
+    const rect = (element: any) => { const box = element.getBoundingClientRect(); return [box.x, box.y, box.width, box.height]; };
+    return { sidebar: rect(document.querySelector('.sidebar')), header: rect(document.querySelector('.topbar')), navigation: [...document.querySelectorAll('#navigation button')].map(rect) };
+  });
+  const workShell = await shellGeometry();
+  for (const label of ['Conversations', 'Approvals', 'Routines', 'AI connections', 'Tools & browser', 'Memory', 'Skills', 'Activity', 'Work']) {
+    await page.getByRole('button', { name: label, exact: true }).click();
+    if (JSON.stringify(await shellGeometry()) !== JSON.stringify(workShell)) throw new Error('Sidebar or header geometry changed on ' + label);
+    await check(await page.locator('#navigation [aria-current="page"]').getAttribute('aria-label') === label, 'Shared rail geometry and active state stay consistent on ' + label);
+  }
+  await page.screenshot({ path: join(artifactDir, 'navigation-work.png'), fullPage: true, animations: 'disabled' });
   await page.getByRole('button', { name: 'AI connections', exact: true }).click();
   const codex = page.locator('[data-provider="codex"]'), claude = page.locator('[data-provider="claude"]');
   await codex.getByText('Not connected', { exact: true }).waitFor();
@@ -186,8 +199,13 @@ try {
   await check(await page.evaluate(() => (globalThis as any).document.documentElement.scrollWidth <= (globalThis as any).innerWidth), 'Mobile layout has no horizontal overflow');
   await page.getByRole('button', { name: 'Toggle navigation' }).click(); await page.getByRole('button', { name: 'Approvals', exact: true }).click(); await waitText(page, 'Review the exact action');
   await page.screenshot({ path: join(artifactDir, 'mobile.png'), fullPage: true });
+  await page.getByRole('button', { name: 'Toggle navigation' }).click();
+  await check(await page.getByRole('button', { name: 'Toggle navigation' }).getAttribute('aria-expanded') === 'true', 'Mobile navigation announces its expanded state');
+  await page.screenshot({ path: join(artifactDir, 'navigation-mobile.png'), fullPage: true, animations: 'disabled' });
+  await page.keyboard.press('Escape');
+  await check(await page.getByRole('button', { name: 'Toggle navigation' }).getAttribute('aria-expanded') === 'false', 'Escape closes mobile navigation and restores menu focus');
   await check(errors.length === 0, 'No browser JavaScript or console errors: ' + errors.join('; '));
-  await Bun.write(join(artifactDir, 'result.json'), JSON.stringify({ checkedAt: new Date().toISOString(), checks, screenshots: ['connections-before.png', 'connections.png', 'work-board.png', 'work-detail.png', 'work-mobile.png', 'desktop.png', 'mobile.png'] }, null, 2) + '\n');
+  await Bun.write(join(artifactDir, 'result.json'), JSON.stringify({ checkedAt: new Date().toISOString(), checks, screenshots: ['navigation-work.png', 'navigation-mobile.png', 'connections-before.png', 'connections.png', 'work-board.png', 'work-detail.png', 'work-mobile.png', 'desktop.png', 'mobile.png'] }, null, 2) + '\n');
   console.log(JSON.stringify({ passed: checks.length, artifactDir, checks }, null, 2));
 } catch (error) {
   await page?.screenshot({ path: join(artifactDir, 'failure.png'), fullPage: true }).catch(() => {});

@@ -7,6 +7,20 @@ An existing daemon must stop before the UI can own that same database. Multiple
 projects can use separate databases and ports. No cloud account or hosted frontend
 is required. Work runs while the host and command remain running.
 
+The compact navigation rail is shared by every page. On desktop, hover an icon
+for its full label; the selected page also shows a short label. Teammate avatars
+open their conversations, and the rail's plus button creates a teammate. On
+mobile, the menu button opens the same navigation with full labels; Escape
+closes it.
+
+Navigation styles use Tailwind CSS with semantic sidebar tokens. Edit
+`src/web/styles/navigation.css`, then run `bun run build:css` (or `bun run dev:css`
+while editing). The generated `src/web/public/navigation.css` is checked in and
+served locally, so opening the UI needs no CSS build or CDN. Existing page styles
+remain in `style.css` and `work.css`. Tailwind Preflight is omitted to preserve
+existing form and page behavior. This frontend uses plain JavaScript; React
+shadcn/ui components are not installed.
+
 ## Teammates and conversations
 
 ### Connect Codex and Claude Code

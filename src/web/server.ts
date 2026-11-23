@@ -28,6 +28,7 @@ export function createWebServer(options: { store: Store; daemon: Daemon; port?: 
   const agents = new AgentRegistry(store), mailbox = new SqliteMailbox(store);
   const token = randomBytes(32).toString('hex');
   const assets = new Map([
+    ['/navigation.css', { body: readFileSync(new URL('./public/navigation.css', import.meta.url)), type: 'text/css; charset=utf-8' }],
     ['/work.js', { body: readFileSync(new URL('./public/work.js', import.meta.url)), type: 'text/javascript; charset=utf-8' }],
     ['/work.css', { body: readFileSync(new URL('./public/work.css', import.meta.url)), type: 'text/css; charset=utf-8' }],
     ['/app.js', { body: readFileSync(new URL('./public/app.js', import.meta.url)), type: 'text/javascript; charset=utf-8' }],

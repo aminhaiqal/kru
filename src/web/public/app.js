@@ -63,7 +63,7 @@ async function refresh() {
 function selectAgent(id, lane = null) { S.agent = id; S.lane = lane; S.messages = null; S.view = 'chat'; S.draft = ''; localStorage.setItem('kru-agent', id); $('.workspace').classList.remove('menu-open'); draw(); scheduleRefresh(); }
 function draw() {
   if (!S.state || (S.view === 'work' && W.dragging)) return;
-  $('.workspace').classList.toggle('work-mode', S.view === 'work');
+  $('.mobile-menu').setAttribute('aria-expanded', String($('.workspace').classList.contains('menu-open')));
   const focus = document.activeElement, focusId = focus?.id, selection = focus?.selectionStart, end = focus?.selectionEnd;
   const wasComposer = focusId === 'message-input';
   const workScroll = { board: $('.work-board')?.scrollLeft || 0, detail: $('.work-detail-scroll')?.scrollTop || 0, columns: [...document.querySelectorAll('[data-column-scroll]')].map(el => [el.dataset.columnScroll, el.scrollTop]) };
@@ -71,8 +71,8 @@ function draw() {
   const oldMessages = $('.messages'), scroll = oldMessages?.scrollTop || 0, sticky = !oldMessages || oldMessages.scrollHeight - oldMessages.clientHeight - scroll < 90;
   const oldContent = $('#content').scrollTop;
   const pending = records('approval').filter(r => r.data.status === 'pending').length;
-  $('#navigation').innerHTML = views.map(([key, label]) => `<button class="nav-item ${S.view === key ? 'active' : ''}" data-view="${key}" title="${label}" ${S.view === key ? 'aria-current="page"' : ''}><svg viewBox="0 0 24 24" aria-hidden="true">${icons[key]}</svg><span class="nav-label">${label}</span>${key === 'approval' && pending ? `<span class="count">${pending}</span>` : ''}</button>`).join('');
-  $('#agents').innerHTML = S.state.agents.length ? S.state.agents.map(agent => `<button class="agent-button ${S.agent === agent.id ? 'active' : ''}" data-agent="${agent.id}"><span class="avatar">${escape(agent.name.slice(0, 1).toUpperCase())}</span><span class="agent-name">${escape(agent.name)}<span class="agent-provider">${escape(agent.provider)}${agent.config.paused ? ' · paused' : ''}</span></span><span class="agent-state ${S.state.lanes.some(l => l.agentId === agent.id && l.state === 'running') ? 'running' : ''}"></span></button>`).join('') : '<div class="small-empty">Create your first teammate.</div>';
+  $('#navigation').innerHTML = views.map(([key, label]) => `<button class="nav-item ${S.view === key ? 'active' : ''}" data-view="${key}" title="${label}" aria-label="${label}" ${S.view === key ? 'aria-current="page"' : ''}><svg viewBox="0 0 24 24" aria-hidden="true">${icons[key]}</svg><span class="nav-label"><span class="nav-label-full">${label}</span><span class="nav-label-short">${({ chat: 'Chat', connections: 'Connect', tool: 'Tools' }[key]) || label}</span></span>${key === 'approval' && pending ? `<span class="count">${pending}</span>` : ''}</button>`).join('');
+  $('#agents').innerHTML = S.state.agents.length ? S.state.agents.map(agent => `<button class="agent-button ${S.agent === agent.id ? 'active' : ''}" data-agent="${agent.id}" title="${escape(agent.name)} · ${escape(agent.provider)}" aria-label="Open ${escape(agent.name)} conversation"><span class="avatar">${escape(agent.name.slice(0, 1).toUpperCase())}</span><span class="agent-name">${escape(agent.name)}<span class="agent-provider">${escape(agent.provider)}${agent.config.paused ? ' · paused' : ''}</span></span><span class="agent-state ${S.state.lanes.some(l => l.agentId === agent.id && l.state === 'running') ? 'running' : ''}"></span></button>`).join('') : '<div class="small-empty">Create your first teammate.</div>';
   $('#breadcrumb').innerHTML = `Workspace <span aria-hidden="true">/</span> <strong>${escape(S.view === 'chat' && current() ? current().name : views.find(v => v[0] === S.view)?.[1])}</strong>`;
   $('#engine-status').textContent = `${S.state.activeTurns} running · local`;
   if (S.view === 'chat') renderChat(); else renderPage();
@@ -274,7 +274,7 @@ document.addEventListener('click', async event => {
   const { action, id } = button.dataset;
   if (action.startsWith('work-')) return;
   try {
-    if (action === 'menu') { $('.workspace').classList.toggle('menu-open'); return; }
+    if (action === 'menu') { const open = $('.workspace').classList.toggle('menu-open'); $('.mobile-menu').setAttribute('aria-expanded', String(open)); return; }
     if (action === 'close-dialog') { if (!dialogBusy) $('#dialog').close(); return; }
     if (action === 'new-agent') { openAgent(); return; }
     if (action === 'agent-settings') { openAgent(id); return; }
@@ -355,3 +355,5 @@ async function events() {
   }
 }
 refresh(); events();
+
+document.addEventListener('keydown', event => { if (event.key === 'Escape' && $('.workspace').classList.contains('menu-open') && !$('#dialog').open) { $('.workspace').classList.remove('menu-open'); $('.mobile-menu').setAttribute('aria-expanded', 'false'); $('.mobile-menu').focus(); } });
