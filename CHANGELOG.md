@@ -7,6 +7,11 @@ Planned release line v0.2.
 
 ### Added
 
+- Replace Tools & browser with Connector for third-party app connections via
+  remote/local MCP servers. Add verified connection status, available tools,
+  reconnect/disconnect controls and app-focused setup. Move browser controls to
+  each bot's conversation, including a mobile-accessible Browser menu.
+
 - Remove the Memory page and make memory an internal, per-bot capability with
   automatic maintenance guidance, stable-key updates and scoped forgetting.
   Load bounded notes on future turns, retrieve paginated summaries/full notes,

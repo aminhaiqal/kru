@@ -90,7 +90,7 @@ try {
     return { sidebar: rect(document.querySelector('.sidebar')), header: rect(document.querySelector('.topbar')), navigation: [...document.querySelectorAll('#navigation button')].map(rect) };
   });
   const workShell = await shellGeometry();
-  for (const label of ['Conversations', 'Routines', 'AI connections', 'Tools & browser', 'Skills', 'Activity', 'Work']) {
+  for (const label of ['Conversations', 'Routines', 'AI connections', 'Connector', 'Skills', 'Activity', 'Work']) {
     await page.getByRole('button', { name: label, exact: true }).click();
     if (JSON.stringify(await shellGeometry()) !== JSON.stringify(workShell)) throw new Error('Sidebar or header geometry changed on ' + label);
     await check(await page.locator('#navigation [aria-current="page"]').getAttribute('aria-label') === label, 'Shared rail geometry and active state stay consistent on ' + label);
@@ -199,10 +199,23 @@ try {
   await waitText(page, 'Every 60 minutes'); await page.getByRole('button', { name: 'Run now', exact: true }).click();
   await page.getByRole('button', { name: 'History', exact: true }).click(); await waitText(page, 'Echo: Kru delivery context'); checks.push('Configure a routine, trigger it, and open its isolated history');
 
-  await page.getByRole('button', { name: 'Tools & browser', exact: true }).click(); await page.getByRole('button', { name: 'Connect tool', exact: true }).click();
-  await page.getByLabel('Connection name').fill('Local echo'); await page.getByLabel('Transport', { exact: true }).selectOption('stdio');
-  await page.getByLabel('Executable', { exact: true }).fill(process.execPath); await page.getByLabel('Arguments', { exact: true }).fill(JSON.stringify([new URL('../test/fakes/workspace-mcp.ts', import.meta.url).pathname])); await saveDialog(page);
-  await page.getByRole('button', { name: 'Discover tools', exact: true }).click(); await waitText(page, '1 tools discovered.'); await page.getByRole('button', { name: 'Close dialog' }).click(); checks.push('Connect a real MCP process and discover its tool schema');
+  await page.getByRole('button', { name: 'Connector', exact: true }).click(); await page.getByRole('button', { name: 'Connect app', exact: true }).click();
+  await page.getByLabel('App name').fill('Local echo'); await page.getByLabel('Connection method', { exact: true }).selectOption('stdio');
+  await page.getByLabel('Executable', { exact: true }).fill(process.execPath); await page.getByLabel('Arguments', { exact: true }).fill(JSON.stringify([new URL('../test/fakes/workspace-mcp.ts', import.meta.url).pathname])); await saveDialog(page, 'Connect app');
+  await page.locator('.connector-row').getByText('Connected', { exact: true }).waitFor();
+  await page.getByRole('button', { name: 'View tools', exact: true }).click(); await waitText(page, '1 tool available.'); await page.getByRole('button', { name: 'Close dialog' }).click(); checks.push('Connect a third-party app through a real MCP process and verify its available tools');
+  await page.screenshot({ path: join(artifactDir, 'connector.png'), fullPage: true, animations: 'disabled' });
+  await page.getByRole('button', { name: 'Disconnect', exact: true }).click();
+  await page.locator('.connector-status').getByText('Disconnected', { exact: true }).waitFor();
+  await page.locator('.connector-row').getByRole('button', { name: 'Connect', exact: true }).click();
+  await page.locator('.connector-row').getByText('Connected', { exact: true }).waitFor();
+  checks.push('Disconnect and reconnect an app with verified status');
+  await check(await page.getByRole('button', { name: 'Tools & browser', exact: true }).count() === 0, 'Connector replaces Tools & browser and contains only app connections');
+  await page.setViewportSize({ width: 390, height: 844 });
+  await check(await page.evaluate(() => (globalThis as any).document.documentElement.scrollWidth <= (globalThis as any).innerWidth), 'Connector app rows and actions fit mobile');
+  await page.waitForTimeout(250);
+  await page.screenshot({ path: join(artifactDir, 'connector-mobile.png'), fullPage: true, animations: 'disabled' });
+  await page.setViewportSize({ width: 1440, height: 960 });
   const agentId = daemon.workspace.records.list('connector')[0]!.agentId!;
   await page.locator(`[data-agent="${agentId}"]`).click();
   await page.getByRole('textbox', { name: 'Message teammate' }).fill('Use the connected tool'); await page.getByRole('button', { name: 'Send message' }).click();
@@ -232,8 +245,9 @@ try {
 
   await page.waitForTimeout(250);
   await page.screenshot({ path: join(artifactDir, 'desktop.png'), fullPage: true });
-  await page.getByRole('button', { name: 'Tools & browser', exact: true }).click(); await page.getByRole('button', { name: 'Start session', exact: true }).click();
-  await page.getByRole('button', { name: 'View browser', exact: true }).click(); await page.getByLabel('Navigate to URL').fill(`http://127.0.0.1:${fixture.port}`); await page.getByRole('button', { name: 'Navigate', exact: true }).click();
+  await page.locator(`[data-agent="${agentId}"]`).click(); await page.locator('.chat-lanes').getByRole('button', { name: 'Browser', exact: true }).click();
+  await page.getByRole('dialog').getByRole('button', { name: 'Start session', exact: true }).click();
+  await page.getByRole('dialog').getByRole('button', { name: 'View browser', exact: true }).click(); await page.getByLabel('Navigate to URL').fill(`http://127.0.0.1:${fixture.port}`); await page.getByRole('button', { name: 'Navigate', exact: true }).click();
   await page.waitForFunction(() => (globalThis as any).document.querySelector('#browser-form button[type=submit]')?.disabled === false);
   await page.waitForFunction(() => { const img = (globalThis as any).document.querySelector('.browser-image'); return img?.complete && img.naturalWidth > 0; });
   await page.getByRole('button', { name: 'Close dialog' }).click();
@@ -256,7 +270,7 @@ try {
   await page.keyboard.press('Escape');
   await check(await page.getByRole('button', { name: 'Toggle navigation' }).getAttribute('aria-expanded') === 'false', 'Escape closes mobile navigation and restores menu focus');
   await check(errors.length === 0, 'No browser JavaScript or console errors: ' + errors.join('; '));
-  await Bun.write(join(artifactDir, 'result.json'), JSON.stringify({ checkedAt: new Date().toISOString(), checks, screenshots: ['navigation-work.png', 'navigation-mobile.png', 'approval-conversation.png', 'approval-reminder.png', 'connections-before.png', 'connections.png', 'work-board.png', 'work-detail.png', 'work-mobile.png', 'desktop.png', 'mobile.png'] }, null, 2) + '\n');
+  await Bun.write(join(artifactDir, 'result.json'), JSON.stringify({ checkedAt: new Date().toISOString(), checks, screenshots: ['connector.png', 'connector-mobile.png', 'navigation-work.png', 'navigation-mobile.png', 'approval-conversation.png', 'approval-reminder.png', 'connections-before.png', 'connections.png', 'work-board.png', 'work-detail.png', 'work-mobile.png', 'desktop.png', 'mobile.png'] }, null, 2) + '\n');
   console.log(JSON.stringify({ passed: checks.length, artifactDir, checks }, null, 2));
 } catch (error) {
   await page?.screenshot({ path: join(artifactDir, 'failure.png'), fullPage: true }).catch(() => {});

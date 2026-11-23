@@ -5,12 +5,12 @@ const escape = value => String(value ?? '').replace(/[&<>"']/g, c => ({ '&': '&a
 const icons = {
   chat: '<path d="M4 4h16v12H9l-5 4z"/>', work: '<rect x="5" y="4" width="14" height="17" rx="2"/><path d="m8 12 3 3 5-6M9 4V2h6v2"/>',
   routine: '<circle cx="12" cy="12" r="9"/><path d="M12 6v6l4 2"/>',
-  tool: '<path d="M14 6a5 5 0 0 0-6 6L3 18l3 3 6-6a5 5 0 0 0 6-6l-4 4-3-3z"/>',
+  connector: '<path d="m9 15 6-6M8 16l-2 2a4 4 0 0 1-6-6l4-4a4 4 0 0 1 6 0m4 0 2-2a4 4 0 0 1 6 6l-4 4a4 4 0 0 1-6 0" transform="translate(2 0)"/>',
   skill: '<path d="m12 2 3 7 7 3-7 3-3 7-3-7-7-3 7-3z"/>', activity: '<path d="M2 12h4l3-8 6 16 3-8h4"/>',
   connections: '<path d="m8 8 8 8M14 4l6 6M4 14l6 6M16 2l-4 4 6 6 4-4M2 16l4-4 6 6-4 4M12 12l-3 3"/>',
 };
-const views = [['chat', 'Conversations'], ['work', 'Work'], ['routine', 'Routines'], ['connections', 'AI connections'], ['tool', 'Tools & browser'], ['skill', 'Skills'], ['activity', 'Activity']];
-const S = { state: null, agent: localStorage.getItem('kru-agent') || '', view: 'work', lane: null, scope: '', messages: null, draft: '', sending: false, online: false, screenshot: null, refreshing: false, refreshAgain: false };
+const views = [['chat', 'Conversations'], ['work', 'Work'], ['routine', 'Routines'], ['connections', 'AI connections'], ['connector', 'Connector'], ['skill', 'Skills'], ['activity', 'Activity']];
+const S = { state: null, agent: localStorage.getItem('kru-agent') || '', view: 'work', lane: null, scope: '', connectorChecks: new Set(), messages: null, draft: '', sending: false, online: false, screenshot: null, refreshing: false, refreshAgain: false };
 const seenMessages = new Set();
 const notifiedRequests = new Set();
 const requestNotifications = new Map();
@@ -130,7 +130,7 @@ function draw() {
   const oldContent = $('#content').scrollTop;
   const pending = pendingApprovals().length;
   renderAttentionReminder();
-  $('#navigation').innerHTML = views.map(([key, label]) => `<button class="nav-item ${S.view === key ? 'active' : ''}" data-view="${key}" title="${label}" aria-label="${label}" ${S.view === key ? 'aria-current="page"' : ''}><svg viewBox="0 0 24 24" aria-hidden="true">${icons[key]}</svg><span class="nav-label"><span class="nav-label-full">${label}</span><span class="nav-label-short">${({ chat: 'Chat', connections: 'Connect', tool: 'Tools' }[key]) || label}</span></span>${key === 'chat' && pending ? `<span class="count">${pending}</span>` : ''}</button>`).join('');
+  $('#navigation').innerHTML = views.map(([key, label]) => `<button class="nav-item ${S.view === key ? 'active' : ''}" data-view="${key}" title="${label}" aria-label="${label}" ${S.view === key ? 'aria-current="page"' : ''}><svg viewBox="0 0 24 24" aria-hidden="true">${icons[key]}</svg><span class="nav-label"><span class="nav-label-full">${label}</span><span class="nav-label-short">${({ chat: 'Chat', connections: 'Connect', connector: 'Connector' }[key]) || label}</span></span>${key === 'chat' && pending ? `<span class="count">${pending}</span>` : ''}</button>`).join('');
   $('#agents').innerHTML = S.state.agents.length ? S.state.agents.map(agent => `<button class="agent-button ${S.agent === agent.id ? 'active' : ''}" data-agent="${agent.id}" title="${escape(agent.name)} · ${escape(agent.provider)}" aria-label="Open ${escape(agent.name)} conversation"><span class="avatar">${escape(agent.name.slice(0, 1).toUpperCase())}</span><span class="agent-name">${escape(agent.name)}<span class="agent-provider">${escape(agent.provider)}${agent.config.paused ? ' · paused' : ''}</span></span>${pendingApprovals().some(r => r.agentId === agent.id) ? '<span class="agent-attention" aria-label="Waiting for you">!</span>' : ''}<span class="agent-state ${S.state.lanes.some(l => l.agentId === agent.id && l.state === 'running') ? 'running' : ''}"></span></button>`).join('') : '<div class="small-empty">Create your first teammate.</div>';
   $('#breadcrumb').innerHTML = `Workspace <span aria-hidden="true">/</span> <strong>${escape(S.view === 'chat' && current() ? current().name : views.find(v => v[0] === S.view)?.[1])}</strong>`;
   $('#engine-status').textContent = `${S.state.activeTurns} running · local`;
@@ -162,15 +162,15 @@ function renderChat() {
   const laneName = id => id?.startsWith('task:') ? records('task').find(t => t.id === id.slice(5))?.data.title || 'Task' : id?.startsWith('routine:') ? records('routine').find(r => r.id === id.slice(8))?.data.name || 'Routine' : id || 'Main conversation';
   $('#content').innerHTML = `<div class="chat-layout"><div class="chat-main">
     <div class="chat-heading"><span class="avatar large">${escape(agent.name[0].toUpperCase())}</span><div class="chat-title"><h1>${escape(agent.name)}</h1><p>${escape(agent.provider)} · ${escape(agent.config.promptProfile || 'minimal')} · ${agent.config.paused ? 'Paused' : !connected ? escape(connectionLabel(agent.provider)) : lane ? escape(lane.reason || lane.state) : 'Connected'}</p></div><button class="quiet" data-action="agent-settings" data-id="${agent.id}">Settings</button></div>
-    <div class="chat-lanes"><label for="lane-select">Thread</label><select id="lane-select">${lanes.map(id => `<option value="${escape(id || '')}" ${id === S.lane ? 'selected' : ''}>${escape(laneName(id))}</option>`).join('')}</select><button class="quiet small" data-action="work-new">New work</button></div>
+    <div class="chat-lanes"><label for="lane-select">Thread</label><select id="lane-select">${lanes.map(id => `<option value="${escape(id || '')}" ${id === S.lane ? 'selected' : ''}>${escape(laneName(id))}</option>`).join('')}</select><button class="quiet small" data-action="work-new">New work</button><button class="quiet small" data-action="browser-controls" data-id="${agent.id}">Browser</button></div>
     <div class="messages" role="log" aria-label="Conversation">${renderConversation(agent)}</div>
     ${pending.length ? `<div class="busy-indicator">${escape(agent.name)} is waiting for your decision in this conversation.${canEnableRequestNotifications() ? actions('enable-reminders', 'Enable notifications', '', 'quiet') : ''}</div>` : lane ? `<div class="busy-indicator">${escape(lane.reason || lane.state)}${lane.error ? ': ' + escape(lane.error) : ''}${lane.turnId ? ' ' + actions('stop-lane', 'Stop', lane.batchId, 'quiet') : ''}</div>` : queued ? '<div class="busy-indicator">Message queued</div>' : ''}
     ${!connected ? `<div class="connection-notice"><span>${escape(connection(agent.provider)?.message || 'Checking this provider before it can run work.')}</span><button type="button" class="small" data-view="connections">Connect provider</button></div>` : ''}
     <form id="composer" class="composer"><textarea id="message-input" aria-label="Message teammate" placeholder="Message ${escape(agent.name)}…" rows="2">${escape(S.draft)}</textarea><div class="composer-footer"><span>Enter to send · Shift + Enter for a new line</span><button class="primary" type="submit" ${!connected || S.sending ? 'disabled' : ''}>Send message</button></div></form>
     </div><aside class="inspector" aria-label="Teammate details"><div class="inspector-section"><h2>Teammate</h2><div class="detail-row"><span>Provider</span><span>${escape(agent.provider)}</span></div><div class="detail-row"><span>File access</span><span>${escape(agent.config.permissions?.sandbox || 'read-only')}</span></div><div class="detail-row"><span>Turns</span><span>${usage?.turns || 0}</span></div><div class="detail-row"><span>Estimated spend</span><span>${usage?.usd == null ? 'Unpriced' : '$' + usage.usd.toFixed(4)}</span></div>${usage?.incomplete ? '<p class="subtext">Some usage is incomplete.</p>' : ''}<button class="small fullwidth" data-action="pause-agent" data-id="${agent.id}">${agent.config.paused ? 'Resume teammate' : 'Pause teammate'}</button></div>
     ${task ? `<div class="inspector-section"><h2>Current work</h2><p class="subtext">${escape(task.data.title)}</p>${renderSteps(task.data.steps)}${status(task.data.status)}<div class="detail-row"><span>Turns</span><span>${task.data.attempts} / ${task.data.maxTurns}</span></div></div>` : ''}
-    <div class="inspector-section"><h2>Connected tools</h2><p class="subtext">${records('connector').filter(c => c.agentId === agent.id && c.data.enabled).map(c => escape(c.data.name)).join(', ') || 'No external tools connected.'}</p><button class="small" data-view="tool">Manage tools</button></div>
-    <div class="inspector-section"><h2>Browser</h2><p class="subtext">${agent.config.browser?.enabled ? browser.running ? 'Session running' : 'Enabled · session stopped' : 'Browser access is disabled.'}</p>${browser.running ? `<div class="browser-url">${escape(browser.url)}</div><button class="small" data-action="browser-preview" data-id="${agent.id}">View browser</button>` : ''}</div></aside></div>`;
+    <div class="inspector-section"><h2>Apps</h2><p class="subtext">${records('connector').filter(c => c.agentId === agent.id && c.data.enabled).map(c => escape(c.data.name)).join(', ') || 'No apps connected.'}</p><button class="small" data-view="connector">Manage connections</button></div>
+    <div class="inspector-section"><h2>Browser</h2><p class="subtext">${agent.config.browser?.enabled ? browser.running ? 'Session running' : 'Enabled · session stopped' : 'Browser access is disabled.'}</p>${renderBrowserControls(agent)}</div></aside></div>`;
 }
 function renderMessage(entry) {
   const entering = !seenMessages.has(entry.id); seenMessages.add(entry.id);
@@ -183,9 +183,9 @@ function renderSteps(steps) { return steps?.length ? `<ul class="steps">${steps.
 function scopeFilter() { return `<div class="filter"><label class="subtext" for="scope-select">Teammate</label><select id="scope-select"><option value="">All teammates</option>${S.state.agents.map(a => `<option value="${a.id}" ${S.scope === a.id ? 'selected' : ''}>${escape(a.name)}</option>`).join('')}</select></div>`; }
 function renderPage() {
   if (S.view === 'work') { renderWork(); return; }
+  if (S.view === 'connector') { renderConnectors(); return; }
   const info = {
     routine: ['Routines', 'Run useful work on a schedule or when an event arrives.', 'new-routine', 'New routine'],
-    tool: ['Tools & browser', 'Give each teammate access to the apps and browser sessions it needs.', 'new-connector', 'Connect tool'],
     skill: ['Skills', 'Save a workflow once, then assign it whenever you need it.', 'new-skill', 'New skill'],
     activity: ['Activity', 'Execution history and estimated usage across your workspace.', null, null],
     connections: ['AI connections', 'Connect your local Codex and Claude Code accounts so teammates can start working.', null, null],
@@ -193,9 +193,6 @@ function renderPage() {
   const [title, subtitle, action, label] = info;
   let content = '';
   if (S.view === 'routine') content = scoped('routine').map(renderRoutine).join('') || empty('Make repeat work automatic', 'Schedule a daily check, set an interval, or trigger a teammate from an external event.', 'new-routine', 'Create routine');
-  if (S.view === 'tool') {
-    content = `<div class="section-label">CONNECTED TOOLS</div>${scoped('connector').map(renderConnector).join('') || '<p class="subtext">No tools connected. Connect an MCP server to give a teammate access to an app.</p>'}<div class="section-label">BROWSER SESSIONS</div>${S.state.agents.filter(a => !S.scope || a.id === S.scope).map(renderBrowser).join('') || '<p class="subtext">Create a teammate to enable its browser.</p>'}`;
-  }
   if (S.view === 'skill') content = scoped('skill').map(r => `<article class="record-row"><div><div class="record-title">${escape(r.data.name)}</div><div class="record-description">${escape(r.data.description)}</div><div class="record-meta"><span>${escape(name(r.agentId))}</span></div><details class="evidence"><summary>Workflow instructions</summary><pre>${escape(r.data.instructions)}</pre></details></div><div class="row-actions">${actions('run-skill', 'Run skill', r.id, 'primary')}${actions('edit-skill', 'Edit', r.id)}${actions('delete-record', 'Remove', 'skill:' + r.id, 'quiet')}</div></article>`).join('') || empty('Keep your best workflows', 'Write reusable instructions for research, reviews, reporting, or any repeatable task.', 'new-skill', 'Create skill');
   if (S.view === 'activity') content = renderActivity();
   if (S.view === 'connections') content = renderConnections();
@@ -215,13 +212,28 @@ function renderRoutine(r) {
   const d = r.data, schedule = d.schedule.type === 'daily' ? `Daily at ${d.schedule.time} · ${d.schedule.timezone}` : d.schedule.type === 'interval' ? `Every ${d.schedule.minutes} minute${d.schedule.minutes === 1 ? '' : 's'}` : 'Webhook trigger';
   return `<article class="record-row"><div><div class="record-title">${escape(d.name)} ${status(d.enabled ? 'running' : 'paused')}</div><div class="record-description">${escape(d.prompt)}</div><div class="record-meta"><span>${escape(name(r.agentId))}</span><span>${escape(schedule)}</span><span>Next: ${stamp(d.nextRunAt)}</span><span>Last: ${stamp(d.lastRunAt)}</span></div>${d.error ? `<p class="record-error">${escape(d.error)}</p>` : ''}</div><div class="row-actions">${d.enabled ? actions('run-routine', 'Run now', r.id) : ''}${actions('toggle-routine', d.enabled ? 'Pause' : 'Enable', r.id)}${actions('edit-routine', 'Edit', r.id)}${d.schedule.type === 'webhook' ? actions('webhook-token', 'Webhook token', r.id) : ''}${actions('routine-chat', 'History', r.id, 'quiet')}</div></article>`;
 }
-function renderConnector(r) {
-  const d = r.data;
-  return `<article class="record-row"><div><div class="record-title">${escape(d.name)} ${status(d.enabled ? 'enabled' : 'paused')}</div><div class="record-description">${escape(d.transport === 'stdio' ? d.command + ' ' + d.args.join(' ') : d.url)}</div><div class="record-meta"><span>${escape(name(r.agentId))}</span><span>${d.permission === 'ask' ? 'Ask before each call' : 'Calls allowed'}</span><span>${escape(d.transport.toUpperCase())}</span></div></div><div class="row-actions">${d.enabled ? actions('test-connector', 'Discover tools', r.id) : ''}${actions('edit-connector', 'Edit', r.id)}${actions('toggle-connector', d.enabled ? 'Disable' : 'Enable', r.id)}</div></article>`;
+function renderConnectors() {
+  const connections = scoped('connector');
+  $('#content').innerHTML = `<div class="page connector-page"><div class="page-heading"><div><h1>Connector</h1><p>Connect third-party apps and choose which bot can use each connection.</p></div><button class="primary" data-action="new-connector">Connect app</button></div><div class="connector-toolbar">${scopeFilter()}<span>${connections.filter(entry => S.state.connectorStatus?.[entry.id]?.state === 'connected').length} connected · ${connections.length} configured</span></div><div class="connector-list">${connections.length ? connections.map(renderConnector).join('') : `<div class="connector-empty"><div class="connector-empty-icon" aria-hidden="true">↗</div><h2>Bring your apps into the conversation.</h2><p>Connect an app’s MCP server so your bot can use its tools while working with you.</p><button class="primary" data-action="new-connector">Connect your first app</button><p class="help">Supports remote app servers and local integrations.</p></div>`}</div><p class="connector-note">App access belongs to the selected bot. Requests for approval appear in that bot’s conversation.</p></div>`;
 }
-function renderBrowser(agent) {
-  const enabled = agent.config.browser?.enabled, running = S.state.browsers[agent.id]?.running;
-  return `<article class="record-row"><div><div class="record-title">${escape(agent.name)} ${status(running ? 'running' : enabled ? 'enabled' : 'disabled')}</div><div class="record-description">${running ? escape(S.state.browsers[agent.id].url) : 'An isolated session with saved cookies and sign-ins.'}</div><div class="record-meta"><span>${agent.config.browser?.permission === 'allow' ? 'Browser actions allowed' : 'Ask before browser actions'}</span></div></div><div class="row-actions">${enabled ? running ? actions('browser-preview', 'View browser', agent.id) + actions('stop-browser', 'Stop session', agent.id) : actions('start-browser', 'Start session', agent.id) + actions('start-browser-headed', 'Open for sign-in', agent.id) : ''}${actions('agent-settings', enabled ? 'Settings' : 'Enable access', agent.id)}</div></article>`;
+function renderConnector(entry) {
+  const data = entry.data, health = S.state.connectorStatus?.[entry.id] || { state: data.enabled ? 'not_checked' : 'disabled' };
+  const checking = S.connectorChecks.has(entry.id) || health.state === 'connecting';
+  const state = checking ? 'connecting' : health.state;
+  const label = ({ connected: 'Connected', connecting: 'Connecting…', disabled: 'Disconnected', not_checked: 'Not checked', disconnected: 'Not connected', error: 'Needs attention' })[state] || 'Not checked';
+  let destination = 'Local integration';
+  if (data.transport === 'http') { try { destination = new URL(data.url).host; } catch { destination = 'Remote app'; } }
+  const connectLabel = state === 'connected' ? 'Recheck' : state === 'error' || state === 'disconnected' ? 'Reconnect' : 'Connect';
+  return `<article class="connector-row" data-connector-id="${entry.id}"><div class="connector-app-mark" aria-hidden="true">${escape(data.name.slice(0, 1).toUpperCase())}</div><div class="connector-app-body"><header><h2>${escape(data.name)}</h2><span class="connector-status ${escape(state)}">${label}</span></header><p>${escape(destination)}</p><div class="connector-meta"><span>Bot: ${escape(name(entry.agentId))}</span><span>${data.permission === 'ask' ? 'Asks in conversation' : 'Actions allowed'}</span>${health.toolCount !== null && health.toolCount !== undefined ? `<span>${health.toolCount} ${health.toolCount === 1 ? 'tool' : 'tools'} available</span>` : ''}</div>${health.checkedAt ? `<p class="connector-checked">Checked ${stamp(health.checkedAt)}</p>` : ''}${health.error ? `<p class="record-error">${escape(health.error)}</p>` : ''}</div><div class="connector-actions">${checking ? '<span class="subtext">Checking connection…</span>' : data.enabled ? `${actions('test-connector', connectLabel, entry.id, state === 'connected' ? '' : 'primary')}${state === 'connected' ? actions('connector-tools', 'View tools', entry.id) : ''}${actions('toggle-connector', 'Disconnect', entry.id, 'quiet')}` : actions('toggle-connector', 'Connect', entry.id, 'primary')}${actions('edit-connector', 'Edit', entry.id, 'quiet')}</div></article>`;
+}
+function renderBrowserControls(agent) {
+  const running = S.state.browsers[agent.id]?.running;
+  if (!agent.config.browser?.enabled) return actions('agent-settings', 'Enable browser', agent.id);
+  return running ? actions('browser-preview', 'View browser', agent.id) + actions('stop-browser', 'Stop session', agent.id, 'quiet') : actions('start-browser', 'Start session', agent.id) + actions('start-browser-headed', 'Open for sign-in', agent.id, 'quiet');
+}
+function showBrowserControls(id) {
+  const agent = S.state.agents.find(a => a.id === id); if (!agent) return;
+  showInfo(escape(agent.name) + ' · Browser', '<p class="help">A browser session with saved sign-ins for this bot.</p><div class="browser-controls">' + renderBrowserControls(agent) + '</div>');
 }
 function renderActivity() {
   const usage = S.state.usage.filter(u => !S.scope || u.agentId === S.scope), turns = (S.state.activity || []).filter(t => !S.scope || t.agent_id === S.scope);
@@ -286,17 +298,30 @@ function updateRoutineFields() { const trigger = $('#f-trigger')?.value; if (!tr
 function parseObject(text) { try { const value = JSON.parse(text || '{}'); if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error(); return value; } catch { throw new Error('Environment and header mappings must be JSON objects.'); } }
 function openConnector(id) {
   if (!requireTeammate()) return;
-  const entry = records('connector').find(r => r.id === id), d = entry?.data;
-  openForm(entry ? 'Edit tool connection' : 'Connect a tool', (entry ? '' : agentField()) + field('Connection name', 'name', d?.name || '', { required: true }) + field('Transport', 'transport', d?.transport || 'http', { options: [['http', 'HTTP MCP server'], ['stdio', 'Local MCP process']] }) +
-    '<div id="http-fields">' + field('Server URL', 'url', d?.url || '', { help: 'The MCP endpoint, for example https://your-server.example/mcp.' }) + field('Header environment references', 'headers', JSON.stringify(d?.headers || {}, null, 2), { area: true, rows: 2, help: 'Map header names to environment variable names. Store a complete Bearer value in the environment variable, never here.' }) + '</div><div id="stdio-fields">' +
-    field('Executable', 'command', d?.command || '', { help: 'For example npx, bun, or an absolute executable path.' }) + field('Arguments', 'args', JSON.stringify(d?.args || []), { help: 'A JSON array of arguments, for example ["your-mcp-server"].' }) + field('Environment references', 'env', JSON.stringify(d?.env || {}, null, 2), { area: true, rows: 2, help: 'Map child variables to existing environment names, e.g. {"API_KEY":"MY_APP_KEY"}.' }) + '</div>' + field('Tool permissions', 'permission', d?.permission || 'ask', { options: [['ask', 'Ask before each tool call'], ['allow', 'Allow tool calls without asking']] }) + check('Connection enabled', 'enabled', d?.enabled ?? true), async form => {
+  const entry = records('connector').find(r => r.id === id), data = entry?.data;
+  openForm(entry ? 'Edit app connection' : 'Connect an app', (entry ? '<p class="help">Available to ' + escape(name(entry.agentId)) + '.</p>' : field('Bot', 'agentId', S.scope || S.agent, { options: S.state.agents.map(a => [a.id, a.name]) })) + field('App name', 'name', data?.name || '', { required: true, help: 'A name you recognize, such as your team’s issue tracker.' }) + field('Connection method', 'transport', data?.transport || 'http', { options: [['http', 'Remote app (MCP URL)'], ['stdio', 'Local integration (MCP process)']] }) +
+    '<div id="http-fields">' + field('App server URL', 'url', data?.url || '', { type: 'url', help: 'Use the app’s MCP server endpoint, not its normal website address.' }) + '<details><summary>Authentication headers</summary>' + field('Header environment references', 'headers', JSON.stringify(data?.headers || {}, null, 2), { area: true, rows: 2, help: 'Map header names to environment variables, for example {"Authorization":"MY_APP_AUTH"}. The variable holds the complete Bearer value.' }) + '</details></div><div id="stdio-fields">' +
+    field('Executable', 'command', data?.command || '', { help: 'The installed integration command, for example npx, bun, or an absolute path.' }) + field('Arguments', 'args', JSON.stringify(data?.args || []), { help: 'A JSON array of command arguments.' }) + '<details><summary>Authentication & environment</summary>' + field('Environment references', 'env', JSON.stringify(data?.env || {}, null, 2), { area: true, rows: 2, help: 'Map integration variables to variables set before starting KRU, e.g. {"API_KEY":"MY_APP_KEY"}.' }) + '</details></div>' + field('Bot permissions', 'permission', data?.permission || 'ask', { options: [['ask', 'Ask in conversation before each tool call'], ['allow', 'Allow tool calls without asking']] }) + '<p class="help">KRU will check the app server and discover the tools available to this bot.</p>', async form => {
     let args; try { args = JSON.parse(form.get('args') || '[]'); if (!Array.isArray(args)) throw new Error(); } catch { throw new Error('Arguments must be a JSON array.'); }
-    const data = { name: form.get('name'), transport: form.get('transport'), url: form.get('url'), command: form.get('command'), args, env: parseObject(form.get('env')), headers: parseObject(form.get('headers')), permission: form.get('permission'), enabled: form.has('enabled') };
-    if (entry) await patch('/records/connector/' + id, data); else await post('/records/connector', { agentId: form.get('agentId'), data });
-    toast('Tool connection saved');
-  }); updateConnectorFields();
+    const value = { name: form.get('name'), transport: form.get('transport'), url: form.get('url'), command: form.get('command'), args, env: parseObject(form.get('env')), headers: parseObject(form.get('headers')), permission: form.get('permission'), enabled: true };
+    const saved = entry ? await patch('/records/connector/' + entry.id, value) : await post('/records/connector', { agentId: form.get('agentId'), data: value });
+    S.view = 'connector'; await refresh(); if (await checkConnector(saved.id)) toast('App connected');
+  }, entry ? 'Save & reconnect' : 'Connect app'); updateConnectorFields();
 }
-function updateConnectorFields() { const transport = $('#f-transport')?.value; if (!transport) return; $('#http-fields').hidden = transport !== 'http'; $('#stdio-fields').hidden = transport !== 'stdio'; }
+function updateConnectorFields() {
+  const transport = $('#f-transport')?.value; if (!transport) return;
+  $('#http-fields').hidden = transport !== 'http'; $('#stdio-fields').hidden = transport !== 'stdio';
+  $('#f-url').required = transport === 'http'; $('#f-command').required = transport === 'stdio';
+}
+async function checkConnector(id, showTools = false) {
+  S.connectorChecks.add(id); draw();
+  try {
+    const result = await post('/records/connector/' + id + '/tools');
+    if (showTools) showInfo('Available app tools', `<p class="help">${result.tools.length} ${result.tools.length === 1 ? 'tool' : 'tools'} available.</p>${result.tools.map(tool => `<div class="record-row"><div><div class="record-title">${escape(tool.name)}</div><div class="record-description">${escape(tool.description)}</div><details class="evidence"><summary>Input schema</summary><pre>${escape(JSON.stringify(tool.inputSchema, null, 2))}</pre></details></div></div>`).join('')}`);
+    return true;
+  } catch (error) { toast(error.message); return false; }
+  finally { S.connectorChecks.delete(id); await refresh(); }
+}
 function openSkill(id) {
   if (!requireTeammate()) return;
   const entry = records('skill').find(r => r.id === id), data = entry?.data;
@@ -327,7 +352,8 @@ document.addEventListener('click', async event => {
     if (action === 'review-request') { const request = records('approval').find(r => r.id === id); if (request) selectAgent(request.agentId, request.laneId); return; }
     if (action === 'enable-reminders') { await enableRequestNotifications(); return; }
     if (action === 'new-agent') { openAgent(); return; }
-    if (action === 'agent-settings') { openAgent(id); return; }
+    if (action === 'agent-settings') { if ($('#dialog').open && !dialogBusy) $('#dialog').close(); openAgent(id); return; }
+    if (action === 'browser-controls') { showBrowserControls(id); return; }
     if (action === 'new-routine' || action === 'edit-routine') { openRoutine(id); return; }
     if (action === 'new-connector' || action === 'edit-connector') { openConnector(id); return; }
     if (action === 'new-skill' || action === 'edit-skill') { openSkill(id); return; }
@@ -345,11 +371,11 @@ document.addEventListener('click', async event => {
     else if (action === 'routine-chat') { const r = records('routine').find(r => r.id === id); selectAgent(r.agentId, 'routine:' + id); }
     else if (action === 'run-routine') { await post('/records/routine/' + id + '/run'); toast('Routine queued'); }
     else if (action === 'toggle-routine') { const r = records('routine').find(r => r.id === id); await patch('/records/routine/' + id, { enabled: !r.data.enabled }); }
-    else if (action === 'toggle-connector') { const r = records('connector').find(r => r.id === id); await patch('/records/connector/' + id, { enabled: !r.data.enabled }); }
-    else if (action === 'test-connector') { const result = await post('/records/connector/' + id + '/tools'); showInfo('Available tools', `<p class="help">${result.tools.length} tools discovered.</p>${result.tools.map(t => `<div class="record-row"><div><div class="record-title">${escape(t.name)}</div><div class="record-description">${escape(t.description)}</div><details class="evidence"><summary>Input schema</summary><pre>${escape(JSON.stringify(t.inputSchema, null, 2))}</pre></details></div></div>`).join('')}`); }
+    else if (action === 'toggle-connector') { const r = records('connector').find(r => r.id === id); await patch('/records/connector/' + id, { enabled: !r.data.enabled }); if (!r.data.enabled) await checkConnector(id); }
+    else if (action === 'test-connector' || action === 'connector-tools') { await checkConnector(id, action === 'connector-tools'); }
     else if (action === 'webhook-token') { const result = await post('/records/routine/' + id + '/token'); showInfo('Webhook connection', `<p class="help">This replaces the previous token. Copy it now; it will not be shown again. The endpoint is available while KRU is running.</p><pre class="token-output">${escape(location.origin + result.path)}\n\nAuthorization: Bearer ${escape(result.token)}\nIdempotency-Key: a-unique-event-id\nContent-Type: application/json</pre><p class="help">KRU listens on this computer only. An external sender needs an explicitly configured secure tunnel.</p>`); }
-    else if (action === 'start-browser' || action === 'start-browser-headed') { await post('/agents/' + id + '/browser/start', { headed: action === 'start-browser-headed' }); toast('Browser session started'); }
-    else if (action === 'stop-browser') { await post('/agents/' + id + '/browser/stop'); toast('Browser session stopped'); }
+    else if (action === 'start-browser' || action === 'start-browser-headed') { await post('/agents/' + id + '/browser/start', { headed: action === 'start-browser-headed' }); toast('Browser session started'); await refresh(); if ($('#dialog').open) showBrowserControls(id); }
+    else if (action === 'stop-browser') { await post('/agents/' + id + '/browser/stop'); toast('Browser session stopped'); await refresh(); if ($('#dialog').open) showBrowserControls(id); }
     else if (action === 'browser-preview') await showBrowser(id);
     else if (action === 'stop-lane') { const delivery = S.messages?.deliveries.find(d => d.batchId === id && ['starting', 'running'].includes(d.status)); if (delivery) await post('/deliveries/' + delivery.id + '/cancel'); }
     else if (action === 'delete-record') {

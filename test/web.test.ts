@@ -95,7 +95,9 @@ test('MCP discovery and calls use tracked processes, explicit credentials, and p
   const agent = e.agents.create({ name: 'worker', provider: 'fake' }), other = e.agents.create({ name: 'other', provider: 'fake' });
   const connector = await e.json('/records/connector', 'POST', { agentId: agent.id, data: { name: 'Echo test', transport: 'stdio', command: process.execPath, args: [new URL('./fakes/workspace-mcp.ts', import.meta.url).pathname], env: { MAPPED_TEST_KEY: 'KRU_MAPPED_TEST_SECRET' } } });
   connectorId = connector.id;
+  expect((await e.json('/state')).connectorStatus[connector.id].state).toBe('not_checked');
   const discovered = await e.json(`/records/connector/${connector.id}/tools`, 'POST', {}); expect(discovered.tools[0].name).toBe('echo');
+  expect((await e.json('/state')).connectorStatus[connector.id]).toMatchObject({ state: 'connected', toolCount: 1, error: null });
   expect(() => e.daemon.workspace.integrations.entry(connector.id, other.id)).toThrow('not enabled');
   expect(e.store.db.query<{ n: number }, []>("SELECT count(*) AS n FROM cleanup_journal WHERE state='active'").get()!.n).toBe(1);
   const receipt = await e.json(`/agents/${agent.id}/messages`, 'POST', { text: 'Use the connector.' });
@@ -121,6 +123,20 @@ test('HTTP webhooks authenticate, deduplicate events, hide token hashes and paus
   expect(e.mailbox.listQueue(agent.id)).toHaveLength(1);
   const state = await e.json('/state'); expect(state.records.routine[0].data.tokenHash).toBeUndefined();
   await e.json(`/records/routine/${routine.id}`, 'PATCH', { enabled: false }); expect((await hook(connection.token)).status).toBe(400);
+});
+
+test('Connector reports failed setup accurately and clears stale status when settings change', async () => {
+  const e = await env(), agent = e.agents.create({ name: 'worker', provider: 'fake' });
+  const missing = 'KRU_TEST_MISSING_APP_AUTH_' + crypto.randomUUID().replaceAll('-', '');
+  const connector = await e.json('/records/connector', 'POST', { agentId: agent.id, data: { name: 'Issue tracker', transport: 'http', url: 'http://127.0.0.1:1/mcp', headers: { Authorization: missing } } });
+  expect((await e.json('/state')).connectorStatus[connector.id].state).toBe('not_checked');
+  expect((await e.request(`/records/connector/${connector.id}/tools`, 'POST', {})).ok).toBe(false);
+  const failed = (await e.json('/state')).connectorStatus[connector.id];
+  expect(failed.state).toBe('error'); expect(failed.error).toContain(missing); expect(failed.checkedAt).not.toBeNull();
+  await e.json('/records/connector/' + connector.id, 'PATCH', { headers: {} });
+  expect((await e.json('/state')).connectorStatus[connector.id]).toMatchObject({ state: 'not_checked', checkedAt: null, error: null });
+  await e.json('/records/connector/' + connector.id, 'PATCH', { enabled: false });
+  expect((await e.json('/state')).connectorStatus[connector.id].state).toBe('disabled');
 });
 
 test('Streamable HTTP MCP uses environment-backed headers and real discovery/call protocol', async () => {

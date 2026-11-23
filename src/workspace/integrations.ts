@@ -6,6 +6,7 @@ import type { ProcessScope } from '../boot/types';
 import { RpcConnection } from '../rpc';
 import { getDefaultEnvironment } from '@modelcontextprotocol/sdk/client/stdio.js';
 import { WorkspaceRecords, type RecordEntry } from './records';
+import { storedError } from '../store/errors';
 
 /** Reuse Kru's tracked process groups rather than launching unowned MCP children. */
 class TrackedTransport implements Transport {
@@ -40,7 +41,14 @@ function requiredEnv(name: string): string {
 export class IntegrationGateway {
   private readonly clients = new Map<string, { hash: string; client: Client }>();
   private readonly connecting = new Map<string, Promise<Client>>();
+  private readonly checks = new Map<string, { hash: string; checkedAt: string; toolCount: number | null; error: string | null }>();
   constructor(private readonly records: WorkspaceRecords, private readonly scope: () => ProcessScope) {}
+  status(id: string) {
+    const entry = this.records.require('connector', id), hash = JSON.stringify(entry.data);
+    const checked = this.checks.get(id), check = checked?.hash === hash ? checked : undefined;
+    const connected = this.clients.get(id)?.hash === hash;
+    return { state: !entry.data.enabled ? 'disabled' : this.connecting.has(id) ? 'connecting' : check?.error ? 'error' : connected ? 'connected' : check ? 'disconnected' : 'not_checked', checkedAt: check?.checkedAt ?? null, toolCount: check?.toolCount ?? null, error: check?.error ?? null };
+  }
   private async connect(entry: RecordEntry<'connector'>): Promise<Client> {
     const hash = JSON.stringify(entry.data), old = this.clients.get(entry.id);
     if (old?.hash === hash) return old.client;
@@ -53,12 +61,16 @@ export class IntegrationGateway {
       try {
         await client.connect(transport, { timeout: 15_000 });
         this.clients.set(entry.id, { hash, client });
+        this.checks.set(entry.id, { hash, checkedAt: new Date().toISOString(), toolCount: null, error: null });
         client.onclose = () => { if (this.clients.get(entry.id)?.client === client) this.clients.delete(entry.id); };
         return client;
-      } catch (error) { await client.close().catch(() => {}); throw error; }
+      } catch (error) { this.failed(entry, error); await client.close().catch(() => {}); throw error; }
     })();
     this.connecting.set(entry.id, operation);
     try { return await operation; } finally { this.connecting.delete(entry.id); }
+  }
+  private failed(entry: RecordEntry<'connector'>, error: unknown): void {
+    this.checks.set(entry.id, { hash: JSON.stringify(entry.data), checkedAt: new Date().toISOString(), toolCount: null, error: storedError(error instanceof Error ? error.message : String(error)) ?? 'Connection failed' });
   }
   entry(id: string, agentId: string): RecordEntry<'connector'> {
     const entry = this.records.require('connector', id);
@@ -66,15 +78,20 @@ export class IntegrationGateway {
     return entry;
   }
   async tools(id: string, agentId: string) {
-    const client = await this.connect(this.entry(id, agentId));
-    const tools = []; let cursor: string | undefined, pages = 0;
-    const seen = new Set<string>();
-    do {
-      const page = await client.listTools(cursor ? { cursor } : {}); tools.push(...page.tools); cursor = page.nextCursor; pages++;
-      if (cursor && seen.has(cursor)) throw new Error('MCP server repeated its tool cursor');
-      if (cursor) seen.add(cursor);
-    } while (cursor && tools.length < 200 && pages < 10);
-    return tools.slice(0, 200);
+    const entry = this.entry(id, agentId);
+    try {
+      const client = await this.connect(entry);
+      const tools = []; let cursor: string | undefined, pages = 0;
+      const seen = new Set<string>();
+      do {
+        const page = await client.listTools(cursor ? { cursor } : {}); tools.push(...page.tools); cursor = page.nextCursor; pages++;
+        if (cursor && seen.has(cursor)) throw new Error('MCP server repeated its tool cursor');
+        if (cursor) seen.add(cursor);
+      } while (cursor && tools.length < 200 && pages < 10);
+      const discovered = tools.slice(0, 200);
+      this.checks.set(id, { hash: JSON.stringify(entry.data), checkedAt: new Date().toISOString(), toolCount: discovered.length, error: null });
+      return discovered;
+    } catch (error) { this.failed(entry, error); throw error; }
   }
   async call(id: string, agentId: string, name: string, args: Record<string, unknown>, signal?: AbortSignal) {
     if (signal?.aborted) throw new Error('Tool call cancelled');
@@ -84,10 +101,10 @@ export class IntegrationGateway {
     if (JSON.stringify(this.entry(id, agentId).data) !== snapshot) throw new Error('Connector configuration changed before execution');
     return client.callTool({ name, arguments: args }, undefined, { timeout: 60_000, ...(signal ? { signal } : {}) });
   }
-  async invalidate(id: string): Promise<void> { const entry = this.clients.get(id); this.clients.delete(id); await entry?.client.close(); }
+  async invalidate(id: string): Promise<void> { const entry = this.clients.get(id); this.clients.delete(id); this.checks.delete(id); await entry?.client.close(); }
   async close(): Promise<void> {
     await Promise.allSettled([...this.connecting.values()]);
-    const entries = [...this.clients.values()]; this.clients.clear();
+    const entries = [...this.clients.values()]; this.clients.clear(); this.checks.clear();
     await Promise.allSettled(entries.map(entry => entry.client.close()));
   }
 }

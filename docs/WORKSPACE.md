@@ -177,11 +177,24 @@ cannot modify those grants. An agent with `approvalPolicy=never` receives a tool
 error when a KRU external action would need consent. Connector ownership,
 configuration and enabled status are rechecked before execution.
 
-## MCP connections and credentials
+## Connector: third-party apps
 
-The Tools view supports local stdio processes and remote Streamable HTTP MCP
-servers. Connections belong to one teammate. Discover tools checks the real
-server and displays its schemas. Agents discover tools through `workspace` and
+Open **Connector** and choose **Connect app**. Select the bot that will use the
+app, give the connection a recognizable name, and enter either the app's remote
+MCP server URL or its local integration command. Authentication headers and
+environment mappings are available in the connection form's expandable settings.
+Saving checks the actual server and discovers its available tools.
+
+The page shows Connected, Not checked, Not connected, or Needs attention based on
+the current process's connection checks. Merely saving or enabling a configuration
+does not mark it Connected. View tools displays the app's available tools and
+schemas; Recheck checks the live connection again. Disconnect disables access
+and closes the cached connection; Connect re-enables it and checks it again.
+Editing settings invalidates the previous check. After restarting KRU, configured
+connections start unchecked until they are connected or checked again.
+
+Connector supports local stdio processes and remote Streamable HTTP MCP
+servers. Connections belong to one bot. Agents discover tools through `workspace` and
 call them using `use_tool`; dynamic discovery keeps Kru's six-tool prefix bounded.
 MCP server-initiated model sampling and elicitation are not enabled.
 
@@ -209,6 +222,7 @@ provides exactly-once guarantees for a third-party service.
 Install the matching Chromium browser with `bunx playwright-core install chromium`.
 Alternatively, set `KRU_BROWSER_EXECUTABLE` to a compatible Chromium executable.
 Enable browser access separately for each teammate in settings. Start session
+is available from **Conversations → Browser**, including on mobile. It
 uses a headless browser. Open for sign-in starts a visible browser so you can sign
 in directly; stop an existing headless session before starting a visible one.
 

@@ -97,6 +97,35 @@
 .conversation-decision summary { @apply cursor-pointer; color: var(--muted); }
 .conversation-decision summary time { margin-left: 12px; font-size: .6875rem; }
 .busy-indicator > button { margin-left: 10px; }
+.connector-page { max-width: 1250px; margin: 0 auto; }
+.connector-toolbar { @apply flex items-center justify-between gap-4; padding-bottom: 20px; border-bottom: 1px solid var(--line); }
+.connector-toolbar .filter { margin: 0; }
+.connector-toolbar > span { color: var(--muted); font-size: .75rem; white-space: nowrap; }
+.connector-row { @apply grid items-start gap-5; grid-template-columns: 46px minmax(0, 1fr) auto; padding: 27px 0; border-bottom: 1px solid var(--line); }
+.connector-app-mark { @apply grid size-11 place-items-center rounded-xl; color: var(--accent); background: var(--tint); font-size: 1.25rem; font-weight: 600; }
+.connector-app-body { min-width: 0; }
+.connector-app-body > header { @apply flex flex-wrap items-center gap-3; }
+.connector-app-body h2 { margin: 2px 0; font-size: 1rem; font-weight: 600; }
+.connector-app-body > p { color: var(--muted); font-size: .8125rem; margin: 10px 0; overflow-wrap: anywhere; }
+.connector-app-body > p.record-error { color: var(--danger); }
+.connector-status { @apply inline-flex items-center gap-1.5; font-size: .6875rem; color: var(--muted); }
+.connector-status::before { content: ''; width: 6px; height: 6px; border-radius: 50%; background: #a2a9b8; }
+.connector-status.connected { color: var(--success); }
+.connector-status.connected::before { background: var(--success); }
+.connector-status.error { color: #9a6433; }
+.connector-status.error::before { background: #bc8543; }
+.connector-status.connecting { color: var(--accent); }
+.connector-status.connecting::before { background: var(--accent); }
+.connector-meta { @apply flex flex-wrap gap-x-5 gap-y-2; font-size: .75rem; color: var(--muted); }
+.connector-app-body .connector-checked { font-size: .6875rem; margin-top: 14px; }
+.connector-actions { @apply flex flex-wrap justify-end gap-2; max-width: 310px; }
+.connector-note { color: var(--muted); font-size: .75rem; line-height: 1.7; margin-top: 23px; }
+.connector-empty { @apply flex flex-col items-center justify-center text-center; min-height: 410px; padding: 35px 20px; }
+.connector-empty-icon { @apply grid size-12 place-items-center rounded-xl; color: var(--accent); background: var(--tint); font-size: 1.5rem; }
+.connector-empty h2 { font-size: 1.375rem; letter-spacing: -.5px; margin: 23px 0 0; }
+.connector-empty > p { max-width: 395px; color: var(--muted); font-size: .875rem; line-height: 1.7; margin: 15px 0 22px; }
+.connector-empty > p.help { font-size: .75rem; margin-bottom: 0; }
+.browser-controls { @apply flex flex-wrap gap-2; }
 
 @media (max-width: 680px) {
   .workspace { grid-template-columns: minmax(0, 1fr); }
@@ -121,4 +150,8 @@
   #attention-reminder { @apply flex-col items-start gap-2; padding: 10px 16px; }
   #attention-reminder > div { @apply flex-wrap; }
   .conversation-approval { padding: 15px; }
+  .connector-toolbar { @apply flex-wrap; }
+  .connector-row { grid-template-columns: 38px minmax(0, 1fr); gap: 13px; }
+  .connector-app-mark { width: 38px; height: 38px; }
+  .connector-actions { grid-column: 2; justify-content: flex-start; max-width: none; }
 }
