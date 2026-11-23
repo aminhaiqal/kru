@@ -7,6 +7,11 @@ Planned release line v0.2.
 
 ### Added
 
+- Move approval requests into the bot's own conversation, following Openbot's
+  conversation-card and thread-attention pattern. Remove the Approvals page;
+  add exact-thread reminders, conversation/teammate badges, decision history
+  and opt-in browser notifications that clear when a request resolves.
+
 - Use one compact navigation rail and header across all workspace pages, with
   stable icon positions, active labels, accessible teammate avatars and a mobile
   drawer. Add Tailwind CSS tooling and shared semantic sidebar tokens.

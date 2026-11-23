@@ -132,10 +132,25 @@ resuming uncertain work. Cancel stops queued deliveries and interrupts an active
 task lane. Pausing a teammate prevents future execution but does not interrupt an
 already running turn.
 
-## Approvals
+## Requests and decisions in conversations
 
-Native command/file approval requests and KRU external tool requests can wait in
-the Approvals view. Decisions are bound to the exact execution, native turn and
+Native command/file approval requests and KRU external tool requests appear as
+cards in the requesting teammate's conversation, with the exact action and
+**Allow once** / **Decline** controls. There is no separate Approvals page.
+Requests are scoped to their execution lane, including work and routine threads.
+The Conversations badge, teammate indicator and tab title show pending requests.
+When you are elsewhere, **Open conversation** takes you to the exact waiting
+thread. Decisions remain in that conversation's history.
+
+**Enable notifications** optionally allows browser notifications for new requests
+while the UI remains open. Requests notify once, and resolving or expiring one
+clears its reminder. This does not schedule notifications after KRU closes.
+
+This interaction follows Openbot's [conversation timeline](https://github.com/nightly-labs/openbot/blob/f7bbc1b9692e031338825091fb21c627a1b12821/src/renderer/src/features/conversation/ConversationTimeline.tsx)
+and [thread attention tracking](https://github.com/nightly-labs/openbot/blob/f7bbc1b9692e031338825091fb21c627a1b12821/src/renderer/src/features/agents/agent-thread-attention.ts),
+implemented independently using KRU's existing local request broker and UI.
+
+Decisions are bound to the exact execution, native turn and
 request; they expire after ten minutes. Idle expiry is suspended while a provider
 request awaits its bounded response. Cancellation, provider request expiry and
 shutdown decline a waiting request. On restart, old pending approvals expire;

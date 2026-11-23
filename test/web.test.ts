@@ -65,11 +65,19 @@ test('UI API creates agents, streams work, sends idempotently, persists context 
 test('UI native approval decisions are applied only to the current active request', async () => {
   const e = await env({ mode: 'permissions' });
   const agent = e.agents.create({ name: 'worker', provider: 'fake' });
-  const receipt = await e.json(`/agents/${agent.id}/messages`, 'POST', { text: JSON.stringify({ name: 'Bash', input: { command: 'echo hello' } }) });
+  const receipt = await e.json(`/agents/${agent.id}/messages`, 'POST', { text: JSON.stringify({ name: 'Bash', input: { command: 'echo hello' } }), laneId: 'draft-review' });
   await until(() => e.daemon.workspace.records.list('approval').length === 1);
   const approval = e.daemon.workspace.records.list('approval')[0]!;
+  const state = await e.json('/state');
+  expect(state.records.approval[0].laneId).toBe('draft-review');
+  expect((await e.json(`/agents/${agent.id}/messages`)).approvals).toHaveLength(0);
+  const conversation = await e.json(`/agents/${agent.id}/messages?lane=draft-review`);
+  expect(conversation.approvals.map((r: any) => r.id)).toEqual([approval.id]);
+  const other = e.agents.create({ name: 'other', provider: 'fake' });
+  expect((await e.json(`/agents/${other.id}/messages?lane=draft-review`)).approvals).toHaveLength(0);
   const response = await e.request(`/records/approval/${approval.id}/decide`, 'POST', { decision: 'accept' }); expect(response.status).toBe(200);
   await until(() => e.mailbox.get(receipt.deliveryIds[0])?.status === 'completed');
+  expect((await e.json(`/agents/${agent.id}/messages?lane=draft-review`)).approvals[0].data.status).toBe('accepted');
   expect((await e.request(`/records/approval/${approval.id}/decide`, 'POST', { decision: 'accept' })).status).toBe(409);
 });
 

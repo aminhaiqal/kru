@@ -54,6 +54,19 @@ try {
   daemon.start(); await daemon.ready; web = createWebServer({ store, daemon, port: 0 });
   browser = await chromium.launch({ headless: true, executablePath: executable });
   page = await browser.newPage({ viewport: { width: 1440, height: 960 }, deviceScaleFactor: 1 });
+  await page.addInitScript(() => {
+    const notices: { title: string; body: string; closed: boolean }[] = [];
+    (globalThis as any).__requestNotifications = notices;
+    class RequestNotification {
+      static permission = 'default';
+      static async requestPermission() { this.permission = 'granted'; return this.permission; }
+      onclick: (() => void) | undefined; onclose: (() => void) | undefined;
+      record: { title: string; body: string; closed: boolean };
+      constructor(title: string, options: { body: string }) { this.record = { title, body: options.body, closed: false }; notices.push(this.record); }
+      close() { this.record.closed = true; this.onclose?.(); }
+    }
+    Object.defineProperty(globalThis, 'Notification', { configurable: true, value: RequestNotification });
+  });
   page.on('pageerror', error => errors.push(error.message));
   page.on('console', message => { if (message.type() === 'error' && !message.text().includes('favicon')) errors.push(message.text()); });
   await page.goto(web.url);
@@ -64,11 +77,12 @@ try {
     return { sidebar: rect(document.querySelector('.sidebar')), header: rect(document.querySelector('.topbar')), navigation: [...document.querySelectorAll('#navigation button')].map(rect) };
   });
   const workShell = await shellGeometry();
-  for (const label of ['Conversations', 'Approvals', 'Routines', 'AI connections', 'Tools & browser', 'Memory', 'Skills', 'Activity', 'Work']) {
+  for (const label of ['Conversations', 'Routines', 'AI connections', 'Tools & browser', 'Memory', 'Skills', 'Activity', 'Work']) {
     await page.getByRole('button', { name: label, exact: true }).click();
     if (JSON.stringify(await shellGeometry()) !== JSON.stringify(workShell)) throw new Error('Sidebar or header geometry changed on ' + label);
     await check(await page.locator('#navigation [aria-current="page"]').getAttribute('aria-label') === label, 'Shared rail geometry and active state stay consistent on ' + label);
   }
+  await check(await page.getByRole('button', { name: 'Approvals', exact: true }).count() === 0, 'Approval requests have no separate navigation page');
   await page.screenshot({ path: join(artifactDir, 'navigation-work.png'), fullPage: true, animations: 'disabled' });
   await page.getByRole('button', { name: 'AI connections', exact: true }).click();
   const codex = page.locator('[data-provider="codex"]'), claude = page.locator('[data-provider="claude"]');
@@ -176,8 +190,29 @@ try {
   const agentId = daemon.workspace.records.list('connector')[0]!.agentId!;
   await page.locator(`[data-agent="${agentId}"]`).click();
   await page.getByRole('textbox', { name: 'Message teammate' }).fill('Use the connected tool'); await page.getByRole('button', { name: 'Send message' }).click();
-  await page.locator('[data-view="approval"]').first().click(); await page.getByRole('button', { name: 'Allow once' }).click();
-  await page.locator(`[data-agent="${agentId}"]`).click(); await waitText(page, 'External tool completed with your approval.'); checks.push('Approve an agent-requested external action through the UI');
+  await page.locator('.conversation-approval').waitFor();
+  await page.screenshot({ path: join(artifactDir, 'approval-conversation.png'), fullPage: true, animations: 'disabled' });
+  await page.getByRole('button', { name: 'Work', exact: true }).click();
+  await page.locator('#attention-reminder').getByRole('button', { name: 'Open conversation', exact: true }).waitFor();
+  await check((await page.title()).startsWith('(1)'), 'Waiting requests remind through the Conversations badge and tab title');
+  await page.screenshot({ path: join(artifactDir, 'approval-reminder.png'), fullPage: true, animations: 'disabled' });
+  await page.getByRole('button', { name: 'Enable notifications', exact: true }).click();
+  await waitText(page, 'Notifications enabled while KRU is open');
+  await page.locator('#attention-reminder').getByRole('button', { name: 'Open conversation', exact: true }).click();
+  await page.getByRole('button', { name: 'Allow once' }).click();
+  await waitText(page, 'External tool completed with your approval.');
+  await page.locator('.conversation-decision').filter({ hasText: 'Allowed once' }).waitFor();
+  await check(!(await page.title()).startsWith('(1)'), 'Approve from the conversation, preserve the decision and clear its reminder');
+  const sideRequest = await fetch(web.url + '/api/agents/' + agentId + '/messages', { method: 'POST', headers: { 'X-Kru-Token': web.token, 'Content-Type': 'application/json' }, body: JSON.stringify({ text: 'Use the connected tool', laneId: 'approval-side-thread' }) });
+  if (!sideRequest.ok) throw new Error('Unable to queue isolated approval request');
+  await page.locator('#attention-reminder').getByRole('button', { name: 'Open conversation', exact: true }).click();
+  await page.waitForFunction(() => (globalThis as any).document.querySelector('#lane-select')?.value === 'approval-side-thread');
+  await page.locator('.conversation-approval').waitFor();
+  await check(await page.evaluate(() => (globalThis as any).__requestNotifications.length === 1), 'Opt-in notifications remind once for a new request in another thread');
+  await page.getByRole('button', { name: 'Decline', exact: true }).click(); await waitText(page, 'External action was declined.');
+  await page.locator('.conversation-decision').filter({ hasText: 'Declined' }).waitFor();
+  await check(await page.evaluate(() => (globalThis as any).__requestNotifications.every((notice: any) => notice.closed)), 'Resolved requests close their outstanding browser notification');
+  checks.push('Reminder opens the exact waiting thread and declining keeps its own conversation history');
 
   await page.waitForTimeout(250);
   await page.screenshot({ path: join(artifactDir, 'desktop.png'), fullPage: true });
@@ -197,7 +232,7 @@ try {
   await page.locator(`[data-agent="${agentId}"]`).click(); await page.setViewportSize({ width: 390, height: 844 });
   await page.waitForTimeout(250);
   await check(await page.evaluate(() => (globalThis as any).document.documentElement.scrollWidth <= (globalThis as any).innerWidth), 'Mobile layout has no horizontal overflow');
-  await page.getByRole('button', { name: 'Toggle navigation' }).click(); await page.getByRole('button', { name: 'Approvals', exact: true }).click(); await waitText(page, 'Review the exact action');
+  await page.getByRole('button', { name: 'Toggle navigation' }).click(); await page.getByRole('button', { name: 'Conversations', exact: true }).click(); await page.getByRole('textbox', { name: 'Message teammate' }).waitFor();
   await page.screenshot({ path: join(artifactDir, 'mobile.png'), fullPage: true });
   await page.getByRole('button', { name: 'Toggle navigation' }).click();
   await check(await page.getByRole('button', { name: 'Toggle navigation' }).getAttribute('aria-expanded') === 'true', 'Mobile navigation announces its expanded state');
@@ -205,7 +240,7 @@ try {
   await page.keyboard.press('Escape');
   await check(await page.getByRole('button', { name: 'Toggle navigation' }).getAttribute('aria-expanded') === 'false', 'Escape closes mobile navigation and restores menu focus');
   await check(errors.length === 0, 'No browser JavaScript or console errors: ' + errors.join('; '));
-  await Bun.write(join(artifactDir, 'result.json'), JSON.stringify({ checkedAt: new Date().toISOString(), checks, screenshots: ['navigation-work.png', 'navigation-mobile.png', 'connections-before.png', 'connections.png', 'work-board.png', 'work-detail.png', 'work-mobile.png', 'desktop.png', 'mobile.png'] }, null, 2) + '\n');
+  await Bun.write(join(artifactDir, 'result.json'), JSON.stringify({ checkedAt: new Date().toISOString(), checks, screenshots: ['navigation-work.png', 'navigation-mobile.png', 'approval-conversation.png', 'approval-reminder.png', 'connections-before.png', 'connections.png', 'work-board.png', 'work-detail.png', 'work-mobile.png', 'desktop.png', 'mobile.png'] }, null, 2) + '\n');
   console.log(JSON.stringify({ passed: checks.length, artifactDir, checks }, null, 2));
 } catch (error) {
   await page?.screenshot({ path: join(artifactDir, 'failure.png'), fullPage: true }).catch(() => {});

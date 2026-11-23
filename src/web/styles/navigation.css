@@ -69,6 +69,35 @@
 .sidebar .connection { @apply justify-center; width: 100%; font-size: 0; }
 .workspace .topbar { height: 48px; min-height: 48px; padding: 0 26px; background: white; }
 
+.sidebar .agent-attention {
+  @apply absolute bottom-1 right-1 grid size-4 place-items-center rounded-full text-xs font-semibold;
+  color: #7a501f; background: #ffebc8; border: 1px solid white;
+}
+#attention-reminder {
+  @apply flex items-center justify-between gap-4;
+  padding: 11px 25px; border-bottom: 1px solid #ead9b8; background: #fff8e9;
+  color: #75552c; font-size: .8125rem; line-height: 1.5;
+}
+#attention-reminder > span { @apply min-w-0; overflow-wrap: anywhere; }
+#attention-reminder > div { @apply flex shrink-0 flex-wrap gap-2; }
+.conversation-approval {
+  @apply rounded-xl;
+  border: 1px solid #dbdfe8; background: white; margin: 20px 0; padding: 20px;
+}
+.conversation-approval > header { @apply flex flex-wrap items-center gap-2; font-size: .8125rem; }
+.conversation-approval > header time { color: var(--muted); font-size: .6875rem; }
+.conversation-approval > header > span:last-child { margin-left: auto; color: #8a6328; font-size: .6875rem; }
+.conversation-approval > p { font-size: .875rem; line-height: 1.6; }
+.approval-summary { font-weight: 550; overflow-wrap: anywhere; }
+.conversation-approval .approval-input { max-height: 220px; }
+.conversation-approval > footer { @apply flex flex-wrap items-center justify-between gap-3; margin-top: 17px; }
+.conversation-approval > footer > span { color: var(--muted); font-size: .6875rem; }
+.conversation-approval > footer > div { @apply flex gap-2; }
+.conversation-decision { margin: 15px 0; padding: 12px 16px; border: 1px solid var(--line); border-radius: 8px; background: #ffffff80; font-size: .8125rem; }
+.conversation-decision summary { @apply cursor-pointer; color: var(--muted); }
+.conversation-decision summary time { margin-left: 12px; font-size: .6875rem; }
+.busy-indicator > button { margin-left: 10px; }
+
 @media (max-width: 680px) {
   .workspace { grid-template-columns: minmax(0, 1fr); }
   .workspace > .sidebar { @apply hidden; width: 250px; padding: 22px 16px 16px; }
@@ -89,4 +118,7 @@
   .sidebar .sidebar-bottom { @apply items-start; padding: 20px 12px 0; }
   .sidebar .connection { @apply justify-start text-xs; }
   .workspace .topbar { height: 52px; min-height: 52px; padding: 0 15px; }
+  #attention-reminder { @apply flex-col items-start gap-2; padding: 10px 16px; }
+  #attention-reminder > div { @apply flex-wrap; }
+  .conversation-approval { padding: 15px; }
 }

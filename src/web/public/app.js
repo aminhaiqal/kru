@@ -4,14 +4,16 @@ const $ = selector => document.querySelector(selector);
 const escape = value => String(value ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const icons = {
   chat: '<path d="M4 4h16v12H9l-5 4z"/>', work: '<rect x="5" y="4" width="14" height="17" rx="2"/><path d="m8 12 3 3 5-6M9 4V2h6v2"/>',
-  approval: '<path d="M12 3 3 7v5c0 5 9 9 9 9s9-4 9-9V7z"/><path d="m8 12 3 3 5-6"/>', routine: '<circle cx="12" cy="12" r="9"/><path d="M12 6v6l4 2"/>',
+  routine: '<circle cx="12" cy="12" r="9"/><path d="M12 6v6l4 2"/>',
   tool: '<path d="M14 6a5 5 0 0 0-6 6L3 18l3 3 6-6a5 5 0 0 0 6-6l-4 4-3-3z"/>', memory: '<path d="M12 3v18M12 6C5 0 2 7 5 10c-5 4 0 12 7 8M12 6c7-6 10 1 7 4 5 4 0 12-7 8"/>',
   skill: '<path d="m12 2 3 7 7 3-7 3-3 7-3-7-7-3 7-3z"/>', activity: '<path d="M2 12h4l3-8 6 16 3-8h4"/>',
   connections: '<path d="m8 8 8 8M14 4l6 6M4 14l6 6M16 2l-4 4 6 6 4-4M2 16l4-4 6 6-4 4M12 12l-3 3"/>',
 };
-const views = [['chat', 'Conversations'], ['work', 'Work'], ['approval', 'Approvals'], ['routine', 'Routines'], ['connections', 'AI connections'], ['tool', 'Tools & browser'], ['memory', 'Memory'], ['skill', 'Skills'], ['activity', 'Activity']];
+const views = [['chat', 'Conversations'], ['work', 'Work'], ['routine', 'Routines'], ['connections', 'AI connections'], ['tool', 'Tools & browser'], ['memory', 'Memory'], ['skill', 'Skills'], ['activity', 'Activity']];
 const S = { state: null, agent: localStorage.getItem('kru-agent') || '', view: 'work', lane: null, scope: '', messages: null, draft: '', sending: false, online: false, screenshot: null, refreshing: false, refreshAgain: false };
 const seenMessages = new Set();
+const notifiedRequests = new Set();
+const requestNotifications = new Map();
 let refreshTimer, toastTimer, dialogSubmit, dialogBusy = false;
 async function api(path, options = {}) {
   const response = await fetch('/api' + path, { ...options, headers: { 'x-kru-token': token, ...(options.body ? { 'Content-Type': 'application/json' } : {}), ...options.headers }, body: options.body === undefined ? undefined : JSON.stringify(options.body) });
@@ -27,6 +29,8 @@ const providerConnected = id => id === 'fake' || connection(id)?.status === 'con
 const connectionLabel = id => id === 'fake' ? 'Demo' : ({ connected: 'Connected', not_connected: 'Not connected', not_installed: 'Not installed', checking: 'Checking', error: 'Needs attention' }[connection(id)?.status] || 'Checking');
 const name = id => S.state?.agents.find(a => a.id === id)?.name || 'Unknown teammate';
 const records = kind => S.state?.records[kind] || [];
+const approvalPending = entry => entry.data.status === 'pending' && Date.parse(entry.data.expiresAt) > Date.now();
+const pendingApprovals = () => records('approval').filter(approvalPending);
 const scoped = kind => records(kind).filter(r => !S.scope || r.agentId === S.scope);
 const stamp = value => value ? new Date(value).toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : '—';
 const status = value => `<span class="status ${escape(value)}">${escape(value)}</span>`;
@@ -61,6 +65,60 @@ async function refresh() {
   finally { S.refreshing = false; if (S.refreshAgain) { S.refreshAgain = false; scheduleRefresh(); } }
 }
 function selectAgent(id, lane = null) { S.agent = id; S.lane = lane; S.messages = null; S.view = 'chat'; S.draft = ''; localStorage.setItem('kru-agent', id); $('.workspace').classList.remove('menu-open'); draw(); scheduleRefresh(); }
+function requestSummary(entry) {
+  const input = entry.data.input || {};
+  if (input.connector) return `Use ${input.connector} · ${input.name || 'tool'}`;
+  if (input.browser) return `Browser · ${input.browser.action || 'action'}`;
+  return ({ command: 'Run a command', file: 'Change files', permissions: 'Request access', elicitation: 'Request input', tool: 'Use a tool' })[entry.data.kind] || 'Request your approval';
+}
+const canEnableRequestNotifications = () => typeof Notification !== 'undefined' && Notification.permission !== 'denied' && localStorage.getItem('kru-request-notifications') !== 'true';
+async function enableRequestNotifications() {
+  if (typeof Notification === 'undefined') return;
+  const permission = await Notification.requestPermission();
+  if (permission === 'granted') { localStorage.setItem('kru-request-notifications', 'true'); toast('Notifications enabled while KRU is open'); }
+  else toast('You can allow KRU notifications in your browser settings');
+  draw();
+}
+function renderAttentionReminder() {
+  const pending = pendingApprovals(), elsewhere = pending.filter(r => S.view !== 'chat' || r.agentId !== S.agent || r.laneId !== S.lane);
+  const pendingIds = new Set(pending.map(r => r.id));
+  for (const id of notifiedRequests) if (!pendingIds.has(id)) notifiedRequests.delete(id);
+  for (const [id, notification] of requestNotifications) if (!pendingIds.has(id)) { notification.close(); requestNotifications.delete(id); }
+  document.title = `${pending.length ? '(' + pending.length + ') ' : ''}KRU · Agent workspace`;
+  const reminder = $('#attention-reminder'); reminder.hidden = !elsewhere.length;
+  reminder.innerHTML = elsewhere.length ? `<span><strong>${escape(name(elsewhere[0].agentId))} needs your approval.</strong> ${escape(requestSummary(elsewhere[0]))}${elsewhere.length > 1 ? ` · ${elsewhere.length - 1} more waiting` : ''}</span><div>${actions('review-request', 'Open conversation', elsewhere[0].id)}${canEnableRequestNotifications() ? actions('enable-reminders', 'Enable notifications', '', 'quiet') : ''}</div>` : '';
+  for (const request of pending) {
+    if (notifiedRequests.has(request.id)) continue;
+    notifiedRequests.add(request.id);
+    if (typeof Notification === 'undefined' || Notification.permission !== 'granted' || localStorage.getItem('kru-request-notifications') !== 'true' || (!document.hidden && !elsewhere.includes(request))) continue;
+    try {
+      const notification = new Notification(`${name(request.agentId)} needs you`, { body: requestSummary(request), tag: 'kru-request-' + request.id });
+      requestNotifications.set(request.id, notification);
+      notification.onclose = () => requestNotifications.delete(request.id);
+      notification.onclick = () => { window.focus(); selectAgent(request.agentId, request.laneId); notification.close(); };
+    } catch { /* The in-app reminder remains available if the browser cannot notify. */ }
+  }
+}
+window.addEventListener('pagehide', () => { for (const notification of requestNotifications.values()) notification.close(); requestNotifications.clear(); });
+function renderConversation(agent) {
+  const entries = S.messages?.entries || [], approvals = S.messages?.approvals || [];
+  if (!entries.length && !approvals.length) return empty('Give ' + escape(agent.name) + ' a task', agent.provider === 'fake' ? 'This is a demo teammate. It echoes messages without calling an AI model.' : 'Messages, work and decisions stay with this teammate across sessions.', null, '');
+  const lastByTurn = new Map(entries.map((entry, index) => [entry.turnId, index]));
+  const remaining = new Set(approvals);
+  const timeline = entries.map((entry, index) => {
+    const requests = lastByTurn.get(entry.turnId) === index ? approvals.filter(r => r.data.turnId === entry.turnId) : [];
+    requests.forEach(r => remaining.delete(r));
+    return renderMessage(entry) + requests.map(renderApproval).join('');
+  }).join('');
+  return timeline + [...remaining].map(renderApproval).join('');
+}
+function renderApproval(entry) {
+  const data = entry.data, pending = approvalPending(entry), outcome = pending ? 'Waiting for you' : ({ accepted: 'Allowed once', declined: 'Declined', expired: 'Expired' })[data.status] || 'Expired';
+  const details = `<p class="approval-summary">${escape(requestSummary(entry))}</p><pre class="approval-input">${escape(JSON.stringify(data.input, null, 2))}</pre>`;
+  const author = `<span class="avatar">${escape(name(entry.agentId).slice(0, 1).toUpperCase())}</span><strong>${escape(name(entry.agentId))}</strong><time>${stamp(entry.createdAt)}</time>`;
+  if (!pending) return `<details class="conversation-decision" data-approval-id="${entry.id}" data-detail="approval:${entry.id}"><summary>${escape(name(entry.agentId))} · ${outcome}<time>${stamp(entry.updatedAt)}</time></summary>${details}<p class="subtext">${escape(data.reason)}</p></details>`;
+  return `<article class="conversation-approval" data-approval-id="${entry.id}" aria-label="${escape(name(entry.agentId))} approval request"><header>${author}<span>Waiting for you</span></header><p>I need your approval before I can continue.</p>${details}<footer><span>Expires ${stamp(data.expiresAt)}</span><div>${actions('decline', 'Decline', entry.id)}${actions('approve', 'Allow once', entry.id, 'primary')}</div></footer></article>`;
+}
 function draw() {
   if (!S.state || (S.view === 'work' && W.dragging)) return;
   $('.mobile-menu').setAttribute('aria-expanded', String($('.workspace').classList.contains('menu-open')));
@@ -70,9 +128,10 @@ function draw() {
   const openDetails = new Set([...document.querySelectorAll('details[open][data-detail]')].map(el => el.dataset.detail));
   const oldMessages = $('.messages'), scroll = oldMessages?.scrollTop || 0, sticky = !oldMessages || oldMessages.scrollHeight - oldMessages.clientHeight - scroll < 90;
   const oldContent = $('#content').scrollTop;
-  const pending = records('approval').filter(r => r.data.status === 'pending').length;
-  $('#navigation').innerHTML = views.map(([key, label]) => `<button class="nav-item ${S.view === key ? 'active' : ''}" data-view="${key}" title="${label}" aria-label="${label}" ${S.view === key ? 'aria-current="page"' : ''}><svg viewBox="0 0 24 24" aria-hidden="true">${icons[key]}</svg><span class="nav-label"><span class="nav-label-full">${label}</span><span class="nav-label-short">${({ chat: 'Chat', connections: 'Connect', tool: 'Tools' }[key]) || label}</span></span>${key === 'approval' && pending ? `<span class="count">${pending}</span>` : ''}</button>`).join('');
-  $('#agents').innerHTML = S.state.agents.length ? S.state.agents.map(agent => `<button class="agent-button ${S.agent === agent.id ? 'active' : ''}" data-agent="${agent.id}" title="${escape(agent.name)} · ${escape(agent.provider)}" aria-label="Open ${escape(agent.name)} conversation"><span class="avatar">${escape(agent.name.slice(0, 1).toUpperCase())}</span><span class="agent-name">${escape(agent.name)}<span class="agent-provider">${escape(agent.provider)}${agent.config.paused ? ' · paused' : ''}</span></span><span class="agent-state ${S.state.lanes.some(l => l.agentId === agent.id && l.state === 'running') ? 'running' : ''}"></span></button>`).join('') : '<div class="small-empty">Create your first teammate.</div>';
+  const pending = pendingApprovals().length;
+  renderAttentionReminder();
+  $('#navigation').innerHTML = views.map(([key, label]) => `<button class="nav-item ${S.view === key ? 'active' : ''}" data-view="${key}" title="${label}" aria-label="${label}" ${S.view === key ? 'aria-current="page"' : ''}><svg viewBox="0 0 24 24" aria-hidden="true">${icons[key]}</svg><span class="nav-label"><span class="nav-label-full">${label}</span><span class="nav-label-short">${({ chat: 'Chat', connections: 'Connect', tool: 'Tools' }[key]) || label}</span></span>${key === 'chat' && pending ? `<span class="count">${pending}</span>` : ''}</button>`).join('');
+  $('#agents').innerHTML = S.state.agents.length ? S.state.agents.map(agent => `<button class="agent-button ${S.agent === agent.id ? 'active' : ''}" data-agent="${agent.id}" title="${escape(agent.name)} · ${escape(agent.provider)}" aria-label="Open ${escape(agent.name)} conversation"><span class="avatar">${escape(agent.name.slice(0, 1).toUpperCase())}</span><span class="agent-name">${escape(agent.name)}<span class="agent-provider">${escape(agent.provider)}${agent.config.paused ? ' · paused' : ''}</span></span>${pendingApprovals().some(r => r.agentId === agent.id) ? '<span class="agent-attention" aria-label="Waiting for you">!</span>' : ''}<span class="agent-state ${S.state.lanes.some(l => l.agentId === agent.id && l.state === 'running') ? 'running' : ''}"></span></button>`).join('') : '<div class="small-empty">Create your first teammate.</div>';
   $('#breadcrumb').innerHTML = `Workspace <span aria-hidden="true">/</span> <strong>${escape(S.view === 'chat' && current() ? current().name : views.find(v => v[0] === S.view)?.[1])}</strong>`;
   $('#engine-status').textContent = `${S.state.activeTurns} running · local`;
   if (S.view === 'chat') renderChat(); else renderPage();
@@ -92,7 +151,7 @@ function renderChat() {
   const agent = current();
   if (!agent) { $('#content').innerHTML = empty('Your team starts here', 'Create a teammate, choose its tools, and give it something to work on.', 'new-agent', 'Create teammate'); return; }
   const lane = S.state.lanes.find(l => l.agentId === agent.id && l.laneId === S.lane);
-  const pending = records('approval').filter(r => r.agentId === agent.id && r.data.status === 'pending');
+  const pending = pendingApprovals().filter(r => r.agentId === agent.id && r.laneId === S.lane);
   const queued = S.messages?.deliveries.filter(d => d.status === 'queued').length || 0;
   const usage = S.state.usage.find(u => u.agentId === agent.id);
   const browser = S.state.browsers[agent.id];
@@ -104,8 +163,8 @@ function renderChat() {
   $('#content').innerHTML = `<div class="chat-layout"><div class="chat-main">
     <div class="chat-heading"><span class="avatar large">${escape(agent.name[0].toUpperCase())}</span><div class="chat-title"><h1>${escape(agent.name)}</h1><p>${escape(agent.provider)} · ${escape(agent.config.promptProfile || 'minimal')} · ${agent.config.paused ? 'Paused' : !connected ? escape(connectionLabel(agent.provider)) : lane ? escape(lane.reason || lane.state) : 'Connected'}</p></div><button class="quiet" data-action="agent-settings" data-id="${agent.id}">Settings</button></div>
     <div class="chat-lanes"><label for="lane-select">Thread</label><select id="lane-select">${lanes.map(id => `<option value="${escape(id || '')}" ${id === S.lane ? 'selected' : ''}>${escape(laneName(id))}</option>`).join('')}</select><button class="quiet small" data-action="work-new">New work</button></div>
-    <div class="messages" role="log" aria-label="Conversation">${S.messages?.entries.length ? S.messages.entries.map(renderMessage).join('') : empty('Give ' + escape(agent.name) + ' a task', agent.provider === 'fake' ? 'This is a demo teammate. It echoes messages without calling an AI model.' : 'Messages, work and decisions stay with this teammate across sessions.', null, '')}</div>
-    ${pending.length ? `<div class="busy-indicator"><button class="small" data-view="approval">${pending.length} action${pending.length > 1 ? 's' : ''} waiting for your approval</button></div>` : lane ? `<div class="busy-indicator">${escape(lane.reason || lane.state)}${lane.error ? ': ' + escape(lane.error) : ''}${lane.turnId ? ' ' + actions('stop-lane', 'Stop', lane.batchId, 'quiet') : ''}</div>` : queued ? '<div class="busy-indicator">Message queued</div>' : ''}
+    <div class="messages" role="log" aria-label="Conversation">${renderConversation(agent)}</div>
+    ${pending.length ? `<div class="busy-indicator">${escape(agent.name)} is waiting for your decision in this conversation.${canEnableRequestNotifications() ? actions('enable-reminders', 'Enable notifications', '', 'quiet') : ''}</div>` : lane ? `<div class="busy-indicator">${escape(lane.reason || lane.state)}${lane.error ? ': ' + escape(lane.error) : ''}${lane.turnId ? ' ' + actions('stop-lane', 'Stop', lane.batchId, 'quiet') : ''}</div>` : queued ? '<div class="busy-indicator">Message queued</div>' : ''}
     ${!connected ? `<div class="connection-notice"><span>${escape(connection(agent.provider)?.message || 'Checking this provider before it can run work.')}</span><button type="button" class="small" data-view="connections">Connect provider</button></div>` : ''}
     <form id="composer" class="composer"><textarea id="message-input" aria-label="Message teammate" placeholder="Message ${escape(agent.name)}…" rows="2">${escape(S.draft)}</textarea><div class="composer-footer"><span>Enter to send · Shift + Enter for a new line</span><button class="primary" type="submit" ${!connected || S.sending ? 'disabled' : ''}>Send message</button></div></form>
     </div><aside class="inspector" aria-label="Teammate details"><div class="inspector-section"><h2>Teammate</h2><div class="detail-row"><span>Provider</span><span>${escape(agent.provider)}</span></div><div class="detail-row"><span>File access</span><span>${escape(agent.config.permissions?.sandbox || 'read-only')}</span></div><div class="detail-row"><span>Turns</span><span>${usage?.turns || 0}</span></div><div class="detail-row"><span>Estimated spend</span><span>${usage?.usd == null ? 'Unpriced' : '$' + usage.usd.toFixed(4)}</span></div>${usage?.incomplete ? '<p class="subtext">Some usage is incomplete.</p>' : ''}<button class="small fullwidth" data-action="pause-agent" data-id="${agent.id}">${agent.config.paused ? 'Resume teammate' : 'Pause teammate'}</button></div>
@@ -125,7 +184,6 @@ function scopeFilter() { return `<div class="filter"><label class="subtext" for=
 function renderPage() {
   if (S.view === 'work') { renderWork(); return; }
   const info = {
-    approval: ['Approvals', 'Review the exact action before your teammate continues.', null, null],
     routine: ['Routines', 'Run useful work on a schedule or when an event arrives.', 'new-routine', 'New routine'],
     tool: ['Tools & browser', 'Give each teammate access to the apps and browser sessions it needs.', 'new-connector', 'Connect tool'],
     memory: ['Memory', 'Facts and preferences your teammates can retrieve in future conversations.', 'new-memory', 'Add memory'],
@@ -135,11 +193,6 @@ function renderPage() {
   }[S.view];
   const [title, subtitle, action, label] = info;
   let content = '';
-  if (S.view === 'approval') {
-    const entries = scoped('approval').slice().reverse();
-    entries.sort((a, b) => Number(b.data.status === 'pending') - Number(a.data.status === 'pending'));
-    content = entries.map(renderApproval).join('') || empty('No approvals waiting', 'Actions that need your permission will appear here with their exact details.', null, '');
-  }
   if (S.view === 'routine') content = scoped('routine').map(renderRoutine).join('') || empty('Make repeat work automatic', 'Schedule a daily check, set an interval, or trigger a teammate from an external event.', 'new-routine', 'Create routine');
   if (S.view === 'tool') {
     content = `<div class="section-label">CONNECTED TOOLS</div>${scoped('connector').map(renderConnector).join('') || '<p class="subtext">No tools connected. Connect an MCP server to give a teammate access to an app.</p>'}<div class="section-label">BROWSER SESSIONS</div>${S.state.agents.filter(a => !S.scope || a.id === S.scope).map(renderBrowser).join('') || '<p class="subtext">Create a teammate to enable its browser.</p>'}`;
@@ -159,10 +212,6 @@ function renderConnections() {
     ${p.action && !busy ? `<p class="provider-action-result ${p.action.status === 'failed' ? 'record-error' : ''}">${escape(p.action.message)}</p>` : ''}
     <details class="provider-details" data-detail="provider:${p.id}"><summary>Connection details & terminal setup</summary><div class="detail-row"><span>Installation</span><span>${p.source === 'managed' ? 'Installed by KRU' : p.source === 'system' ? 'Local CLI' : p.source === 'override' ? 'Configured executable' : 'Not found'}</span></div>${p.executable ? `<p class="provider-path">${escape(p.executable)}</p>` : ''}<p class="help">You can also set up this provider in your terminal, then select Recheck.</p><pre class="token-output">${escape(!p.installed ? p.installCommand + '\n' : '')}${escape(p.loginCommand)}</pre><p class="help">Sign-in stays with the provider. KRU does not copy your account tokens into its database. A connected status confirms the local CLI reports a signed-in account; model access and account limits are checked when work runs.</p></details></article>`;
   }).join('');
-}
-function renderApproval(r) {
-  const d = r.data, pending = d.status === 'pending' && Date.parse(d.expiresAt) > Date.now();
-  return `<article class="record-row"><div><div class="record-title">${escape(name(r.agentId))} requests ${escape(d.kind)} access ${status(d.status === 'pending' && !pending ? 'expired' : d.status)}</div><pre class="approval-input">${escape(JSON.stringify(d.input, null, 2))}</pre><div class="record-meta"><span>${pending ? 'Expires ' + stamp(d.expiresAt) : escape(d.reason)}</span><span>${stamp(r.createdAt)}</span></div></div><div class="row-actions">${pending ? actions('approve', 'Allow once', r.id, 'primary') + actions('decline', 'Decline', r.id) : ''}</div></article>`;
 }
 function renderRoutine(r) {
   const d = r.data, schedule = d.schedule.type === 'daily' ? `Daily at ${d.schedule.time} · ${d.schedule.timezone}` : d.schedule.type === 'interval' ? `Every ${d.schedule.minutes} minute${d.schedule.minutes === 1 ? '' : 's'}` : 'Webhook trigger';
@@ -276,6 +325,8 @@ document.addEventListener('click', async event => {
   try {
     if (action === 'menu') { const open = $('.workspace').classList.toggle('menu-open'); $('.mobile-menu').setAttribute('aria-expanded', String(open)); return; }
     if (action === 'close-dialog') { if (!dialogBusy) $('#dialog').close(); return; }
+    if (action === 'review-request') { const request = records('approval').find(r => r.id === id); if (request) selectAgent(request.agentId, request.laneId); return; }
+    if (action === 'enable-reminders') { await enableRequestNotifications(); return; }
     if (action === 'new-agent') { openAgent(); return; }
     if (action === 'agent-settings') { openAgent(id); return; }
     if (action === 'new-routine' || action === 'edit-routine') { openRoutine(id); return; }

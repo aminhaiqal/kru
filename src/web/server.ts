@@ -8,7 +8,7 @@ import { SqliteMailbox } from '../mailbox';
 import { readLog } from '../turns/log';
 import { storedError } from '../store/errors';
 import { recoveryReport } from '../boot/report';
-import { schemas, type Kind } from '../workspace/records';
+import { schemas, type Kind, type RecordEntry } from '../workspace/records';
 
 class HttpError extends Error { constructor(readonly status: number, message: string) { super(message); } }
 const kinds: Kind[] = ['task', 'routine', 'connector', 'approval', 'memory', 'skill'];
@@ -42,6 +42,7 @@ export function createWebServer(options: { store: Store; daemon: Daemon; port?: 
   const json = (body: unknown, status = 200) => Response.json(body, { status, headers: security });
   const requireAgent = (id: string) => { const a = agents.get(id); if (!a) throw new HttpError(404, 'Agent not found'); return a; };
   const requireRecord = (kind: Kind, id: string) => { const r = workspace.records.get(kind, id); if (!r) throw new HttpError(404, `${kind} not found`); return r; };
+  const approvalView = (entry: RecordEntry<'approval'>) => ({ ...entry, laneId: store.db.query<{ lane_id: string | null }, [string, string | null]>('SELECT lane_id FROM deliveries WHERE batch_id=? AND recipient_id=? LIMIT 1').get(entry.data.executionId, entry.agentId)?.lane_id ?? null });
   const clients = new Set<ReadableStreamDefaultController<Uint8Array>>();
   const encoder = new TextEncoder();
   const broadcast = (event: string, value: unknown) => {
@@ -140,7 +141,7 @@ export function createWebServer(options: { store: Store; daemon: Daemon; port?: 
           const allAgents = agents.list();
           return json({ agents: allAgents, providers: daemon.connections.snapshot(), lanes: daemon.scheduler.status(), activeTurns: daemon.scheduler.activeTurns,
             recovery: recoveryReport(store),
-            records: Object.fromEntries(kinds.map(kind => [kind, workspace.records.list(kind).slice(-500).map(entry => kind === 'routine' ? { ...entry, data: { ...entry.data, tokenHash: undefined } } : entry)])),
+            records: Object.fromEntries(kinds.map(kind => [kind, workspace.records.list(kind).slice(-500).map(entry => kind === 'routine' ? { ...entry, data: { ...entry.data, tokenHash: undefined } } : kind === 'approval' ? approvalView(entry as RecordEntry<'approval'>) : entry)])),
             browsers: Object.fromEntries(allAgents.map(agent => [agent.id, workspace.browser.status(agent.id)])),
             usage: store.db.query('SELECT agent_id AS agentId,sum(coalesce(input_total,0)+coalesce(output,0)) AS tokens,sum(cost_usd) AS usd,count(*) AS turns,sum(CASE WHEN complete=0 THEN 1 ELSE 0 END) AS incomplete FROM usage_records GROUP BY agent_id').all(),
             activity: store.db.query('SELECT id,agent_id,lane_key,provider,model,status,error,started_at,duration_ms FROM turns ORDER BY started_at DESC LIMIT 100').all(),
@@ -170,7 +171,8 @@ export function createWebServer(options: { store: Store; daemon: Daemon; port?: 
               if (old) { old.text = item.text ?? null; old.details = item.details; }
               else entries.push({ id, agentId: agent.id, laneId: lane, role: item.type === 'agentMessage' ? 'assistant' : item.type, text: item.text ?? null, details: item.details, turnId, timestamp: new Date().toISOString(), partial: true });
             }
-            return json({ entries, deliveries: mailbox.listQueue(agent.id, lane).slice(-100), lanes: store.db.query('SELECT DISTINCT lane_id AS id FROM deliveries WHERE recipient_id=?').all(agent.id) });
+            const approvals = workspace.records.list('approval', agent.id).map(approvalView).filter(entry => entry.laneId === lane).slice(-200);
+            return json({ entries, approvals, deliveries: mailbox.listQueue(agent.id, lane).slice(-100), lanes: store.db.query('SELECT DISTINCT lane_id AS id FROM deliveries WHERE recipient_id=?').all(agent.id) });
           }
           if (path[3] === 'browser') {
             if (request.method === 'GET' && path[4] === 'screenshot') return new Response(await workspace.browser.screenshot(agent.id), { headers: { ...security, 'Content-Type': 'image/png' } });
