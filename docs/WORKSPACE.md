@@ -243,14 +243,37 @@ changed content is rejected. Event payloads are bounded and labelled as untruste
 data. The local API does not automatically publish a webhook endpoint to the
 internet. Remote senders require an explicitly configured secure ingress.
 
-## Memory and skills
+## Automatic bot memory and skills
 
-Memory contains editable key/value facts scoped to one agent. Bounded saved
-context is included in turn input, and `workspace` can retrieve the full records.
-Skills store a name, description and reusable instructions. Run skill creates a
-work item with those instructions. Agents can save their own memories
-and skills; the UI can edit or remove them. Removed records remain in event history.
-There is no cross-agent memory access through the workspace agent tool.
+Memory is internal to each bot, with no Memory page. Following the principle of
+[Claude's auto memory](https://code.claude.com/docs/en/memory#auto-memory), bots are
+instructed to maintain concise notes about useful preferences, corrections,
+project decisions and references while they work. The model decides which facts
+are worth retaining; it does not save every message. Memory maintenance uses the
+same active model turn and needs no separate background model call.
+
+Each bot has its own notes keyed by its stable agent ID. They persist in SQLite
+across conversations, work/routine threads, provider changes and restarts.
+Another bot using the same provider or working directory gets its own notes.
+Existing saved notes are preserved. KRU memory is independent of a provider's
+native project memory files.
+
+The `workspace` tool's `remember` action saves or updates a note under a stable
+key. `forget` removes that bot's note by key, including when you ask the bot to
+forget something in conversation. `memories` lists paginated summaries; use a key
+to read the full note. Bots cannot retrieve or remove another bot's notes through
+this tool. Notes are data, and bots are instructed to avoid storing secrets,
+guesses and temporary task progress.
+
+Each turn receives maintenance guidance and a valid, byte-bounded snapshot of
+recent notes. Full notes remain retrievable on demand. Memory contents are not
+included in the general UI state response. The existing authenticated maintenance
+API remains available; removal is reflected in replay, while previous versions
+remain in the event history.
+
+Skills store a name, description and reusable instructions. The Skills page can
+edit or remove them, and Run skill creates a work item. Bots can also save their
+own reusable skills.
 
 ## API and storage
 

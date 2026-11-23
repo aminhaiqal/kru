@@ -141,7 +141,7 @@ export function createWebServer(options: { store: Store; daemon: Daemon; port?: 
           const allAgents = agents.list();
           return json({ agents: allAgents, providers: daemon.connections.snapshot(), lanes: daemon.scheduler.status(), activeTurns: daemon.scheduler.activeTurns,
             recovery: recoveryReport(store),
-            records: Object.fromEntries(kinds.map(kind => [kind, workspace.records.list(kind).slice(-500).map(entry => kind === 'routine' ? { ...entry, data: { ...entry.data, tokenHash: undefined } } : kind === 'approval' ? approvalView(entry as RecordEntry<'approval'>) : entry)])),
+            records: Object.fromEntries(kinds.filter(kind => kind !== 'memory').map(kind => [kind, workspace.records.list(kind).slice(-500).map(entry => kind === 'routine' ? { ...entry, data: { ...entry.data, tokenHash: undefined } } : kind === 'approval' ? approvalView(entry as RecordEntry<'approval'>) : entry)])),
             browsers: Object.fromEntries(allAgents.map(agent => [agent.id, workspace.browser.status(agent.id)])),
             usage: store.db.query('SELECT agent_id AS agentId,sum(coalesce(input_total,0)+coalesce(output,0)) AS tokens,sum(cost_usd) AS usd,count(*) AS turns,sum(CASE WHEN complete=0 THEN 1 ELSE 0 END) AS incomplete FROM usage_records GROUP BY agent_id').all(),
             activity: store.db.query('SELECT id,agent_id,lane_key,provider,model,status,error,started_at,duration_ms FROM turns ORDER BY started_at DESC LIMIT 100').all(),

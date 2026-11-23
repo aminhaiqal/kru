@@ -52,8 +52,10 @@ test('UI API creates agents, streams work, sends idempotently, persists context 
   expect(messages.entries.some((m: any) => m.role === 'assistant' && m.text.includes('Hello from UI'))).toBe(true);
   const memory = await e.json('/records/memory', 'POST', { agentId: agent.id, data: { key: 'language', text: 'English' } });
   await e.json('/records/memory/' + memory.id, 'PATCH', { text: 'Malay' });
-  let state = await e.json('/state'); expect(state.records.memory[0].data.text).toBe('Malay'); expect(state.activity[0].status).toBe('completed');
-  await e.json('/records/memory/' + memory.id, 'DELETE'); state = await e.json('/state'); expect(state.records.memory).toHaveLength(0);
+  let state = await e.json('/state'); expect(state.records.memory).toBeUndefined(); expect(state.activity[0].status).toBe('completed');
+  expect(e.daemon.workspace.memory.read(agent.id, 'language')?.data.text).toBe('Malay');
+  await e.json('/records/memory/' + memory.id, 'DELETE'); state = await e.json('/state'); expect(state.records.memory).toBeUndefined();
+  expect(e.daemon.workspace.memory.read(agent.id, 'language')).toBeNull();
   const controller = new AbortController();
   const stream = await fetch(e.web.url + '/api/events', { headers: { 'x-kru-token': e.web.token }, signal: controller.signal });
   expect(stream.headers.get('content-type')).toBe('text/event-stream');

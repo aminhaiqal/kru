@@ -32,6 +32,18 @@ const daemon = new Daemon(store, { pollMs: 10, connections: {
     });
   },
 } }, () => new FakeProvider({ script: async (prompt, call) => {
+  if (prompt.includes('For reviews, prioritize clear outcomes and verified changes.')) {
+    if (!daemon.workspace.tools.instructions.includes('Automatic memory:')) throw new Error('Missing automatic memory guidance');
+    const saved = await call('workspace', { action: 'remember', key: 'review/preferences', text: 'Prioritize clear outcomes and verified changes.' });
+    if (!saved.success) throw new Error('Memory write failed');
+    return 'I will use that review preference in future conversations.';
+  }
+  if (prompt.includes('What review preference do you have for me?')) {
+    if (!prompt.includes('Prioritize clear outcomes and verified changes.')) throw new Error('Private memory was not loaded');
+    const remembered = await call('workspace', { action: 'memories', key: 'review/preferences' });
+    if (!remembered.success) throw new Error('Memory retrieval failed');
+    return 'Your saved review preference: Prioritize clear outcomes and verified changes.';
+  }
   if (prompt.includes('This is turn ')) {
     const result = await call('task_update', { status: 'completed', result: 'Verified the task through the workspace tool.', steps: [{ text: 'Verify the requested outcome', done: true }] });
     if (!result.success) throw new Error(result.contentItems[0]?.text);
@@ -42,7 +54,8 @@ const daemon = new Daemon(store, { pollMs: 10, connections: {
     const result = await call('use_tool', { target: 'mcp', connectorId: connector.id, name: 'echo', arguments: { text: 'Approved through the UI.' } });
     return result.success ? 'External tool completed with your approval.' : 'External action was declined.';
   }
-  return 'Echo: ' + prompt;
+  const memoryBoundary = '\n\n--- End private context; current request follows ---\n\n';
+  return 'Echo: ' + (prompt.includes(memoryBoundary) ? prompt.slice(prompt.indexOf(memoryBoundary) + memoryBoundary.length) : prompt);
 } }));
 let browser: Browser | undefined, web: ReturnType<typeof createWebServer> | undefined, page: Page | undefined;
 const errors: string[] = [], checks: string[] = [];
@@ -77,12 +90,13 @@ try {
     return { sidebar: rect(document.querySelector('.sidebar')), header: rect(document.querySelector('.topbar')), navigation: [...document.querySelectorAll('#navigation button')].map(rect) };
   });
   const workShell = await shellGeometry();
-  for (const label of ['Conversations', 'Routines', 'AI connections', 'Tools & browser', 'Memory', 'Skills', 'Activity', 'Work']) {
+  for (const label of ['Conversations', 'Routines', 'AI connections', 'Tools & browser', 'Skills', 'Activity', 'Work']) {
     await page.getByRole('button', { name: label, exact: true }).click();
     if (JSON.stringify(await shellGeometry()) !== JSON.stringify(workShell)) throw new Error('Sidebar or header geometry changed on ' + label);
     await check(await page.locator('#navigation [aria-current="page"]').getAttribute('aria-label') === label, 'Shared rail geometry and active state stay consistent on ' + label);
   }
   await check(await page.getByRole('button', { name: 'Approvals', exact: true }).count() === 0, 'Approval requests have no separate navigation page');
+  await check(await page.getByRole('button', { name: 'Memory', exact: true }).count() === 0, 'Bot memory has no separate management page');
   await page.screenshot({ path: join(artifactDir, 'navigation-work.png'), fullPage: true, animations: 'disabled' });
   await page.getByRole('button', { name: 'AI connections', exact: true }).click();
   const codex = page.locator('[data-provider="codex"]'), claude = page.locator('[data-provider="claude"]');
@@ -108,9 +122,11 @@ try {
   await page.getByRole('textbox', { name: 'Message teammate' }).fill('Review the workspace and report back.'); await page.getByRole('button', { name: 'Send message' }).click();
   await waitText(page, 'Echo: Review the workspace and report back.'); checks.push('Create teammate and complete a streamed conversation');
 
-  await page.getByRole('button', { name: 'Memory', exact: true }).click(); await page.getByRole('button', { name: 'Add memory', exact: true }).first().click();
-  await page.getByLabel('Memory key').fill('Review preferences'); await page.getByLabel('What should be remembered?').fill('Prioritize clear outcomes and verified changes.'); await saveDialog(page);
-  await waitText(page, 'Prioritize clear outcomes and verified changes.'); checks.push('Save durable agent memory');
+  await page.getByRole('textbox', { name: 'Message teammate' }).fill('For reviews, prioritize clear outcomes and verified changes.');
+  await page.getByRole('button', { name: 'Send message' }).click(); await waitText(page, 'I will use that review preference in future conversations.');
+  await page.getByRole('textbox', { name: 'Message teammate' }).fill('What review preference do you have for me?');
+  await page.getByRole('button', { name: 'Send message' }).click(); await waitText(page, 'Your saved review preference: Prioritize clear outcomes and verified changes.');
+  await check(daemon.workspace.records.list('memory').length === 1, 'Bot maintains its private memory during conversation and recalls it on a later turn');
 
   await page.getByRole('button', { name: 'Skills', exact: true }).click(); await page.getByRole('button', { name: 'New skill', exact: true }).first().click();
   await page.getByLabel('Skill name').fill('Workspace review'); await page.getByLabel('Description', { exact: true }).fill('Review recent changes and verify the result.'); await page.getByLabel('Workflow instructions').fill('Inspect changes, verify behavior, and record the result.'); await saveDialog(page);

@@ -7,6 +7,11 @@ Planned release line v0.2.
 
 ### Added
 
+- Remove the Memory page and make memory an internal, per-bot capability with
+  automatic maintenance guidance, stable-key updates and scoped forgetting.
+  Load bounded notes on future turns, retrieve paginated summaries/full notes,
+  preserve existing memories and omit private notes from general UI state.
+
 - Move approval requests into the bot's own conversation, following Openbot's
   conversation-card and thread-attention pattern. Remove the Approvals page;
   add exact-thread reminders, conversation/teammate badges, decision history

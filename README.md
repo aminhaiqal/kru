@@ -2,7 +2,8 @@
 
 Kru is a local-first workspace and engine for running AI agent CLIs as persistent
 teammates. A local browser UI now connects conversations, Work boards, approvals,
-routines, MCP integrations, browser sessions, memory and skills to the engine.
+routines, MCP integrations, browser sessions and skills to the engine. Each bot
+maintains its own persistent memory internally, across conversations and restarts.
 **M0–M7 are implemented:** a generic JSON-RPC transport, a typed
 provider port with fake, Codex and Claude adapters, streaming terminal chat,
 a durable SQLite mailbox, a daemon with lane scheduling and batching, and
@@ -43,7 +44,7 @@ for the Multica reference and how it maps to KRU.
 
 The UI also includes streamed conversations, steps and explicit completion,
 expiring approvals, daily/interval/webhook routines, per-agent MCP connections,
-browser sessions with saved cookies, durable memory, reusable skills, and activity
+browser sessions with saved cookies, automatic per-bot memory, reusable skills, and activity
 and estimated usage. Install Chromium once for browser sessions:
 
 ```sh

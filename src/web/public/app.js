@@ -5,11 +5,11 @@ const escape = value => String(value ?? '').replace(/[&<>"']/g, c => ({ '&': '&a
 const icons = {
   chat: '<path d="M4 4h16v12H9l-5 4z"/>', work: '<rect x="5" y="4" width="14" height="17" rx="2"/><path d="m8 12 3 3 5-6M9 4V2h6v2"/>',
   routine: '<circle cx="12" cy="12" r="9"/><path d="M12 6v6l4 2"/>',
-  tool: '<path d="M14 6a5 5 0 0 0-6 6L3 18l3 3 6-6a5 5 0 0 0 6-6l-4 4-3-3z"/>', memory: '<path d="M12 3v18M12 6C5 0 2 7 5 10c-5 4 0 12 7 8M12 6c7-6 10 1 7 4 5 4 0 12-7 8"/>',
+  tool: '<path d="M14 6a5 5 0 0 0-6 6L3 18l3 3 6-6a5 5 0 0 0 6-6l-4 4-3-3z"/>',
   skill: '<path d="m12 2 3 7 7 3-7 3-3 7-3-7-7-3 7-3z"/>', activity: '<path d="M2 12h4l3-8 6 16 3-8h4"/>',
   connections: '<path d="m8 8 8 8M14 4l6 6M4 14l6 6M16 2l-4 4 6 6 4-4M2 16l4-4 6 6-4 4M12 12l-3 3"/>',
 };
-const views = [['chat', 'Conversations'], ['work', 'Work'], ['routine', 'Routines'], ['connections', 'AI connections'], ['tool', 'Tools & browser'], ['memory', 'Memory'], ['skill', 'Skills'], ['activity', 'Activity']];
+const views = [['chat', 'Conversations'], ['work', 'Work'], ['routine', 'Routines'], ['connections', 'AI connections'], ['tool', 'Tools & browser'], ['skill', 'Skills'], ['activity', 'Activity']];
 const S = { state: null, agent: localStorage.getItem('kru-agent') || '', view: 'work', lane: null, scope: '', messages: null, draft: '', sending: false, online: false, screenshot: null, refreshing: false, refreshAgain: false };
 const seenMessages = new Set();
 const notifiedRequests = new Set();
@@ -186,7 +186,6 @@ function renderPage() {
   const info = {
     routine: ['Routines', 'Run useful work on a schedule or when an event arrives.', 'new-routine', 'New routine'],
     tool: ['Tools & browser', 'Give each teammate access to the apps and browser sessions it needs.', 'new-connector', 'Connect tool'],
-    memory: ['Memory', 'Facts and preferences your teammates can retrieve in future conversations.', 'new-memory', 'Add memory'],
     skill: ['Skills', 'Save a workflow once, then assign it whenever you need it.', 'new-skill', 'New skill'],
     activity: ['Activity', 'Execution history and estimated usage across your workspace.', null, null],
     connections: ['AI connections', 'Connect your local Codex and Claude Code accounts so teammates can start working.', null, null],
@@ -197,7 +196,6 @@ function renderPage() {
   if (S.view === 'tool') {
     content = `<div class="section-label">CONNECTED TOOLS</div>${scoped('connector').map(renderConnector).join('') || '<p class="subtext">No tools connected. Connect an MCP server to give a teammate access to an app.</p>'}<div class="section-label">BROWSER SESSIONS</div>${S.state.agents.filter(a => !S.scope || a.id === S.scope).map(renderBrowser).join('') || '<p class="subtext">Create a teammate to enable its browser.</p>'}`;
   }
-  if (S.view === 'memory') content = scoped('memory').map(r => `<article class="record-row"><div><div class="record-title">${escape(r.data.key)}</div><div class="record-description">${escape(r.data.text)}</div><div class="record-meta"><span>${escape(name(r.agentId))}</span><span>Updated ${stamp(r.updatedAt)}</span></div></div><div class="row-actions">${actions('edit-memory', 'Edit', r.id)}${actions('delete-record', 'Remove', 'memory:' + r.id, 'quiet')}</div></article>`).join('') || empty('A little context goes a long way', 'Save preferences, project facts, or decisions. Teammates can also save memories while they work.', 'new-memory', 'Add memory');
   if (S.view === 'skill') content = scoped('skill').map(r => `<article class="record-row"><div><div class="record-title">${escape(r.data.name)}</div><div class="record-description">${escape(r.data.description)}</div><div class="record-meta"><span>${escape(name(r.agentId))}</span></div><details class="evidence"><summary>Workflow instructions</summary><pre>${escape(r.data.instructions)}</pre></details></div><div class="row-actions">${actions('run-skill', 'Run skill', r.id, 'primary')}${actions('edit-skill', 'Edit', r.id)}${actions('delete-record', 'Remove', 'skill:' + r.id, 'quiet')}</div></article>`).join('') || empty('Keep your best workflows', 'Write reusable instructions for research, reviews, reporting, or any repeatable task.', 'new-skill', 'Create skill');
   if (S.view === 'activity') content = renderActivity();
   if (S.view === 'connections') content = renderConnections();
@@ -299,13 +297,14 @@ function openConnector(id) {
   }); updateConnectorFields();
 }
 function updateConnectorFields() { const transport = $('#f-transport')?.value; if (!transport) return; $('#http-fields').hidden = transport !== 'http'; $('#stdio-fields').hidden = transport !== 'stdio'; }
-function openKnowledge(kind, id) {
+function openSkill(id) {
   if (!requireTeammate()) return;
-  const entry = records(kind).find(r => r.id === id), d = entry?.data;
-  openForm((entry ? 'Edit ' : 'New ') + kind, (entry ? '' : agentField()) + (kind === 'memory' ? field('Memory key', 'key', d?.key || '', { required: true }) + field('What should be remembered?', 'text', d?.text || '', { area: true, required: true }) : field('Skill name', 'name', d?.name || '', { required: true }) + field('Description', 'description', d?.description || '') + field('Workflow instructions', 'instructions', d?.instructions || '', { area: true, rows: 8, required: true })), async form => {
-    const data = kind === 'memory' ? { key: form.get('key'), text: form.get('text') } : { name: form.get('name'), description: form.get('description'), instructions: form.get('instructions') };
-    if (entry) await patch('/records/' + kind + '/' + id, data); else await post('/records/' + kind, { agentId: form.get('agentId'), data });
-    toast(kind === 'memory' ? 'Memory saved' : 'Skill saved');
+  const entry = records('skill').find(r => r.id === id), data = entry?.data;
+  openForm(entry ? 'Edit skill' : 'New skill', (entry ? '' : agentField()) + field('Skill name', 'name', data?.name || '', { required: true }) + field('Description', 'description', data?.description || '') + field('Workflow instructions', 'instructions', data?.instructions || '', { area: true, rows: 8, required: true }), async form => {
+    const value = { name: form.get('name'), description: form.get('description'), instructions: form.get('instructions') };
+    if (entry) await patch('/records/skill/' + entry.id, value);
+    else await post('/records/skill', { agentId: form.get('agentId'), data: value });
+    toast('Skill saved');
   });
 }
 async function showBrowser(id) {
@@ -331,8 +330,7 @@ document.addEventListener('click', async event => {
     if (action === 'agent-settings') { openAgent(id); return; }
     if (action === 'new-routine' || action === 'edit-routine') { openRoutine(id); return; }
     if (action === 'new-connector' || action === 'edit-connector') { openConnector(id); return; }
-    if (action === 'new-memory' || action === 'edit-memory') { openKnowledge('memory', id); return; }
-    if (action === 'new-skill' || action === 'edit-skill') { openKnowledge('skill', id); return; }
+    if (action === 'new-skill' || action === 'edit-skill') { openSkill(id); return; }
     if (action === 'run-skill') { openTask(records('skill').find(r => r.id === id)); return; }
     if (action === 'provider-code') {
       openForm('Finish Claude Code sign-in', field('Sign-in code', 'code', '', { required: true, type: 'password', help: 'Paste the code provided by Claude’s sign-in page. It is sent directly to the running sign-in process.' }), async form => { await post('/providers/claude/code', { code: form.get('code') }); toast('Sign-in code submitted'); }, 'Complete sign-in'); return;

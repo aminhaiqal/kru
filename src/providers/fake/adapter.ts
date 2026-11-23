@@ -66,7 +66,11 @@ export class FakeProvider extends ProviderBase {
     const mode = this.options.mode ?? 'echo';
     if (mode === 'stall') return;
     if (mode === 'crash') { this.clearTurns(); this.ended(new Error('Scripted fake crash')); return; }
-    let text = `Echo: ${prompt}`;
+    // Demo echoes and permission fixtures use the delivered text; scripted agents
+    // still receive the full prompt so they can exercise private saved context.
+    const contextBoundary = '\n\n--- End private context; current request follows ---\n\n';
+    const delivered = prompt.includes(contextBoundary) ? prompt.slice(prompt.indexOf(contextBoundary) + contextBoundary.length) : prompt;
+    let text = `Echo: ${delivered}`;
     if (this.options.script) {
       try {
         text = await this.options.script(prompt, async (name, args, callId = crypto.randomUUID()) => {
@@ -86,7 +90,9 @@ export class FakeProvider extends ProviderBase {
       }
     }
     if (mode === 'permissions') {
-      const action = JSON.parse(prompt) as { name: string; input: Record<string, unknown> };
+      let action: { name: string; input: Record<string, unknown> };
+      try { action = JSON.parse(delivered); }
+      catch { this.complete(session, active, 'failed', 'Invalid permission fixture JSON'); return; }
       const file = ['Write', 'Edit', 'NotebookEdit'].includes(action.name);
       let decision = file ? fileDecision(session.profile, resolve(session.params.cwd ?? process.cwd()), action.input.file_path ?? action.input.notebook_path, true)
         : session.profile.permissions.approvalPolicy === 'never' ? 'deny' : 'ask';
