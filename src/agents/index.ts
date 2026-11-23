@@ -36,6 +36,8 @@ export class AgentRegistry {
       const provider = patch.provider ?? current.provider;
       if (!provider.trim()) throw new Error('Agent provider must not be empty');
       const config = { ...current.config, ...patch.config };
+      // Explicit null clears optional settings; stored configuration stays canonical.
+      for (const key of ['cwd', 'model', 'dailyTokens', 'dailyUsd']) if (patch.config?.[key] === null) delete config[key];
       if (provider !== current.provider) {
         if (patch.config?.model === undefined) delete config.model;
         if (provider !== 'claude' && config.promptProfile === 'full' && patch.config?.promptProfile === undefined) config.promptProfile = 'minimal';

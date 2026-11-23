@@ -2,6 +2,7 @@ import type { Notification, ProviderClient, TokenUsage } from '../providers/prot
 
 export interface TurnOutcome { status: 'completed' | 'failed' | 'interrupted'; error?: string; retireSession?: boolean; noExecution?: boolean }
 export interface RunnerOptions {
+  isWaiting?: () => boolean;
   idleTimeoutMs?: number; startTimeoutMs?: number; startGraceMs?: number;
   onSubmitting?: () => void;
   onNotification?: (notification: Notification) => void;
@@ -40,6 +41,7 @@ export function runScheduledTurn(provider: ProviderClient, threadId: string, tex
     const idle = () => {
       clearTimeout(idleTimer);
       if (!commands.size && turnId) idleTimer = setTimeout(() => {
+        if (options.isWaiting?.()) { idle(); return; }
         finish({ status: 'interrupted', error: 'Turn idle timeout', retireSession: true }); interrupt();
       }, options.idleTimeoutMs ?? 120_000);
     };

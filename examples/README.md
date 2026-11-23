@@ -12,5 +12,6 @@ demonstrates asynchronous teammate requests/replies; the second demonstrates
 durable history across a provider switch; the third kills a real daemon and
 verifies owned-child cleanup before queued work continues.
 
-Slack-over-HTTP and nightly routine examples depend on the API/routine features
-on the roadmap after M7 and are not implemented yet.
+Run `bun run ui` for the local workspace, HTTP API, daily/interval/webhook
+routines, and per-agent MCP connections. See [the workspace guide](../docs/WORKSPACE.md).
+Service-specific Slack adapters are supplied through compatible MCP servers.

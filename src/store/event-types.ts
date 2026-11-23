@@ -36,6 +36,8 @@ export interface ItemRow {
 }
 type DeliveryEvent = 'delivery.imported' | 'delivery.claimed' | 'delivery.running' | 'delivery.restored' | 'delivery.finished' | 'delivery.cancelled' | 'delivery.retried';
 export type Payloads = {
+  'workspace.removed': { id: string };
+  'workspace.recorded': { row: { id: string; kind: string; agent_id: string | null; data_json: string; created_at: string; updated_at: string } };
   'history.initialized': { id:1 };
   'history.imported': { row: import('../threads/records').HistoryRecord };
   'message.thread_linked': { row:{message_id:string;thread_id:string} };

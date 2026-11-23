@@ -15,6 +15,6 @@ export interface AgentTools {
   readonly definitions: readonly ToolDefinition[];
   readonly instructions: string;
   render(batch: Batch): string;
-  handle(context: ToolContext, call: ToolCall): ToolResult;
+  handle(context: ToolContext, call: ToolCall, signal?: AbortSignal): ToolResult | Promise<ToolResult>;
   finish(context: ToolContext, answer: string, status: 'completed' | 'failed' | 'interrupted'): void;
 }

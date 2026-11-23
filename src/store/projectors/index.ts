@@ -4,6 +4,7 @@ import { projectHistory,putHistory } from '../../threads/records';
 
 /** Fixed columns, never payload-derived SQL. Projectors have no clocks or transaction ownership. */
 export const columns = {
+  workspace_records: 'id,kind,agent_id,data_json,created_at,updated_at',
   history_state:'id,initialized_seq',
   message_threads:'message_id,thread_id',
   history_versions:'thread_id,source_id,version_seq,execution_id,role,text,timestamp,outcome,partial,order_seq,phase,item_order,source_ids_json,message_id,item_id,sender_kind,sender_agent_id,sender_routine_id,reply_to,chain_id,hop',
@@ -28,7 +29,7 @@ export const columns = {
   thread_messages: 'seq,turn_id,item_id,agent_id,lane_key,type,text,details_json,completed_at',
 } as const;
 export type ProjectionTable = keyof typeof columns;
-const keys: Record<ProjectionTable, string> = { history_state:'id',message_threads:'message_id,thread_id',history_versions:'thread_id,source_id,version_seq',history_gaps:'thread_id,recorded_seq',session_generations:'id',handoffs:'id',handoff_uses:'execution_id',turn_generations:'turn_id',recoveries: 'execution_id', session_quarantines: 'generation_id', recovery_usage: 'execution_id', threads: 'id', turn_threads: 'turn_id', message_routes: 'message_id', delivery_replies: 'delivery_id', agents: 'id', messages: 'id', deliveries: 'id', prices: 'id', usage_records: 'batch_id', turns: 'id', thread_messages: 'turn_id,item_id' };
+const keys: Record<ProjectionTable, string> = { workspace_records: 'id', history_state:'id',message_threads:'message_id,thread_id',history_versions:'thread_id,source_id,version_seq',history_gaps:'thread_id,recorded_seq',session_generations:'id',handoffs:'id',handoff_uses:'execution_id',turn_generations:'turn_id',recoveries: 'execution_id', session_quarantines: 'generation_id', recovery_usage: 'execution_id', threads: 'id', turn_threads: 'turn_id', message_routes: 'message_id', delivery_replies: 'delivery_id', agents: 'id', messages: 'id', deliveries: 'id', prices: 'id', usage_records: 'batch_id', turns: 'id', thread_messages: 'turn_id,item_id' };
 function put(db: Database, table: ProjectionTable, value: object): void {
   const names = columns[table].split(','), row = value as Record<string, SQLQueryBindings>;
   if (names.some(name => row[name] === undefined)) throw new Error(`Incomplete ${table} event payload`);
@@ -47,6 +48,8 @@ function put(db: Database, table: ProjectionTable, value: object): void {
 }
 export function project(db: Database, event: DomainEvent): void {
   switch (event.type) {
+    case 'workspace.removed': db.query('DELETE FROM workspace_records WHERE id=?').run(event.payload.id); break;
+    case 'workspace.recorded': put(db, 'workspace_records', event.payload.row); break;
     case 'history.initialized':put(db,'history_state',{id:1,initialized_seq:event.seq});break;
     case 'history.imported':putHistory(db,event.payload.row,event.seq);break;
     case 'message.thread_linked':put(db,'message_threads',event.payload.row);break;

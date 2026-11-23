@@ -7,6 +7,24 @@ Planned release line v0.2.
 
 ### Added
 
+- Add `kru ui` / `kru serve`: a local operator UI and authenticated HTTP/SSE API
+  for conversations, teammate configuration, tasks, approvals, routines, tools,
+  browser sessions, memory, skills and execution activity.
+- Add event-backed workspace state and transactional migration 10, included in
+  deterministic replay verification across 23 projection tables.
+- Add bounded task continuation with explicit completion, checked steps, evidence,
+  blockers, operator resume and cancellation; uncertain execution never auto-retries.
+- Add durable expiring approvals and `kru approval` CLI decisions; suspend idle
+  expiry while a bounded provider request is pending.
+- Add daily/timezone, interval and authenticated webhook routines with atomic
+  enqueue, catch-up coalescing, token rotation and event deduplication.
+- Add per-agent stdio/HTTP MCP clients with explicit credential environment
+  mappings, tool discovery, approval checks and tracked subprocess containment.
+- Add Playwright Chromium browser sessions, saved cookies/local storage, visible
+  sign-in, text/element retrieval, navigation, fill/click/key actions and previews.
+- Add editable agent memory, reusable skills, integration tests and a real
+  Chromium desktop/mobile workflow check.
+
 - Expanded M6: monotonic event-sourced session generations and replacement
   reasons, runtime/account scope compatibility, durable setup intents/candidates
   and lane/generation compare-and-set activation with targeted cleanup.

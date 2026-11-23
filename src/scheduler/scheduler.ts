@@ -1,6 +1,6 @@
 import type { Agent } from '../agents';
 import type { Batch, LaneHead, Mailbox } from '../mailbox';
-import type { ProviderClient, TokenUsage } from '../providers/protocol';
+import type { ProviderClient, TokenUsage, ApprovalCall, ApprovalResult, Notification } from '../providers/protocol';
 import { sessionConfigHash, prepareSession } from './session';
 import { SessionInputError } from '../threads/session-types';
 import type { AgentSource, ProviderFactory, SessionStore } from './ports';
@@ -24,11 +24,14 @@ export interface LaneStatus {
   usedTokens: number; dailyTokens?: number; usedUsd?: number; dailyUsd?: number; budgetDetail?: string;
 }
 interface Runtime {
+  waiting: number;
   active?: ToolContext;
   provider: ProviderClient; configHash: string; ready: boolean; starting: boolean; retryAt: number;
   error?: string; threadId?: string;
 }
 export interface SchedulerOptions {
+  onApproval?: (context: ToolContext, call: ApprovalCall, signal: AbortSignal) => Promise<ApprovalResult>;
+  onNotification?: (batch: Batch, notification: Notification) => void;
   guard?:()=>void;
   onClaim?:(batch:Batch,provider:ProviderClient)=>void;
   onBound?:(batch:Batch,threadId:string)=>void;
@@ -53,6 +56,7 @@ export class Scheduler {
   private readonly lanes = new Map<string, LaneHead>();
   private readonly states = new Map<string, LaneStatus>();
   private readonly controllers = new Set<AbortController>();
+  private readonly laneControllers = new Map<string, AbortController>();
   private readonly tasks = new Set<Promise<void>>();
   private readonly ledger: UsageLedger;
   private readonly slots: TurnSlots;
@@ -124,6 +128,7 @@ export class Scheduler {
     if (this.scheduled.size) this.pumpSoon();
   }
   status(): LaneStatus[] { return [...this.states.values()].sort((a, b) => keyOf(a.agentId, a.laneId).localeCompare(keyOf(b.agentId, b.laneId))).map(s => ({ ...s })); }
+  cancelLane(agentId: string, laneId: string | null): void { this.laneControllers.get(keyOf(agentId, laneId))?.abort(); }
   get activeTurns(): number { return this.slots.active; }
 
   private today(): string { return this.calendar.day(this.now()); }
@@ -175,7 +180,7 @@ export class Scheduler {
       this.track(old.provider.stop().catch(error => this.fail(error)));
     }
     const provider = this.createProvider(agent, laneId);
-    const runtime: Runtime = { provider, configHash: hash, ready: false, starting: false, retryAt: 0 };
+    const runtime: Runtime = { provider, configHash: hash, ready: false, starting: false, retryAt: 0, waiting: 0 };
     this.runtimes.set(key, runtime);
     provider.on('exit', error => {
       runtime.ready = false; delete runtime.threadId; runtime.error = errorText(error);
@@ -183,23 +188,41 @@ export class Scheduler {
       if (!this.stopped) this.scheduleLane(agent.id, laneId);
     });
     // Bind calls to this provider view's confirmed active turn, never a model-supplied sender.
-    provider.on('request', request => {
+    provider.on('request', async request => {
       if (request.signal.aborted) return;
       try { this.options.guard?.(); if(runtime.active)this.options.guardExecution?.(runtime.active.batch); }
       catch(error){provider.respondError(request.id,{code:-32602,message:'Stale daemon/runtime execution'});this.fail(error);return;}
-      if (request.method === 'approval/request') provider.respond(request.id, { decision: 'decline' });
-      else {
+      if (request.method === 'approval/request') {
+        const context = runtime.active;
+        if (!context || this.stopped || context.threadId !== request.params.threadId || context.turnId !== request.params.turnId || !this.options.onApproval) {
+          provider.respond(request.id, { decision: 'decline' }); return;
+        }
+        runtime.waiting++;
+        try {
+          const result = await this.options.onApproval(context, request.params, request.signal);
+          this.options.guard?.(); this.options.guardExecution?.(context.batch);
+          if (!request.signal.aborted && runtime.active === context && !this.stopped) provider.respond(request.id, result);
+        } catch (error) {
+          if (!request.signal.aborted) provider.respond(request.id, { decision: 'decline' });
+        } finally { runtime.waiting--; }
+      } else {
         const context = runtime.active;
         if (!this.options.tools || !context || this.stopped || context.threadId !== request.params.threadId || context.turnId !== request.params.turnId) {
           provider.respondError(request.id, { code: -32602, message: 'No matching active Kru tool turn' }); return;
         }
         let result;
-        try { result = this.options.tools.handle(context, request.params); }
+        runtime.waiting++;
+        try {
+          result = await this.options.tools.handle(context, request.params, request.signal);
+          if (request.signal.aborted || this.stopped || runtime.active !== context) return;
+          this.options.guard?.(); this.options.guardExecution?.(context.batch);
+        }
         catch (error) {
+          if (request.signal.aborted) return;
           if (!request.signal.aborted) provider.respondError(request.id, { code: -32603, message: 'Kru tool transaction failed' });
           this.fail(error); return;
-        }
-        if (!request.signal.aborted) provider.respond(request.id, result);
+        } finally { runtime.waiting--; }
+        if (!request.signal.aborted && runtime.active === context && !this.stopped) provider.respond(request.id, result);
       }
     });
     this.beginProvider(runtime, key);
@@ -270,13 +293,13 @@ export class Scheduler {
       if (!batch) { this.draining.delete(key); releaseSlot(); continue; }
       this.ledger.begin(batch, agent.provider, model, new Date(this.now()).toISOString());
       this.options.onClaim?.(batch,runtime!.provider);
-      const controller = new AbortController(); this.controllers.add(controller);
+      const controller = new AbortController(); this.controllers.add(controller); this.laneControllers.set(key, controller);
       this.states.set(key, { agentId: agent.id, laneId: lane.laneId, state: 'starting', batchId: batch.id,
         batchSize: batch.deliveries.length, usedUsd: total.nanoUsd / 1e9, ...(dollars !== undefined ? { dailyUsd: dollars } : {}), usedTokens: this.used(agent.id),
         ...(agent.config.dailyTokens !== undefined ? { dailyTokens: Number(agent.config.dailyTokens) } : {}) });
       this.track(this.execute(runtime!, agent, batch, controller).catch(e => this.fail(e)).finally(() => {
         this.options.beforeRelease?.(agent.id, lane.laneId);
-        this.controllers.delete(controller); releaseSlot(); this.draining.delete(key); this.states.delete(key);
+        this.controllers.delete(controller); this.laneControllers.delete(key); releaseSlot(); this.draining.delete(key); this.states.delete(key);
         // Work arriving during the old draining flag must be checked after release.
         if (!this.stopped) this.refresh();
         this.changed();
@@ -317,6 +340,7 @@ export class Scheduler {
     const answer = new TurnAnswer();
     let context: ToolContext | undefined;
     const outcome = await runScheduledTurn(runtime.provider, runtime.threadId, prompt, {
+      isWaiting: () => runtime.waiting > 0,
       signal: controller.signal,
       onSubmitting: () => {this.options.guardExecution?.(batch);this.ledger.submitted(batch.id);},
       ...(this.options.idleTimeoutMs !== undefined ? { idleTimeoutMs: this.options.idleTimeoutMs } : {}),
@@ -335,7 +359,7 @@ export class Scheduler {
         if (state) { state.state = 'running'; state.turnId = turnId; this.changed(); }
       },
       onUsage: value => {this.options.guardExecution?.(batch);this.account(batch, value);},
-      onNotification: notification => {this.options.guardExecution?.(batch);recording?.observe(notification); answer.observe(notification); },
+      onNotification: notification => {this.options.guardExecution?.(batch);recording?.observe(notification); answer.observe(notification); this.options.onNotification?.(batch, notification); },
       onFinished: () => { delete runtime.active; },
     });
     this.options.guardExecution?.(batch);

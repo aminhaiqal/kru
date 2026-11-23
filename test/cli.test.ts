@@ -43,7 +43,7 @@ test("CLI stall prints a timeout and exits unsuccessfully", async () => {
 });
 
 test("CLI help and invalid arguments", async () => {
-  expect((await run(["--help"])).stdout).toContain("Usage: kru rpc ping --fake");
+  expect((await run(["--help"])).stdout).toContain("Usage: kru ui");
   expect((await run(["rpc", "ping"])).code).toBe(1);
   expect((await run(["rpc", "ping", "--fake", "--timeout-ms", "0"])).code).toBe(1);
   expect((await run(["rpc", "ping", "--fake", "--unknown"])).code).toBe(1);

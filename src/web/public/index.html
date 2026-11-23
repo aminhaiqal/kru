@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="kru-token" content="__KRU_TOKEN__">
+  <meta name="theme-color" content="#f5f7fb">
+  <title>KRU · Agent workspace</title>
+  <link rel="stylesheet" href="/style.css">
+  <script src="/app.js" defer></script>
+</head>
+<body>
+  <div id="app" class="workspace">
+    <aside class="sidebar" aria-label="Workspace navigation">
+      <a class="wordmark" href="/" aria-label="KRU home"><span class="brand-mark">k</span>kru<span class="local-label">LOCAL</span></a>
+      <div class="workspace-label">YOUR WORKSPACE</div>
+      <nav id="navigation" aria-label="Views"></nav>
+      <div class="team-heading"><span>Teammates</span><button class="icon-button" data-action="new-agent" aria-label="Create teammate">+</button></div>
+      <div id="agents" class="agent-list"></div>
+      <div class="sidebar-bottom"><span id="connection" class="connection">Connecting</span><span>Local engine · v0.1.1</span></div>
+    </aside>
+    <main>
+      <header class="topbar"><button class="icon-button mobile-menu" data-action="menu" aria-label="Toggle navigation">☰</button><div id="breadcrumb">Workspace</div><div id="engine-status"></div></header>
+      <div id="banner" role="status" hidden></div>
+      <section id="content" aria-live="polite"><div class="loading">Connecting to your workspace…</div></section>
+    </main>
+  </div>
+  <dialog id="dialog" aria-labelledby="dialog-title"><div id="dialog-content"></div></dialog>
+  <div id="toast" role="status" hidden></div>
+</body>
+</html>

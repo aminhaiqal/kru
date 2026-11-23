@@ -1,17 +1,49 @@
 # Kru
 
-Kru is a headless, local-first engine for running AI agent CLIs as persistent
-teammates. **M0–M7 are implemented:** a generic JSON-RPC transport, a typed
+Kru is a local-first workspace and engine for running AI agent CLIs as persistent
+teammates. A local browser UI now connects conversations, tasks, approvals,
+routines, MCP integrations, browser sessions, memory and skills to the engine.
+**M0–M7 are implemented:** a generic JSON-RPC transport, a typed
 provider port with fake, Codex and Claude adapters, streaming terminal chat,
 a durable SQLite mailbox, a daemon with lane scheduling and batching, and
 replayable conversation history with token and dollar accounting, bounded
 agent-to-agent messaging, and durable threads with cross-provider handoff and
-scoped history retrieval through three Kru tools, and gated crash recovery with
+scoped history retrieval through three coordination/history tools, and gated crash recovery with
 verified process cleanup and explicit usage gaps.
 The roadmap is in [the project plan](docs/Kru_Project_Plan_and_Milestones.pdf).
 The expanded M6 implementation includes durable session generations, guarded
 setup/activation, frozen handoffs and snapshot-bound history retrieval. See the
 [M6 acceptance results](docs/verification/m6-expanded-2026-11-05.json).
+
+## Start the workspace UI
+
+```sh
+bun install
+bun run ui
+# http://127.0.0.1:4310
+```
+
+This starts the UI, local API, daemon and routine runner in one process, and
+initializes a project database if needed. Stop any separate daemon for this
+database first. Use `bun run ui --port 4311 --db /path/to/kru.sqlite` to choose
+another port or database. Keep the command running for background work.
+
+Create a teammate using **Codex**, **Claude**, or **Demo**. Real providers use
+their existing local login; Demo echoes messages without model calls. Choose
+the coding profile and workspace write access when a teammate should edit code.
+
+The UI includes streamed conversations, tasks with steps and explicit completion,
+expiring approvals, daily/interval/webhook routines, per-agent MCP connections,
+browser sessions with saved cookies, durable memory, reusable skills, and activity
+and estimated usage. Install Chromium once for browser sessions:
+
+```sh
+bunx playwright-core install chromium
+```
+
+Read the [workspace guide](docs/WORKSPACE.md) for setup, credentials, automation
+semantics, API usage and verification. Workspace state is included in event replay;
+existing databases upgrade transactionally through migration 10.
 
 ## Try M0
 
@@ -177,7 +209,7 @@ bun run dev -- replay --verify
 
 Daemon inputs, assistant answers, tool/command details, turns and usage survive
 restart. Domain writes append versioned events and update projections in the
-same transaction. Replay verification now rebuilds twenty-two projection tables in an
+same transaction. Replay verification now rebuilds twenty-three projection tables in an
 isolated database and reports drift without changing live state. Existing v1–v3
 databases upgrade through migration v4 with genesis events preserving queue order.
 See [M4 specification](docs/Kru_Project_Plan_and_Milestones.pdf) and `bun run test:history:repeat`.

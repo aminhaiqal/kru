@@ -12,6 +12,7 @@ export interface RpcConnectionOptions {
   command: string;
   args: string[];
   env?: Record<string, string>;
+  inheritEnv?: boolean;
   requestTimeoutMs: number;
   maxLineBytes: number;
   maxQueuedWriteBytes: number;
@@ -127,7 +128,7 @@ export class RpcConnection extends EventEmitter<{
     const recordDir = prepareProcessRecordDir(this.scope?.directory ?? this.options.processRecordDir);
     const intent=prepareProcessIntent(recordDir,this.scope);
     const child = spawn(this.options.command, this.options.args, {
-      env: { ...process.env, ...this.options.env },
+      env: { ...(this.options.inheritEnv === false ? {} : process.env), ...this.options.env },
       stdio: ["pipe", "pipe", "pipe"],
       detached: process.platform !== "win32",
       windowsHide: true,

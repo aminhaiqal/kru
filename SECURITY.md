@@ -2,8 +2,19 @@
 
 Kru uses each provider's permissions. It adds no independent sandbox. Treat
 workspace-write access, shell commands and external tools as acting with the
-permissions granted to that provider. The daemon declines interactive native
-approvals; native sandboxed commands can still run according to provider rules.
+permissions granted to that provider. Native command/file approvals can wait in
+the local UI or be answered with `kru approval`; native sandboxed commands can
+still run according to provider rules. Approval decisions expire, bind to one
+live execution, and are never replayed as permission after a restart.
+
+The operator UI/API binds to loopback, requires a random session token, validates
+Host and Origin, and rejects cross-site API requests. It is a single-user local
+control plane, not a remotely hosted service. Anyone with access to its token or
+trusted local state can configure executable MCP processes and grant tool access.
+MCP credentials use explicit environment references. Browser sessions store cookies
+and local storage in private files beside the database; treat these as credentials.
+External MCP and browser access are explicit per-agent grants. Neither adds an OS
+sandbox or exactly-once guarantees for external actions. See [the workspace guide](docs/WORKSPACE.md).
 
 SQLite and ownership files are trusted local state. Keep the database and its
 process-record directory private to the user running the daemon. New ownership

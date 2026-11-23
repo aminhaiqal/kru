@@ -1,6 +1,7 @@
 import type { ThreadParams } from '../providers/protocol';
 import { nanoUsd } from '../usage/pricing';
 import { prepareThread } from '../providers/prompt-profile';
+import { z } from 'zod';
 
 export function threadParams(config: Record<string, unknown>): ThreadParams {
   const result: ThreadParams = {};
@@ -23,6 +24,7 @@ export function threadParams(config: Record<string, unknown>): ThreadParams {
   return result;
 }
 export function validateAgentConfig(config: Record<string, unknown>): void {
+  if (config.browser !== undefined) z.object({ enabled: z.boolean(), permission: z.enum(['ask', 'allow']).default('ask') }).strict().parse(config.browser);
   if (config.paused !== undefined && typeof config.paused !== 'boolean') throw new Error('Invalid paused value');
   if (config.dailyTokens !== undefined && (!Number.isSafeInteger(config.dailyTokens) || Number(config.dailyTokens) < 0)) throw new Error('dailyTokens must be a nonnegative safe integer');
   if (config.dailyUsd !== undefined) {

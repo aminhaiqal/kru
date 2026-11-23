@@ -29,3 +29,21 @@ jobs:
       - run: npm install --global @openai/codex@0.165.0
       - name: Check exact initialize bytes and experimental tool registration
         run: bun run test:codex
+  workspace-ui:
+    runs-on: ubuntu-latest
+    env:
+      KRU_UI_ARTIFACT_DIR: ${{ runner.temp }}/kru-workspace-verification
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+      - run: bun install --frozen-lockfile
+      - run: bunx playwright-core install --with-deps chromium
+      - name: Verify operator UI and browser workflows
+        run: bun run test:ui
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: workspace-ui-verification
+          path: ${{ runner.temp }}/kru-workspace-verification
