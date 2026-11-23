@@ -3,14 +3,14 @@ const token = document.querySelector('meta[name="kru-token"]').content;
 const $ = selector => document.querySelector(selector);
 const escape = value => String(value ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const icons = {
-  chat: '<path d="M4 4h16v12H9l-5 4z"/>', task: '<rect x="5" y="4" width="14" height="17" rx="2"/><path d="m8 12 3 3 5-6M9 4V2h6v2"/>',
+  chat: '<path d="M4 4h16v12H9l-5 4z"/>', work: '<rect x="5" y="4" width="14" height="17" rx="2"/><path d="m8 12 3 3 5-6M9 4V2h6v2"/>',
   approval: '<path d="M12 3 3 7v5c0 5 9 9 9 9s9-4 9-9V7z"/><path d="m8 12 3 3 5-6"/>', routine: '<circle cx="12" cy="12" r="9"/><path d="M12 6v6l4 2"/>',
   tool: '<path d="M14 6a5 5 0 0 0-6 6L3 18l3 3 6-6a5 5 0 0 0 6-6l-4 4-3-3z"/>', memory: '<path d="M12 3v18M12 6C5 0 2 7 5 10c-5 4 0 12 7 8M12 6c7-6 10 1 7 4 5 4 0 12-7 8"/>',
   skill: '<path d="m12 2 3 7 7 3-7 3-3 7-3-7-7-3 7-3z"/>', activity: '<path d="M2 12h4l3-8 6 16 3-8h4"/>',
   connections: '<path d="m8 8 8 8M14 4l6 6M4 14l6 6M16 2l-4 4 6 6 4-4M2 16l4-4 6 6-4 4M12 12l-3 3"/>',
 };
-const views = [['chat', 'Conversations'], ['task', 'Tasks'], ['approval', 'Approvals'], ['routine', 'Routines'], ['connections', 'AI connections'], ['tool', 'Tools & browser'], ['memory', 'Memory'], ['skill', 'Skills'], ['activity', 'Activity']];
-const S = { state: null, agent: localStorage.getItem('kru-agent') || '', view: 'chat', lane: null, scope: '', messages: null, draft: '', sending: false, online: false, screenshot: null, refreshing: false, refreshAgain: false };
+const views = [['chat', 'Conversations'], ['work', 'Work'], ['approval', 'Approvals'], ['routine', 'Routines'], ['connections', 'AI connections'], ['tool', 'Tools & browser'], ['memory', 'Memory'], ['skill', 'Skills'], ['activity', 'Activity']];
+const S = { state: null, agent: localStorage.getItem('kru-agent') || '', view: 'work', lane: null, scope: '', messages: null, draft: '', sending: false, online: false, screenshot: null, refreshing: false, refreshAgain: false };
 const seenMessages = new Set();
 let refreshTimer, toastTimer, dialogSubmit, dialogBusy = false;
 async function api(path, options = {}) {
@@ -45,6 +45,16 @@ async function refresh() {
       const messages = await api(`/agents/${requested}/messages?lane=${encodeURIComponent(lane || '')}`);
       if (S.agent === requested && S.lane === lane) S.messages = messages;
     }
+    if (S.view === 'work') {
+      const requestedProject = W.project, generation = W.generation;
+      const workData = await api('/work');
+      if (generation === W.generation) {
+        W.data = workData;
+        if (W.project === requestedProject && W.project && !workProject(W.project)) W.project = '';
+      } else S.refreshAgain = true;
+      const selected = W.selected;
+      if (selected) { const detail = await api('/work/items/' + selected); if (W.selected === selected) W.detail = detail; }
+    }
     setConnection(true); draw();
     $('#banner').hidden = true;
   } catch (error) { setConnection(false); $('#banner').textContent = error.message; $('#banner').hidden = false; }
@@ -52,14 +62,16 @@ async function refresh() {
 }
 function selectAgent(id, lane = null) { S.agent = id; S.lane = lane; S.messages = null; S.view = 'chat'; S.draft = ''; localStorage.setItem('kru-agent', id); $('.workspace').classList.remove('menu-open'); draw(); scheduleRefresh(); }
 function draw() {
-  if (!S.state) return;
+  if (!S.state || (S.view === 'work' && W.dragging)) return;
+  $('.workspace').classList.toggle('work-mode', S.view === 'work');
   const focus = document.activeElement, focusId = focus?.id, selection = focus?.selectionStart, end = focus?.selectionEnd;
   const wasComposer = focusId === 'message-input';
+  const workScroll = { board: $('.work-board')?.scrollLeft || 0, detail: $('.work-detail-scroll')?.scrollTop || 0, columns: [...document.querySelectorAll('[data-column-scroll]')].map(el => [el.dataset.columnScroll, el.scrollTop]) };
   const openDetails = new Set([...document.querySelectorAll('details[open][data-detail]')].map(el => el.dataset.detail));
   const oldMessages = $('.messages'), scroll = oldMessages?.scrollTop || 0, sticky = !oldMessages || oldMessages.scrollHeight - oldMessages.clientHeight - scroll < 90;
   const oldContent = $('#content').scrollTop;
   const pending = records('approval').filter(r => r.data.status === 'pending').length;
-  $('#navigation').innerHTML = views.map(([key, label]) => `<button class="nav-item ${S.view === key ? 'active' : ''}" data-view="${key}" ${S.view === key ? 'aria-current="page"' : ''}><svg viewBox="0 0 24 24" aria-hidden="true">${icons[key]}</svg>${label}${key === 'approval' && pending ? `<span class="count">${pending}</span>` : ''}</button>`).join('');
+  $('#navigation').innerHTML = views.map(([key, label]) => `<button class="nav-item ${S.view === key ? 'active' : ''}" data-view="${key}" title="${label}" ${S.view === key ? 'aria-current="page"' : ''}><svg viewBox="0 0 24 24" aria-hidden="true">${icons[key]}</svg><span class="nav-label">${label}</span>${key === 'approval' && pending ? `<span class="count">${pending}</span>` : ''}</button>`).join('');
   $('#agents').innerHTML = S.state.agents.length ? S.state.agents.map(agent => `<button class="agent-button ${S.agent === agent.id ? 'active' : ''}" data-agent="${agent.id}"><span class="avatar">${escape(agent.name.slice(0, 1).toUpperCase())}</span><span class="agent-name">${escape(agent.name)}<span class="agent-provider">${escape(agent.provider)}${agent.config.paused ? ' · paused' : ''}</span></span><span class="agent-state ${S.state.lanes.some(l => l.agentId === agent.id && l.state === 'running') ? 'running' : ''}"></span></button>`).join('') : '<div class="small-empty">Create your first teammate.</div>';
   $('#breadcrumb').innerHTML = `Workspace <span aria-hidden="true">/</span> <strong>${escape(S.view === 'chat' && current() ? current().name : views.find(v => v[0] === S.view)?.[1])}</strong>`;
   $('#engine-status').textContent = `${S.state.activeTurns} running · local`;
@@ -67,6 +79,12 @@ function draw() {
   for (const el of document.querySelectorAll('details[data-detail]')) if (openDetails.has(el.dataset.detail)) el.open = true;
   if (S.view === 'chat') { const el = $('.messages'); if (el) el.scrollTop = sticky ? el.scrollHeight : scroll; }
   else $('#content').scrollTop = oldContent;
+  if (S.view === 'work') {
+    if ($('.work-board')) $('.work-board').scrollLeft = workScroll.board;
+    if ($('.work-detail-scroll')) $('.work-detail-scroll').scrollTop = workScroll.detail;
+    for (const [id, top] of workScroll.columns) { const el = [...document.querySelectorAll('[data-column-scroll]')].find(e => e.dataset.columnScroll === id); if (el) el.scrollTop = top; }
+    if (focusId && $('#'+focusId)) { $('#'+focusId).focus({ preventScroll: true }); if (typeof selection === 'number' && typeof $('#'+focusId).setSelectionRange === 'function') $('#'+focusId).setSelectionRange(selection, end); }
+  }
   if (wasComposer && $('#message-input')) { $('#message-input').focus({ preventScroll: true }); if (selection !== null) $('#message-input').setSelectionRange(selection, end); }
 }
 function empty(title, text, action, button) { return `<div class="empty"><div class="empty-symbol">k</div><h2>${title}</h2><p>${text}</p>${action ? `<button class="primary" data-action="${action}">${button}</button>` : ''}</div>`; }
@@ -85,13 +103,13 @@ function renderChat() {
   const laneName = id => id?.startsWith('task:') ? records('task').find(t => t.id === id.slice(5))?.data.title || 'Task' : id?.startsWith('routine:') ? records('routine').find(r => r.id === id.slice(8))?.data.name || 'Routine' : id || 'Main conversation';
   $('#content').innerHTML = `<div class="chat-layout"><div class="chat-main">
     <div class="chat-heading"><span class="avatar large">${escape(agent.name[0].toUpperCase())}</span><div class="chat-title"><h1>${escape(agent.name)}</h1><p>${escape(agent.provider)} · ${escape(agent.config.promptProfile || 'minimal')} · ${agent.config.paused ? 'Paused' : !connected ? escape(connectionLabel(agent.provider)) : lane ? escape(lane.reason || lane.state) : 'Connected'}</p></div><button class="quiet" data-action="agent-settings" data-id="${agent.id}">Settings</button></div>
-    <div class="chat-lanes"><label for="lane-select">Thread</label><select id="lane-select">${lanes.map(id => `<option value="${escape(id || '')}" ${id === S.lane ? 'selected' : ''}>${escape(laneName(id))}</option>`).join('')}</select><button class="quiet small" data-action="new-task">New task</button></div>
+    <div class="chat-lanes"><label for="lane-select">Thread</label><select id="lane-select">${lanes.map(id => `<option value="${escape(id || '')}" ${id === S.lane ? 'selected' : ''}>${escape(laneName(id))}</option>`).join('')}</select><button class="quiet small" data-action="work-new">New work</button></div>
     <div class="messages" role="log" aria-label="Conversation">${S.messages?.entries.length ? S.messages.entries.map(renderMessage).join('') : empty('Give ' + escape(agent.name) + ' a task', agent.provider === 'fake' ? 'This is a demo teammate. It echoes messages without calling an AI model.' : 'Messages, work and decisions stay with this teammate across sessions.', null, '')}</div>
     ${pending.length ? `<div class="busy-indicator"><button class="small" data-view="approval">${pending.length} action${pending.length > 1 ? 's' : ''} waiting for your approval</button></div>` : lane ? `<div class="busy-indicator">${escape(lane.reason || lane.state)}${lane.error ? ': ' + escape(lane.error) : ''}${lane.turnId ? ' ' + actions('stop-lane', 'Stop', lane.batchId, 'quiet') : ''}</div>` : queued ? '<div class="busy-indicator">Message queued</div>' : ''}
     ${!connected ? `<div class="connection-notice"><span>${escape(connection(agent.provider)?.message || 'Checking this provider before it can run work.')}</span><button type="button" class="small" data-view="connections">Connect provider</button></div>` : ''}
     <form id="composer" class="composer"><textarea id="message-input" aria-label="Message teammate" placeholder="Message ${escape(agent.name)}…" rows="2">${escape(S.draft)}</textarea><div class="composer-footer"><span>Enter to send · Shift + Enter for a new line</span><button class="primary" type="submit" ${!connected || S.sending ? 'disabled' : ''}>Send message</button></div></form>
     </div><aside class="inspector" aria-label="Teammate details"><div class="inspector-section"><h2>Teammate</h2><div class="detail-row"><span>Provider</span><span>${escape(agent.provider)}</span></div><div class="detail-row"><span>File access</span><span>${escape(agent.config.permissions?.sandbox || 'read-only')}</span></div><div class="detail-row"><span>Turns</span><span>${usage?.turns || 0}</span></div><div class="detail-row"><span>Estimated spend</span><span>${usage?.usd == null ? 'Unpriced' : '$' + usage.usd.toFixed(4)}</span></div>${usage?.incomplete ? '<p class="subtext">Some usage is incomplete.</p>' : ''}<button class="small fullwidth" data-action="pause-agent" data-id="${agent.id}">${agent.config.paused ? 'Resume teammate' : 'Pause teammate'}</button></div>
-    ${task ? `<div class="inspector-section"><h2>Current task</h2><p class="subtext">${escape(task.data.title)}</p>${renderSteps(task.data.steps)}${status(task.data.status)}<div class="detail-row"><span>Turns</span><span>${task.data.attempts} / ${task.data.maxTurns}</span></div></div>` : ''}
+    ${task ? `<div class="inspector-section"><h2>Current work</h2><p class="subtext">${escape(task.data.title)}</p>${renderSteps(task.data.steps)}${status(task.data.status)}<div class="detail-row"><span>Turns</span><span>${task.data.attempts} / ${task.data.maxTurns}</span></div></div>` : ''}
     <div class="inspector-section"><h2>Connected tools</h2><p class="subtext">${records('connector').filter(c => c.agentId === agent.id && c.data.enabled).map(c => escape(c.data.name)).join(', ') || 'No external tools connected.'}</p><button class="small" data-view="tool">Manage tools</button></div>
     <div class="inspector-section"><h2>Browser</h2><p class="subtext">${agent.config.browser?.enabled ? browser.running ? 'Session running' : 'Enabled · session stopped' : 'Browser access is disabled.'}</p>${browser.running ? `<div class="browser-url">${escape(browser.url)}</div><button class="small" data-action="browser-preview" data-id="${agent.id}">View browser</button>` : ''}</div></aside></div>`;
 }
@@ -105,8 +123,8 @@ function renderMessage(entry) {
 function renderSteps(steps) { return steps?.length ? `<ul class="steps">${steps.map(s => `<li class="${s.done ? 'done' : ''}">${escape(s.text)}</li>`).join('')}</ul>` : ''; }
 function scopeFilter() { return `<div class="filter"><label class="subtext" for="scope-select">Teammate</label><select id="scope-select"><option value="">All teammates</option>${S.state.agents.map(a => `<option value="${a.id}" ${S.scope === a.id ? 'selected' : ''}>${escape(a.name)}</option>`).join('')}</select></div>`; }
 function renderPage() {
+  if (S.view === 'work') { renderWork(); return; }
   const info = {
-    task: ['Tasks', 'Give work a clear outcome. Follow the steps as your teammates carry it through.', 'new-task', 'New task'],
     approval: ['Approvals', 'Review the exact action before your teammate continues.', null, null],
     routine: ['Routines', 'Run useful work on a schedule or when an event arrives.', 'new-routine', 'New routine'],
     tool: ['Tools & browser', 'Give each teammate access to the apps and browser sessions it needs.', 'new-connector', 'Connect tool'],
@@ -117,7 +135,6 @@ function renderPage() {
   }[S.view];
   const [title, subtitle, action, label] = info;
   let content = '';
-  if (S.view === 'task') content = scoped('task').map(renderTask).reverse().join('') || empty('No tasks yet', 'Assign an outcome and success criteria. Your teammate can track steps across several turns.', 'new-task', 'Create task');
   if (S.view === 'approval') {
     const entries = scoped('approval').slice().reverse();
     entries.sort((a, b) => Number(b.data.status === 'pending') - Number(a.data.status === 'pending'));
@@ -142,10 +159,6 @@ function renderConnections() {
     ${p.action && !busy ? `<p class="provider-action-result ${p.action.status === 'failed' ? 'record-error' : ''}">${escape(p.action.message)}</p>` : ''}
     <details class="provider-details" data-detail="provider:${p.id}"><summary>Connection details & terminal setup</summary><div class="detail-row"><span>Installation</span><span>${p.source === 'managed' ? 'Installed by KRU' : p.source === 'system' ? 'Local CLI' : p.source === 'override' ? 'Configured executable' : 'Not found'}</span></div>${p.executable ? `<p class="provider-path">${escape(p.executable)}</p>` : ''}<p class="help">You can also set up this provider in your terminal, then select Recheck.</p><pre class="token-output">${escape(!p.installed ? p.installCommand + '\n' : '')}${escape(p.loginCommand)}</pre><p class="help">Sign-in stays with the provider. KRU does not copy your account tokens into its database. A connected status confirms the local CLI reports a signed-in account; model access and account limits are checked when work runs.</p></details></article>`;
   }).join('');
-}
-function renderTask(r) {
-  const d = r.data;
-  return `<article class="record-row"><div><div class="record-title">${escape(d.title)} ${status(d.status)}</div><div class="record-description">${escape(d.objective)}</div>${renderSteps(d.steps)}${d.error ? `<p class="record-error">${escape(d.error)}</p>` : ''}${d.result ? `<details class="evidence"><summary>Result & evidence</summary><pre>${escape(d.result)}</pre></details>` : ''}<div class="record-meta"><span>${escape(name(r.agentId))}</span><span>${d.attempts} / ${d.maxTurns} turns</span><span>${stamp(r.createdAt)}</span></div></div><div class="row-actions">${actions('task-chat', 'Open conversation', r.id)}${d.status === 'blocked' ? actions('resume-task', 'Resume', r.id, 'primary') : ''}${!['completed', 'cancelled'].includes(d.status) ? actions('cancel-task', 'Cancel task', r.id, 'quiet danger') : ''}</div></article>`;
 }
 function renderApproval(r) {
   const d = r.data, pending = d.status === 'pending' && Date.parse(d.expiresAt) > Date.now();
@@ -208,13 +221,7 @@ function openAgent(id) {
       toast(agent ? 'Teammate settings saved' : 'Teammate created');
     }, agent ? 'Save settings' : 'Create teammate');
 }
-function openTask(skill) {
-  if (!requireTeammate()) return;
-  openForm('New task', agentField(skill?.agentId) + field('Title', 'title', skill?.data.name || '', { required: true }) + field('What should be done?', 'objective', skill?.data.instructions || '', { area: true, required: true, rows: 5 }) + field('Success criteria', 'criteria', '', { area: true, rows: 2, help: 'Describe what a completed result must include.' }) + field('Initial steps', 'steps', '', { area: true, rows: 2, help: 'Optional. One step per line. The teammate can update these.' }) + field('Maximum turns', 'maxTurns', '8', { type: 'number', min: 1, max: 50, required: true }), async form => {
-    const task = await post('/records/task', { agentId: form.get('agentId'), data: { title: form.get('title'), objective: form.get('objective'), successCriteria: form.get('criteria'), maxTurns: Number(form.get('maxTurns')), steps: form.get('steps').split('\n').map(s => s.trim()).filter(Boolean).map(text => ({ text, done: false })) } });
-    selectAgent(task.agentId, 'task:' + task.id); toast('Task queued');
-  }, 'Assign task');
-}
+function openTask(skill) { openWorkEditor({ skill }); }
 function openRoutine(id) {
   if (!requireTeammate()) return;
   const entry = records('routine').find(r => r.id === id), d = entry?.data;
@@ -265,12 +272,12 @@ document.addEventListener('click', async event => {
   const agent = event.target.closest('[data-agent]'); if (agent) { selectAgent(agent.dataset.agent); return; }
   const button = event.target.closest('[data-action]'); if (!button) return;
   const { action, id } = button.dataset;
+  if (action.startsWith('work-')) return;
   try {
     if (action === 'menu') { $('.workspace').classList.toggle('menu-open'); return; }
     if (action === 'close-dialog') { if (!dialogBusy) $('#dialog').close(); return; }
     if (action === 'new-agent') { openAgent(); return; }
     if (action === 'agent-settings') { openAgent(id); return; }
-    if (action === 'new-task') { openTask(); return; }
     if (action === 'new-routine' || action === 'edit-routine') { openRoutine(id); return; }
     if (action === 'new-connector' || action === 'edit-connector') { openConnector(id); return; }
     if (action === 'new-memory' || action === 'edit-memory') { openKnowledge('memory', id); return; }
@@ -286,9 +293,7 @@ document.addEventListener('click', async event => {
     else if (action === 'provider-copy-code') { await navigator.clipboard.writeText(connection(id)?.action?.deviceCode || ''); toast('Code copied'); }
     else if (action === 'pause-agent') { const a = S.state.agents.find(a => a.id === id); await patch('/agents/' + id, { config: { paused: !a.config.paused } }); }
     else if (action === 'approve' || action === 'decline') { await post('/records/approval/' + id + '/decide', { decision: action === 'approve' ? 'accept' : 'decline' }); toast(action === 'approve' ? 'Action allowed once' : 'Action declined'); }
-    else if (action === 'task-chat') { const r = records('task').find(r => r.id === id); selectAgent(r.agentId, 'task:' + id); }
     else if (action === 'routine-chat') { const r = records('routine').find(r => r.id === id); selectAgent(r.agentId, 'routine:' + id); }
-    else if (action === 'resume-task' || action === 'cancel-task') { await post('/records/task/' + id + '/' + (action === 'resume-task' ? 'resume' : 'cancel')); toast(action === 'resume-task' ? 'Task resumed' : 'Task cancelled'); }
     else if (action === 'run-routine') { await post('/records/routine/' + id + '/run'); toast('Routine queued'); }
     else if (action === 'toggle-routine') { const r = records('routine').find(r => r.id === id); await patch('/records/routine/' + id, { enabled: !r.data.enabled }); }
     else if (action === 'toggle-connector') { const r = records('connector').find(r => r.id === id); await patch('/records/connector/' + id, { enabled: !r.data.enabled }); }

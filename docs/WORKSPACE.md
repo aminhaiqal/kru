@@ -63,13 +63,44 @@ permits file changes under the configured working directory. Read-only is the
 initial UI default. The full profile is available for Claude. Permissions remain
 provider-specific as documented in the project README.
 
-Conversations stream through an authenticated event connection. Main chat, tasks
+Conversations stream through an authenticated event connection. Main chat, work runs
 and routines have separate durable lanes, selectable using the Thread menu.
 Agent configuration, pausing, budgets and cancellation operate on the existing
 registry and scheduler. The activity view reports observed tokens and estimated
 main-agent spend; unknown usage and external service charges are not invented.
 
-## Tasks
+## Work
+
+Work replaces the Tasks page. Create a project with a stable identifier prefix
+and either the standard workflow (Brief → In progress → Review → Done) or the
+content workflow (Brief → Research → Writing → Review → Done). Project settings
+let you rename stages, add active stages, choose stage agents and supply stage
+instructions. Stages containing work cannot be removed.
+
+Write a work item with a brief, priority, assignee, labels, due date and acceptance
+criteria. Use the project board or list, search and assignee/priority filters.
+Click a card for its properties, activity, comments, results and agent run history.
+Drag cards between stages or use the detail panel's Stage selector. Concurrent
+edits are rejected using the work item's revision so stale clients cannot overwrite
+newer state.
+
+Entering an active stage starts its stage agent; explicitly choosing Unassigned
+keeps it human-owned. With no stage agent, the current work item assignee is kept.
+Changing the agent or stage cancels the previous pending run and interrupts its
+native lane. Agent completion hands evidence to the next active stage, then stops
+at Review. **Approve & complete** moves reviewed work to Done; **Request changes**
+returns it to the last active stage. An active historical execution prevents Done.
+Comments are context for the next stage or explicitly resumed blocked run; they do
+not inject messages into a currently running turn. Archive stops pending execution;
+restore preserves history without restarting it. Use Resume agent to explicitly
+restart restored, cancelled work or a blocked run.
+
+Existing task records become General project work items with the same execution
+lanes and history. Completed tasks enter Review, and cancelled tasks are archived.
+Import is idempotent and never queues another delivery for an existing task.
+See [Work architecture](WORK_ARCHITECTURE.md) for the source research and data flow.
+
+### Bounded agent runs
 
 A task stores its objective, success criteria, steps, result, status and execution
 attempts. Assigning it atomically creates a `task:<id>` lane delivery. During that
@@ -188,7 +219,7 @@ internet. Remote senders require an explicitly configured secure ingress.
 Memory contains editable key/value facts scoped to one agent. Bounded saved
 context is included in turn input, and `workspace` can retrieve the full records.
 Skills store a name, description and reusable instructions. Run skill creates a
-normal durable task with those instructions. Agents can save their own memories
+work item with those instructions. Agents can save their own memories
 and skills; the UI can edit or remove them. Removed records remain in event history.
 There is no cross-agent memory access through the workspace agent tool.
 
@@ -212,6 +243,12 @@ Core routes:
 | GET | `/api/events` | Authenticated server-sent events |
 | POST / PATCH | `/api/agents[/:id]` | Create or configure a teammate |
 | POST / GET | `/api/agents/:id/messages` | Queue text or retrieve a lane |
+| GET | `/api/work` | Projects and work items with execution state |
+| POST / PATCH | `/api/work/projects[/:id]` | Create a project or update its workflow |
+| POST | `/api/work/items` | Create work (human or agent-assigned) |
+| GET / PATCH | `/api/work/items/:id` | Detail/history or revision-guarded update |
+| POST | `/api/work/items/:id/comments` | Post a comment with `Idempotency-Key` |
+| POST | `/api/work/items/:id/archive\|restore\|resume` | Revision-guarded work controls |
 | POST | `/api/records/:kind` | Create task, routine, connector, memory or skill |
 | PATCH | `/api/records/:kind/:id` | Edit routine, connector, memory or skill |
 | DELETE | `/api/records/memory\|skill/:id` | Remove saved knowledge |
@@ -225,8 +262,9 @@ Core routes:
 
 Migration 10 adds `workspace_records`. Versioned workspace events participate in
 the same transaction, ownership fence and replay verification as core domain
-events. Replay now verifies 23 projection tables. This upgrade is forward-only;
-an older KRU binary rejects a database with migration 10. Back up the database
+events. Migration 11 adds projects, work items, stage runs and activity, all
+event-backed. Replay now verifies 27 projection tables. This upgrade is forward-only;
+an older KRU binary rejects a database with migration 11. Back up the database
 before returning to an older checkout.
 
 ## Verification
@@ -240,7 +278,8 @@ bun run test:ui
 
 The browser check creates an isolated temporary database, uses scripted providers,
 launches a real MCP process, and drives Chromium through the operator UI. It covers
-teammate creation, streamed chat, memory, skills, task completion, routines,
+teammate creation, streamed chat, memory, skills, Work projects, stage handoffs, review, drag-and-drop, comments, search,
+archive/restore, routines,
 connector discovery, approval decisions, browser navigation/fill/click, cookie
 persistence and mobile layout. Screenshots and a JSON result go to
 `$TMPDIR/kru-workspace-verification`, or `KRU_UI_ARTIFACT_DIR` when set.

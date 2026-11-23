@@ -28,6 +28,8 @@ export function createWebServer(options: { store: Store; daemon: Daemon; port?: 
   const agents = new AgentRegistry(store), mailbox = new SqliteMailbox(store);
   const token = randomBytes(32).toString('hex');
   const assets = new Map([
+    ['/work.js', { body: readFileSync(new URL('./public/work.js', import.meta.url)), type: 'text/javascript; charset=utf-8' }],
+    ['/work.css', { body: readFileSync(new URL('./public/work.css', import.meta.url)), type: 'text/css; charset=utf-8' }],
     ['/app.js', { body: readFileSync(new URL('./public/app.js', import.meta.url)), type: 'text/javascript; charset=utf-8' }],
     ['/style.css', { body: readFileSync(new URL('./public/style.css', import.meta.url)), type: 'text/css; charset=utf-8' }],
   ]);
@@ -82,6 +84,34 @@ export function createWebServer(options: { store: Store; daemon: Daemon; port?: 
           } catch (error) { throw new HttpError(error instanceof Error && error.message === 'Invalid webhook token' ? 401 : 400, error instanceof Error ? error.message : 'Webhook rejected'); }
         }
         if (!equal(request.headers.get('x-kru-token') ?? '', token)) throw new HttpError(401, 'Open the KRU UI to authenticate');
+        if (path[1] === 'work') {
+          const work = workspace.work;
+          work.importTasks();
+          if (request.method === 'GET' && path.length === 2) return json({ projects: work.projects(), items: work.list() });
+          if (path[2] === 'projects') {
+            if (request.method === 'POST' && path.length === 3) return json(work.saveProject(await body(request)), 201);
+            if (request.method === 'PATCH' && path.length === 4) return json(work.saveProject(await body(request), path[3]!));
+          }
+          if (path[2] === 'items') {
+            if (request.method === 'POST' && path.length === 3) return json(work.create(await body(request)), 201);
+            const id = path[3]!;
+            if (request.method === 'GET' && path.length === 4) return json(work.detail(id));
+            if (request.method === 'PATCH' && path.length === 4) {
+              const { revision, ...input } = await body(request);
+              return json(work.update(id, input, z.number().int().positive().parse(revision)));
+            }
+            if (request.method === 'POST' && path[4] === 'comments' && path.length === 5) {
+              const input = z.object({ body: z.string().trim().min(1).max(12000) }).strict().parse(await body(request));
+              const key = z.string().min(1).max(200).parse(request.headers.get('idempotency-key'));
+              return json(work.comment(id, input.body, key), 201);
+            }
+            if (request.method === 'POST' && path.length === 5 && ['archive', 'restore', 'resume'].includes(path[4]!)) {
+              const input = z.object({ revision: z.number().int().positive() }).strict().parse(await body(request));
+              return json(path[4] === 'resume' ? work.resume(id, input.revision) : work.archive(id, input.revision, path[4] === 'restore'));
+            }
+          }
+          throw new HttpError(404, 'Unknown work route');
+        }
         if (path[1] === 'providers') {
           if (request.method === 'GET' && path.length === 2) return json({ providers: daemon.connections.snapshot() });
           const id = z.enum(['codex', 'claude']).parse(path[2]);

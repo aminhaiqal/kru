@@ -1,7 +1,7 @@
 # Kru
 
 Kru is a local-first workspace and engine for running AI agent CLIs as persistent
-teammates. A local browser UI now connects conversations, tasks, approvals,
+teammates. A local browser UI now connects conversations, Work boards, approvals,
 routines, MCP integrations, browser sessions, memory and skills to the engine.
 **M0–M7 are implemented:** a generic JSON-RPC transport, a typed
 provider port with fake, Codex and Claude adapters, streaming terminal chat,
@@ -35,7 +35,13 @@ Disconnected providers hold queued work until connected. Demo echoes messages
 without model calls. Choose
 the coding profile and workspace write access when a teammate should edit code.
 
-The UI includes streamed conversations, tasks with steps and explicit completion,
+The UI opens on **Work**: project boards, configurable workflow stages, agent
+assignments, comments, run history and a human Review gate. Active stages run
+their assigned agents and hand results to the next stage. Existing tasks retain
+their history as work items. See [the Work architecture](docs/WORK_ARCHITECTURE.md)
+for the Multica reference and how it maps to KRU.
+
+The UI also includes streamed conversations, steps and explicit completion,
 expiring approvals, daily/interval/webhook routines, per-agent MCP connections,
 browser sessions with saved cookies, durable memory, reusable skills, and activity
 and estimated usage. Install Chromium once for browser sessions:
@@ -212,7 +218,7 @@ bun run dev -- replay --verify
 
 Daemon inputs, assistant answers, tool/command details, turns and usage survive
 restart. Domain writes append versioned events and update projections in the
-same transaction. Replay verification now rebuilds twenty-three projection tables in an
+same transaction. Replay verification now rebuilds twenty-seven projection tables in an
 isolated database and reports drift without changing live state. Existing v1–v3
 databases upgrade through migration v4 with genesis events preserving queue order.
 See [M4 specification](docs/Kru_Project_Plan_and_Milestones.pdf) and `bun run test:history:repeat`.

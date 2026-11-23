@@ -36,6 +36,10 @@ export interface ItemRow {
 }
 type DeliveryEvent = 'delivery.imported' | 'delivery.claimed' | 'delivery.running' | 'delivery.restored' | 'delivery.finished' | 'delivery.cancelled' | 'delivery.retried';
 export type Payloads = {
+  'work.project_saved': { row: import('../work/types').ProjectRow };
+  'work.item_saved': { row: import('../work/types').WorkRow };
+  'work.run_saved': { row: import('../work/types').RunRow };
+  'work.activity_added': { row: import('../work/types').ActivityRow };
   'workspace.removed': { id: string };
   'workspace.recorded': { row: { id: string; kind: string; agent_id: string | null; data_json: string; created_at: string; updated_at: string } };
   'history.initialized': { id:1 };

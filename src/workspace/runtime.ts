@@ -14,6 +14,7 @@ import { RoutineRunner } from './routines';
 import { IntegrationGateway } from './integrations';
 import { BrowserGateway, browserActionSchema } from './browser';
 import { canonical } from '../store/events';
+import { WorkService } from '../work/service';
 
 const result = (success: boolean, value: unknown, limit = 26000): ToolResult => {
   const text = JSON.stringify(value);
@@ -44,6 +45,7 @@ export class WorkspaceRuntime {
   readonly records: WorkspaceRecords;
   readonly approvals: ApprovalBroker;
   readonly tasks: TaskRunner;
+  readonly work: WorkService;
   readonly routines: RoutineRunner;
   readonly integrations: IntegrationGateway;
   readonly browser: BrowserGateway;
@@ -51,9 +53,10 @@ export class WorkspaceRuntime {
   readonly live = new Map<string, { agentId: string; laneId: string | null; items: Map<string, { id: string; type: string; text?: string; details?: unknown }> }>();
   private readonly listeners = new Set<(event: LiveEvent) => void>();
   private readonly calls = new Map<string, { input: string; promise: Promise<ToolResult> }>();
-  constructor(readonly store: Store, scope: () => ProcessScope, maxHops?: number) {
+  constructor(readonly store: Store, scope: () => ProcessScope, maxHops?: number, interrupt?: (agentId: string, laneId: string) => void) {
     this.records = new WorkspaceRecords(store); this.approvals = new ApprovalBroker(this.records);
     this.tasks = new TaskRunner(this.records); this.routines = new RoutineRunner(this.records);
+    this.work = new WorkService(store, interrupt);
     this.integrations = new IntegrationGateway(this.records, scope); this.browser = new BrowserGateway(store.path, scope);
     const base = new ToolRouter(new SqliteMailbox(store), new AgentRegistry(store), new SqliteToolState(store), { history: new SqliteHistory(store), ...(maxHops === undefined ? {} : { maxHops }) });
     this.tools = {
@@ -150,6 +153,6 @@ export class WorkspaceRuntime {
   }
   onEvent(listener: (event: LiveEvent) => void): () => void { this.listeners.add(listener); return () => { this.listeners.delete(listener); }; }
   start(): void { this.approvals.recover(); }
-  tick(): void { this.tasks.tick(); this.routines.tick(); }
+  tick(): void { this.tasks.tick(); this.work.tick(); this.routines.tick(); }
   async close(): Promise<void> { this.approvals.close(); await Promise.all([this.integrations.close(), this.browser.close()]); this.live.clear(); this.calls.clear(); }
 }

@@ -7,6 +7,14 @@ Planned release line v0.2.
 
 ### Added
 
+- Replace Tasks with Work: project sidebar, Kanban/list views, editable workflow
+  stages, priorities, labels, due dates, agent assignment, activity and comments.
+  Stage entry starts an agent run, results carry into the next stage, and Review
+  requires explicit human completion. Existing tasks retain their lanes/history.
+- Add event-backed projects, work items, stage runs and activity in migration 11,
+  with revision guards, stale-run protection and replay across 27 projections.
+  Add workflow, API and Chromium coverage for handoffs and Work interactions.
+
 - Add an AI connections page with actual Codex/Claude Code authentication checks,
   project-local CLI installation, native sign-in flows, cancellation and recheck.
   Disconnected providers hold queued work and no longer appear ready in chat.

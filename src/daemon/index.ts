@@ -63,7 +63,7 @@ export class Daemon {
       onError: error => { this.failure = error; void this.stop(0); },
     });
     const agents = new AgentRegistry(store);
-    this.workspace = new WorkspaceRuntime(store, () => this.processScope(), options.maxHops);
+    this.workspace = new WorkspaceRuntime(store, () => this.processScope(), options.maxHops, (agentId, laneId) => this.scheduler.cancelLane(agentId, laneId));
     this.connections = new ProviderConnections(store.path, store.databaseId, () => this.processScope(), options.connections);
     this.connectionsEnabled = !factory || options.connections !== undefined;
     const tools = options.tools ?? this.workspace.tools;
