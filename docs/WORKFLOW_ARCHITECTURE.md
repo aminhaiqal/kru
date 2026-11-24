@@ -100,7 +100,7 @@ recorded in execution history. The host and daemon must remain running.
 - `src/workflows/types.ts`: graph validation, node types and data rows.
 - `src/workflows/data.ts`: bounded JSON data and property-path mapping.
 - `src/workflows/service.ts`: definitions, imports, execution, schedules and recovery.
-- `src/web/public/workflows.js`: graph canvas, node inspector and run history.
+- `src/web/client/workflows.js`: graph canvas, node inspector and run history.
 - `src/web/styles/workflows.css`: workflow UI styling.
 - `test/workflows.test.ts`: graph/data, connector, approval, recovery and API tests.
 - `scripts/check-workspace-ui.ts`: real Chromium workflows using scripted bots

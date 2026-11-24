@@ -1,0 +1,18 @@
+{
+  "entry": [
+    "src/desktop/engine.ts",
+    "src/web/client/{main,theme}.js",
+    "desktop/{main,preload}.cjs",
+    "scripts/*.{ts,cjs}",
+    "examples/*.ts",
+    "test/**/*.test.ts",
+  ],
+  "project": [
+    "src/**/*.{ts,js,css}",
+    "desktop/**/*.cjs",
+    "scripts/*.{ts,cjs}",
+    "examples/**/*.ts",
+    "test/**/*.ts",
+  ],
+  "ignore": ["src/web/public/**"],
+}

@@ -42,7 +42,16 @@ function fixture(t) {
       },
     ],
   };
-  return { root, source, profile, cache, cookies, target, options, manager: new BrowserImporter(options) };
+  return {
+    root,
+    source,
+    profile,
+    cache,
+    cookies,
+    target,
+    options,
+    manager: new BrowserImporter(options),
+  };
 }
 test('profile discovery exposes metadata without importing or exposing cookie values', (t) => {
   const f = fixture(t),
@@ -70,11 +79,16 @@ test('imports selected cookies and stages compatible cache without changing the 
   const next = new BrowserImporter(f.options);
   next.activateCache('kru-browser-fixture-owner');
   assert.equal(
-    fs.readFileSync(join(f.options.sessionData, 'Partitions/kru-browser-fixture-owner/Cache/entry'), 'utf8'),
+    fs.readFileSync(
+      join(f.options.sessionData, 'Partitions/kru-browser-fixture-owner/Cache/entry'),
+      'utf8',
+    ),
     'cached payload',
   );
   assert.equal(
-    fs.existsSync(join(f.options.sessionData, 'Partitions/kru-browser-fixture-owner/Cache/skip-link')),
+    fs.existsSync(
+      join(f.options.sessionData, 'Partitions/kru-browser-fixture-owner/Cache/skip-link'),
+    ),
     false,
   );
   assert.equal(fs.readFileSync(join(f.cache, 'entry'), 'utf8'), 'cached payload');
@@ -178,7 +192,10 @@ test('source browser helper exports over a private pipe and cleans its cloned pr
     { mode: 0o700 },
   );
   const children = new Set();
-  const cookies = await chromiumCookies({ binary, cookieFile: join(f.profile, 'Cookies') }, children);
+  const cookies = await chromiumCookies(
+    { binary, cookieFile: join(f.profile, 'Cookies') },
+    children,
+  );
   assert.equal(cookies[0].value, 'fixture');
   assert.equal(cookies.storedCount, 1);
   assert.equal(children.size, 0);
@@ -192,7 +209,13 @@ test('previous KRU cookies are offered for selected import without changing the 
   const state = join(profile, 'state.json'),
     data = JSON.stringify({
       cookies: [
-        { domain: 'example.test', name: 'previous-signin', value: 'fixture', path: '/', secure: true },
+        {
+          domain: 'example.test',
+          name: 'previous-signin',
+          value: 'fixture',
+          path: '/',
+          secure: true,
+        },
       ],
       origins: [],
     });

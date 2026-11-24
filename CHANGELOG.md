@@ -5,8 +5,21 @@
 M7 — crash recovery and safe restart; expanded M6 conformance follow-up.
 Planned release line v0.2.
 
+### Maintenance
+
+- Replace frontend globals and script-order dependencies with feature modules and
+  a single local asset build. Remove the retired Skills editor, unused handlers,
+  internal compatibility exports, and 66 obsolete style selectors.
+- Keep editable UI/CSS sources separate from generated bundles; clean packaging
+  resources on rebuild. Add ESLint, Knip, TypeScript unused-code checks, Prettier,
+  and a maintenance guide.
+
 ### Added
 
+- Add KRU Brain: a dedicated Obsidian vault for shared knowledge and isolated
+  personal/bot memory, live note retrieval, legacy imports, and Connector controls.
+- Add a persistent Light / Dark / System appearance selector to the sidebar,
+  shared colors across workspace views, and native desktop/browser theme updates.
 - Ship an Electron desktop shell and a bundled native engine, private `kru://`
   application protocol, native workspace menu, icon and macOS app packaging.
 - Make Chat personal user-to-LLM conversation, with thread deletion, isolated

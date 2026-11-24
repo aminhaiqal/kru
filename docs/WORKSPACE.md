@@ -16,19 +16,18 @@ open their conversations, and the rail's plus button creates a teammate. On
 mobile, the menu button opens the same navigation with full labels; Escape
 closes it.
 
-Navigation styles use Tailwind CSS with semantic sidebar tokens. Edit
-`src/web/styles/navigation.css`, then run `bun run build:css` (or `bun run dev:css`
-while editing). The generated `src/web/public/navigation.css` is checked in and
-served locally, so opening the UI needs no CSS build or CDN. Existing page styles
-remain in `style.css` and `work.css`. Tailwind Preflight is omitted to preserve
-existing form and page behavior. This frontend uses plain JavaScript; React
-shadcn/ui components are not installed.
+Frontend source lives in `src/web/client/` and `src/web/styles/`. Run
+`bun run build:web` after changing the client, or `bun run build:css` after CSS-only
+changes (`bun run dev:css` watches CSS). The generated `app.js`, `theme.js`, and
+`style.css` in `src/web/public/` are checked in and served locally. Tailwind
+Preflight is omitted to preserve the application controls. See
+[Maintaining KRU](MAINTAINING.md) for module boundaries and validation commands.
 
 ## Teammates and conversations
 
 ### Connect Codex and Claude Code
 
-Open **Connector → AI accounts**. KRU checks `codex login status` and
+Open **Connector**. KRU checks `codex login status` and
 `claude auth status --json` on this computer. The page starts in Checking and
 distinguishes Not installed, Not connected, Connected, and Needs attention.
 Executable presence or an imported SDK alone never produces Connected. A status

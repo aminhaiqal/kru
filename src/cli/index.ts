@@ -1,65 +1,100 @@
 #!/usr/bin/env bun
-import { fileURLToPath } from "node:url";
-import { chat } from "./chat";
-import { mailboxCommand } from "./mailbox";
-import { costCommand } from "./cost";
-import { daemonCommand } from "./daemon";
-import { historyCommand } from "./history";
-import packageJson from "../../package.json";
+import { fileURLToPath } from 'node:url';
+import { chat } from './chat';
+import { mailboxCommand } from './mailbox';
+import { costCommand } from './cost';
+import { daemonCommand } from './daemon';
+import { historyCommand } from './history';
+import packageJson from '../../package.json';
 import { recoveryCommand } from './recovery';
 import { uiCommand } from './ui';
 import { approvalCommand } from './approval';
-import { RpcConnection, installRpcSignalHandlers } from "../rpc";
+import { RpcConnection, installRpcSignalHandlers } from '../rpc';
 
 export async function main(args = process.argv.slice(2)): Promise<number> {
   if (args[0] === 'approval') {
-    try { return approvalCommand(args.slice(1)); }
-    catch (error) { console.error(`error: ${error instanceof Error ? error.message : String(error)}`); return 1; }
+    try {
+      return approvalCommand(args.slice(1));
+    } catch (error) {
+      console.error(`error: ${error instanceof Error ? error.message : String(error)}`);
+      return 1;
+    }
   }
   if (args[0] === 'ui' || args[0] === 'serve') {
-    try { return await uiCommand(args.slice(1)); }
-    catch (error) { console.error(`error: ${error instanceof Error ? error.message : String(error)}`); return 1; }
+    try {
+      return await uiCommand(args.slice(1));
+    } catch (error) {
+      console.error(`error: ${error instanceof Error ? error.message : String(error)}`);
+      return 1;
+    }
   }
-  if(args[0]==='recovery'){
-    try{return recoveryCommand(args.slice(1));}catch(error){console.error(`error: ${error instanceof Error?error.message:String(error)}`);return 1;}
+  if (args[0] === 'recovery') {
+    try {
+      return recoveryCommand(args.slice(1));
+    } catch (error) {
+      console.error(`error: ${error instanceof Error ? error.message : String(error)}`);
+      return 1;
+    }
   }
   if (args[0] === 'log' || args[0] === 'replay') {
-    try { return await historyCommand(args[0], args.slice(1)); }
-    catch (error) { console.error(`error: ${error instanceof Error ? error.message : String(error)}`); return 1; }
+    try {
+      return await historyCommand(args[0], args.slice(1));
+    } catch (error) {
+      console.error(`error: ${error instanceof Error ? error.message : String(error)}`);
+      return 1;
+    }
   }
-  if (args[0] === "cost") {
-    try { return costCommand(args.slice(1)); }
-    catch (error) { console.error(`error: ${error instanceof Error ? error.message : String(error)}`); return 1; }
+  if (args[0] === 'cost') {
+    try {
+      return costCommand(args.slice(1));
+    } catch (error) {
+      console.error(`error: ${error instanceof Error ? error.message : String(error)}`);
+      return 1;
+    }
   }
-  if (args[0] === "daemon" || args[0] === "status") {
-    try { return await daemonCommand(args); }
-    catch (error) { console.error(`error: ${error instanceof Error ? error.message : String(error)}`); return 1; }
+  if (args[0] === 'daemon' || args[0] === 'status') {
+    try {
+      return await daemonCommand(args);
+    } catch (error) {
+      console.error(`error: ${error instanceof Error ? error.message : String(error)}`);
+      return 1;
+    }
   }
-  if (["init", "agent", "send", "queue", "cancel", "retry"].includes(args[0] ?? "")) {
-    try { return mailboxCommand(args); }
-    catch (error) { console.error(`error: ${error instanceof Error ? error.message : String(error)}`); return 1; }
+  if (['init', 'agent', 'send', 'queue', 'cancel', 'retry'].includes(args[0] ?? '')) {
+    try {
+      return mailboxCommand(args);
+    } catch (error) {
+      console.error(`error: ${error instanceof Error ? error.message : String(error)}`);
+      return 1;
+    }
   }
-  if (args[0] === "chat") {
-    try { return await chat(args.slice(1)); }
-    catch (error) { console.error(`error: ${error instanceof Error ? error.message : String(error)}`); return 1; }
+  if (args[0] === 'chat') {
+    try {
+      return await chat(args.slice(1));
+    } catch (error) {
+      console.error(`error: ${error instanceof Error ? error.message : String(error)}`);
+      return 1;
+    }
   }
-  if (args.length === 1 && (args[0] === "--version" || args[0] === "-v")) {
+  if (args.length === 1 && (args[0] === '--version' || args[0] === '-v')) {
     console.log(packageJson.version);
     return 0;
   }
-  if (args.length === 0 || args.includes("--help") || args.includes("-h")) {
-    console.log("Usage: kru ui [--port <port>] [--db <path>]\n       kru approval list [--json]\n       kru approval accept|decline <id>\n       kru rpc ping --fake [--stall] [--timeout-ms <milliseconds>]\n       kru chat [--provider fake|codex|claude] [prompt]\n       kru daemon [--max-turns <count>]\n       kru log <agent> [--follow] [--json]\n       kru replay --verify [--json]\n       kru cost [--agent <agent>] [--by agent|model|chain] [--since 7d] [--json]\n       kru status [--json]\n       kru recovery inspect [--json]\n       kru agent set <agent> --daily-tokens <count>\n       kru agent pause|resume <agent>\n       kru init\n       kru agent create <name> --provider fake|codex|claude\n       kru agent list\n       kru send <agent> <text>\n       kru queue <agent>\n       kru cancel <delivery>\n       kru retry <delivery>\n       kru --version");
+  if (args.length === 0 || args.includes('--help') || args.includes('-h')) {
+    console.log(
+      'Usage: kru ui [--port <port>] [--db <path>]\n       kru approval list [--json]\n       kru approval accept|decline <id>\n       kru rpc ping --fake [--stall] [--timeout-ms <milliseconds>]\n       kru chat [--provider fake|codex|claude] [prompt]\n       kru daemon [--max-turns <count>]\n       kru log <agent> [--follow] [--json]\n       kru replay --verify [--json]\n       kru cost [--agent <agent>] [--by agent|model|chain] [--since 7d] [--json]\n       kru status [--json]\n       kru recovery inspect [--json]\n       kru agent set <agent> --daily-tokens <count>\n       kru agent pause|resume <agent>\n       kru init\n       kru agent create <name> --provider fake|codex|claude\n       kru agent list\n       kru send <agent> <text>\n       kru queue <agent>\n       kru cancel <delivery>\n       kru retry <delivery>\n       kru --version',
+    );
     return 0;
   }
-  if (args[0] !== "rpc" || args[1] !== "ping" || !args.includes("--fake")) {
-    console.error("error: expected kru rpc ping --fake (see --help)");
+  if (args[0] !== 'rpc' || args[1] !== 'ping' || !args.includes('--fake')) {
+    console.error('error: expected kru rpc ping --fake (see --help)');
     return 1;
   }
   let timeoutMs = 2_000;
   for (let i = 2; i < args.length; i++) {
     const arg = args[i];
-    if (arg === "--fake" || arg === "--stall") continue;
-    if (arg === "--timeout-ms") {
+    if (arg === '--fake' || arg === '--stall') continue;
+    if (arg === '--timeout-ms') {
       timeoutMs = Number(args[++i]);
       if (Number.isSafeInteger(timeoutMs) && timeoutMs > 0) continue;
     }
@@ -68,7 +103,10 @@ export async function main(args = process.argv.slice(2)): Promise<number> {
   }
   const connection = new RpcConnection({
     command: process.execPath,
-    args: [fileURLToPath(new URL("../../test/fakes/fake-agent.ts", import.meta.url)), ...(args.includes("--stall") ? ["--stall"] : [])],
+    args: [
+      fileURLToPath(new URL('../../test/fakes/fake-agent.ts', import.meta.url)),
+      ...(args.includes('--stall') ? ['--stall'] : []),
+    ],
     requestTimeoutMs: timeoutMs,
     maxLineBytes: 256 * 1024 * 1024,
     maxQueuedWriteBytes: 4 * 1024 * 1024,
@@ -78,12 +116,16 @@ export async function main(args = process.argv.slice(2)): Promise<number> {
   try {
     connection.start();
     const started = performance.now();
-    const result = await connection.request("ping", {}, {
-      decode: (value) => {
-        if (value !== "pong") throw new Error("expected pong from fake agent");
-        return value;
+    const result = await connection.request(
+      'ping',
+      {},
+      {
+        decode: (value) => {
+          if (value !== 'pong') throw new Error('expected pong from fake agent');
+          return value;
+        },
       },
-    });
+    );
     console.log(`${result} (${(performance.now() - started).toFixed(1)} ms)`);
     return shutdown.exitCode ?? 0;
   } catch (error) {

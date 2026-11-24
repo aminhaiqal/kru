@@ -75,7 +75,7 @@ the human review gate owns the final decision.
 - `src/work/service.ts`: transactions, assignment, handoffs, imports and activity.
 - `src/workspace/runtime.ts`: service integration and lifecycle ticks.
 - `src/web/server.ts`: authenticated Work routes.
-- `src/web/public/work.js` and `work.css`: board, list, editors and detail panel.
+- `src/web/client/work.js` and `src/web/styles/work.css`: board, list, editors and detail panel.
 - `test/work.test.ts`: handoffs, stale executions, review, replay and API checks.
 - `scripts/check-workspace-ui.ts`: real Chromium interaction checks using
   scripted providers in an isolated database.

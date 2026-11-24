@@ -18,7 +18,7 @@ download is required to use the packaged application.
 - `src/workspace/browser.ts` is the engine's typed IPC gateway. Browser requests
   and state travel on the private parent/child process channel. No browser
   automation port is exposed. Cancellation and parent disconnect are handled.
-- `src/web/public/browser-panel.js` owns the address bar and tab controls. It
+- `src/web/client/browser-panel.js` owns the address bar and tab controls. It
   places a native view in its surface and hides it while an app dialog is open.
   There is no image stream or per-keystroke HTTP transport.
 - Profiles use persistent Electron partitions keyed by workspace and agent ID.

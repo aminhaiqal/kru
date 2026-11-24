@@ -1,5 +1,5 @@
-import type { Writable } from "node:stream";
-import { WriteQueueFullError } from "./errors";
+import type { Writable } from 'node:stream';
+import { WriteQueueFullError } from './errors';
 
 interface Write {
   data: Buffer;
@@ -29,7 +29,8 @@ export class WriteQueue {
   send(data: Buffer, signal?: AbortSignal): Promise<void> {
     if (this.failure) return Promise.reject(this.failure);
     if (signal?.aborted) return Promise.reject(signal.reason);
-    if (this.bytes + data.length > this.limit) return Promise.reject(new WriteQueueFullError(this.limit));
+    if (this.bytes + data.length > this.limit)
+      return Promise.reject(new WriteQueueFullError(this.limit));
     return new Promise<void>((resolve, reject) => {
       const abort = () => {
         const index = this.queue.indexOf(write);
@@ -41,10 +42,12 @@ export class WriteQueue {
         reject(signal?.reason);
       };
       const write: Write = {
-        data, resolve, reject,
-        cleanup: () => signal?.removeEventListener("abort", abort),
+        data,
+        resolve,
+        reject,
+        cleanup: () => signal?.removeEventListener('abort', abort),
       };
-      signal?.addEventListener("abort", abort, { once: true });
+      signal?.addEventListener('abort', abort, { once: true });
       this.bytes += data.length;
       this.queue.push(write);
       this.pump();
@@ -54,7 +57,7 @@ export class WriteQueue {
   close(error: Error): void {
     if (this.failure) return;
     this.failure = error;
-    this.stream.removeListener("drain", this.onDrain);
+    this.stream.removeListener('drain', this.onDrain);
     for (const write of [this.active, ...this.queue]) {
       if (!write) continue;
       write.cleanup();
@@ -93,7 +96,7 @@ export class WriteQueue {
       });
       if (!ready) {
         this.blocked = true;
-        this.stream.once("drain", this.onDrain);
+        this.stream.once('drain', this.onDrain);
         this.onBlocked(this.bytes);
       }
     } catch (error) {

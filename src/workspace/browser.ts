@@ -59,7 +59,8 @@ export class BrowserGateway {
     string,
     { resolve: (value: any) => void; reject: (error: Error) => void }
   >();
-  private readonly available = process.env.KRU_NATIVE_BROWSER === '1' && typeof process.send === 'function';
+  private readonly available =
+    process.env.KRU_NATIVE_BROWSER === '1' && typeof process.send === 'function';
   private readonly disconnected = () => {
     for (const request of [...this.pending.values()])
       request.reject(new Error('Native browser disconnected'));
@@ -170,7 +171,8 @@ export class BrowserGateway {
     } finally {
       process.off('message', this.receive);
       process.off('disconnect', this.disconnected);
-      for (const request of [...this.pending.values()]) request.reject(new Error('Browser gateway closed'));
+      for (const request of [...this.pending.values()])
+        request.reject(new Error('Browser gateway closed'));
       this.pending.clear();
       this.listeners.clear();
     }

@@ -1,5 +1,7 @@
-export type Sender = { kind: 'user' } | { kind: 'agent'; agentId: string } | { kind: 'routine'; routineId: string };
-export type DeliveryStatus = 'queued' | 'starting' | 'running' | 'completed' | 'failed' | 'interrupted' | 'cancelled';
+export type Sender =
+  { kind: 'user' } | { kind: 'agent'; agentId: string } | { kind: 'routine'; routineId: string };
+export type DeliveryStatus =
+  'queued' | 'starting' | 'running' | 'completed' | 'failed' | 'interrupted' | 'cancelled';
 export type FinalStatus = 'completed' | 'failed' | 'interrupted' | 'cancelled';
 export interface EnqueueInput {
   sender: Sender;
@@ -11,7 +13,11 @@ export interface EnqueueInput {
   idempotencyKey?: string;
   chain?: { id: string; hop: number };
 }
-export interface EnqueueReceipt { messageId: string; deliveryIds: string[]; duplicate: boolean }
+export interface EnqueueReceipt {
+  messageId: string;
+  deliveryIds: string[];
+  duplicate: boolean;
+}
 export interface Delivery {
   seq: number;
   id: string;
@@ -33,10 +39,28 @@ export interface Delivery {
   createdAt: string;
   updatedAt: string;
 }
-export interface Batch { id: string; agentId: string; laneId: string | null; deliveries: Delivery[] }
-export interface LaneHead { agentId: string; laneId: string | null; head: Delivery | null }
-export interface ActiveLane { agentId: string; laneId: string | null; batchId: string; turnId: string | null; startedAt: string }
-export interface MailboxChange { deliveryId: string; status: DeliveryStatus }
+export interface Batch {
+  id: string;
+  agentId: string;
+  laneId: string | null;
+  deliveries: Delivery[];
+}
+export interface LaneHead {
+  agentId: string;
+  laneId: string | null;
+  head: Delivery | null;
+}
+export interface ActiveLane {
+  agentId: string;
+  laneId: string | null;
+  batchId: string;
+  turnId: string | null;
+  startedAt: string;
+}
+export interface MailboxChange {
+  deliveryId: string;
+  status: DeliveryStatus;
+}
 /** The engine port. Implementations store work; they never start providers. */
 export interface Mailbox {
   enqueue(input: EnqueueInput): EnqueueReceipt;

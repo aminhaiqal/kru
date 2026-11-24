@@ -8,7 +8,13 @@ export function enableBrowserDefaults(db: Database): void {
   for (const row of db.query<AgentRow, []>('SELECT * FROM agents').all()) {
     const config = JSON.parse(row.config_json);
     if (config.browser?.enabled === true) continue;
-    config.browser = { ...config.browser, enabled: true, permission: config.browser?.permission ?? 'ask' };
-    append(db, command, 'agent.configured', { row: { ...row, config_json: JSON.stringify(config) } });
+    config.browser = {
+      ...config.browser,
+      enabled: true,
+      permission: config.browser?.permission ?? 'ask',
+    };
+    append(db, command, 'agent.configured', {
+      row: { ...row, config_json: JSON.stringify(config) },
+    });
   }
 }

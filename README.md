@@ -33,10 +33,10 @@ Chat is personal user-to-LLM conversation, with searchable/deletable threads,
 file/folder attachments and a provider → model → thinking effort picker. Models and
 supported efforts are read from your installed CLI and sent back to that CLI
 when selected. Context stays with the logical thread when switching models.
-Sign in through **Connector → AI accounts**.
+Sign in through **Connector**.
 
 Create a teammate using **Codex**, **Claude**, or **Demo**. Real providers use
-their existing local login. Open **Connector → AI accounts** to check their actual local
+their existing local login. Open **Connector** to check their actual local
 sign-in status, install a missing CLI, or complete the provider's sign-in flow.
 Disconnected providers hold queued work until connected. Demo echoes messages
 without model calls. Choose
@@ -424,3 +424,5 @@ Stable CI stays pinned; the canary needs no model credential.
 
 Kru is inspired by OpenBot and is independently implemented. It contains no
 copied OpenBot code. Licensed under [MIT](LICENSE).
+
+See [Maintaining KRU](docs/MAINTAINING.md) for source locations, frontend builds, and checks.

@@ -29,9 +29,13 @@ export function resolveDatabasePath(override?: string): string {
   const explicit = explicitPath(override);
   if (explicit !== null) return explicit;
   const project = findProjectDirectory();
-  if (!project) throw new Error('No Kru project found. Run kru init in your project, or use --db <path> or KRU_DB.');
+  if (!project)
+    throw new Error(
+      'No Kru project found. Run kru init in your project, or use --db <path> or KRU_DB.',
+    );
   const path = join(project, '.kru', 'kru.sqlite');
-  if (!existsSync(path)) throw new Error(`No mailbox database in ${project}. Run kru init to initialize it.`);
+  if (!existsSync(path))
+    throw new Error(`No mailbox database in ${project}. Run kru init to initialize it.`);
   return path;
 }
 

@@ -1,6 +1,12 @@
 import type { Agent } from '../agents';
 import type { Batch, LaneHead, Mailbox } from '../mailbox';
-import type { ProviderClient, TokenUsage, ApprovalCall, ApprovalResult, Notification } from '../providers/protocol';
+import type {
+  ProviderClient,
+  TokenUsage,
+  ApprovalCall,
+  ApprovalResult,
+  Notification,
+} from '../providers/protocol';
 import { sessionConfigHash, prepareSession } from './session';
 import { SessionInputError } from '../threads/session-types';
 import type { AgentSource, ProviderFactory, SessionStore } from './ports';
@@ -19,34 +25,60 @@ import { TurnAnswer } from '../tools/delivery-content';
 import { storedError } from '../store/errors';
 
 export interface LaneStatus {
-  agentId: string; laneId: string | null; state: 'held' | 'starting' | 'running';
-  reason?: HoldReason; error?: string; batchId?: string; batchSize?: number; turnId?: string;
-  usedTokens: number; dailyTokens?: number; usedUsd?: number; dailyUsd?: number; budgetDetail?: string;
+  agentId: string;
+  laneId: string | null;
+  state: 'held' | 'starting' | 'running';
+  reason?: HoldReason;
+  error?: string;
+  batchId?: string;
+  batchSize?: number;
+  turnId?: string;
+  usedTokens: number;
+  dailyTokens?: number;
+  usedUsd?: number;
+  dailyUsd?: number;
+  budgetDetail?: string;
 }
 interface Runtime {
   reconnect?: boolean;
   waiting: number;
   active?: ToolContext;
-  provider: ProviderClient; configHash: string; ready: boolean; starting: boolean; retryAt: number;
-  error?: string; threadId?: string;
+  provider: ProviderClient;
+  configHash: string;
+  ready: boolean;
+  starting: boolean;
+  retryAt: number;
+  error?: string;
+  threadId?: string;
 }
 export interface SchedulerOptions {
   turnInputs?: (batch: Batch, handoff: boolean) => import('../providers/protocol').TurnInput[];
   resolveAgent?: (agent: Agent, laneId: string | null) => Agent;
   providerReadiness?: (agent: Agent) => { ready: boolean; message?: string };
-  onApproval?: (context: ToolContext, call: ApprovalCall, signal: AbortSignal) => Promise<ApprovalResult>;
+  onApproval?: (
+    context: ToolContext,
+    call: ApprovalCall,
+    signal: AbortSignal,
+  ) => Promise<ApprovalResult>;
   onNotification?: (batch: Batch, notification: Notification) => void;
-  guard?:()=>void;
-  onClaim?:(batch:Batch,provider:ProviderClient)=>void;
-  onBound?:(batch:Batch,threadId:string)=>void;
-  guardExecution?:(batch:Batch)=>void;
+  guard?: () => void;
+  onClaim?: (batch: Batch, provider: ProviderClient) => void;
+  onBound?: (batch: Batch, threadId: string) => void;
+  guardExecution?: (batch: Batch) => void;
   handoffChars?: number;
-  tools?: AgentTools; maxHops?: number;
+  tools?: AgentTools;
+  maxHops?: number;
   turns?: TurnHistory;
-  budgetTimezone?: string; ledger?: UsageLedger;
-  maxTurns?: number; idleTimeoutMs?: number; startTimeoutMs?: number; startGraceMs?: number;
-  providerRetryMs?: number; now?: () => number;
-  onState?: () => void; onError?: (error: unknown) => void;
+  budgetTimezone?: string;
+  ledger?: UsageLedger;
+  maxTurns?: number;
+  idleTimeoutMs?: number;
+  startTimeoutMs?: number;
+  startGraceMs?: number;
+  providerRetryMs?: number;
+  now?: () => number;
+  onState?: () => void;
+  onError?: (error: unknown) => void;
   /** Test seam for the historical lost-wakeup gap, after turn completion but before flag release. */
   beforeRelease?: (agentId: string, laneId: string | null) => void;
 }
@@ -76,24 +108,49 @@ export class Scheduler {
   private unsubscribeUsage: (() => void) | undefined;
   private unsubscribeAgents: (() => void) | undefined;
 
-  constructor(private readonly mailbox: Mailbox, private readonly agents: AgentSource,
-    private readonly sessions: SessionStore, private readonly createProvider: ProviderFactory,
-    private readonly options: SchedulerOptions = {}) {
+  constructor(
+    private readonly mailbox: Mailbox,
+    private readonly agents: AgentSource,
+    private readonly sessions: SessionStore,
+    private readonly createProvider: ProviderFactory,
+    private readonly options: SchedulerOptions = {},
+  ) {
     this.slots = new TurnSlots(options.maxTurns);
     this.now = options.now ?? Date.now;
     this.ledger = options.ledger ?? new MemoryUsageLedger();
     this.calendar = new BudgetCalendar(options.budgetTimezone);
     this.budgetTimezone = this.calendar.timeZone;
     this.day = this.today();
-    if (options.handoffChars !== undefined && (!Number.isSafeInteger(options.handoffChars) || options.handoffChars < 512 || options.handoffChars > 16000)) throw new Error('handoffChars must be between 512 and 16000');
-    for (const value of [options.idleTimeoutMs, options.startTimeoutMs, options.startGraceMs, options.providerRetryMs]) {
-      if (value !== undefined && (!Number.isSafeInteger(value) || value < 1 || value > 2_147_483_647)) throw new Error('Scheduler deadlines must be positive timer durations');
+    if (
+      options.handoffChars !== undefined &&
+      (!Number.isSafeInteger(options.handoffChars) ||
+        options.handoffChars < 512 ||
+        options.handoffChars > 16000)
+    )
+      throw new Error('handoffChars must be between 512 and 16000');
+    for (const value of [
+      options.idleTimeoutMs,
+      options.startTimeoutMs,
+      options.startGraceMs,
+      options.providerRetryMs,
+    ]) {
+      if (
+        value !== undefined &&
+        (!Number.isSafeInteger(value) || value < 1 || value > 2_147_483_647)
+      )
+        throw new Error('Scheduler deadlines must be positive timer durations');
     }
   }
   start(): void {
     if (this.started || this.stopped) throw new Error('Scheduler has already started or stopped');
     this.started = true;
-    const refresh = () => { try { this.refresh(); } catch (error) { this.fail(error); } };
+    const refresh = () => {
+      try {
+        this.refresh();
+      } catch (error) {
+        this.fail(error);
+      }
+    };
     this.unsubscribe = this.mailbox.onChange(refresh);
     this.unsubscribeAgents = this.agents.onChange(refresh);
     this.unsubscribeUsage = this.ledger.onChange(refresh);
@@ -106,63 +163,111 @@ export class Scheduler {
     const current = this.mailbox.listLanes();
     const visible = new Set<string>();
     for (const lane of current) {
-      const key = keyOf(lane.agentId, lane.laneId); visible.add(key); this.lanes.set(key, lane);
+      const key = keyOf(lane.agentId, lane.laneId);
+      visible.add(key);
+      this.lanes.set(key, lane);
       if (lane.head && !this.draining.has(key)) this.scheduled.add(key);
-      if (!lane.head && !this.draining.has(key) && !this.mailbox.laneBusy(lane.agentId, lane.laneId)) this.states.delete(key);
+      if (
+        !lane.head &&
+        !this.draining.has(key) &&
+        !this.mailbox.laneBusy(lane.agentId, lane.laneId)
+      )
+        this.states.delete(key);
     }
     for (const key of this.lanes.keys()) {
-      if (!visible.has(key) && !this.draining.has(key)) { this.lanes.delete(key); this.states.delete(key); this.scheduled.delete(key); }
+      if (!visible.has(key) && !this.draining.has(key)) {
+        this.lanes.delete(key);
+        this.states.delete(key);
+        this.scheduled.delete(key);
+      }
     }
-    this.pumpSoon(); this.changed();
+    this.pumpSoon();
+    this.changed();
   }
   scheduleLane(agentId: string, laneId: string | null): void {
     if (this.stopped) return;
     const key = keyOf(agentId, laneId);
-    this.lanes.set(key, { agentId, laneId, head: this.mailbox.listQueue(agentId, laneId).find(d => d.status === 'queued') ?? null });
-    this.scheduled.add(key); this.pumpSoon();
+    this.lanes.set(key, {
+      agentId,
+      laneId,
+      head: this.mailbox.listQueue(agentId, laneId).find((d) => d.status === 'queued') ?? null,
+    });
+    this.scheduled.add(key);
+    this.pumpSoon();
   }
   /** Timer work does not scan queue contents unless a hold may have cleared. */
   tick(): void {
     if (this.stopped) return;
-    if (this.resetDay()) { this.refresh(); return; }
+    if (this.resetDay()) {
+      this.refresh();
+      return;
+    }
     for (const [key, state] of this.states) {
       const runtime = this.runtimes.get(key);
-      if (state.reason === 'provider-not-ready' && !runtime?.starting && (!runtime || this.now() >= runtime.retryAt)) this.scheduled.add(key);
+      if (
+        state.reason === 'provider-not-ready' &&
+        !runtime?.starting &&
+        (!runtime || this.now() >= runtime.retryAt)
+      )
+        this.scheduled.add(key);
     }
     if (this.scheduled.size) this.pumpSoon();
   }
-  status(): LaneStatus[] { return [...this.states.values()].sort((a, b) => keyOf(a.agentId, a.laneId).localeCompare(keyOf(b.agentId, b.laneId))).map(s => ({ ...s })); }
-  cancelLane(agentId: string, laneId: string | null): void { this.laneControllers.get(keyOf(agentId, laneId))?.abort(); }
+  status(): LaneStatus[] {
+    return [...this.states.values()]
+      .sort((a, b) => keyOf(a.agentId, a.laneId).localeCompare(keyOf(b.agentId, b.laneId)))
+      .map((s) => ({ ...s }));
+  }
+  cancelLane(agentId: string, laneId: string | null): void {
+    this.laneControllers.get(keyOf(agentId, laneId))?.abort();
+  }
   reconnectProvider(provider: string): void {
     if (!this.started || this.stopped) return;
-    for (const runtime of this.runtimes.values()) if (runtime.provider.provider === provider) runtime.reconnect = true;
+    for (const runtime of this.runtimes.values())
+      if (runtime.provider.provider === provider) runtime.reconnect = true;
     this.refresh();
   }
-  get activeTurns(): number { return this.slots.active; }
+  get activeTurns(): number {
+    return this.slots.active;
+  }
 
-  private today(): string { return this.calendar.day(this.now()); }
+  private today(): string {
+    return this.calendar.day(this.now());
+  }
   private resetDay(): boolean {
     const day = this.today();
     if (this.day === day) return false;
     this.day = day;
     for (const state of this.states.values()) {
       const value = this.ledger.totals(state.agentId, this.calendar, this.now());
-      state.usedTokens = value.tokens; state.usedUsd = value.nanoUsd / 1e9;
+      state.usedTokens = value.tokens;
+      state.usedUsd = value.nanoUsd / 1e9;
     }
     return true;
   }
-  private used(agentId: string): number { return this.ledger.totals(agentId, this.calendar, this.now()).tokens; }
+  private used(agentId: string): number {
+    return this.ledger.totals(agentId, this.calendar, this.now()).tokens;
+  }
   private account(batch: Batch, value: TokenUsage): void {
-    this.resetDay(); this.ledger.observe(batch.id, value);
+    this.resetDay();
+    this.ledger.observe(batch.id, value);
     const total = this.ledger.totals(batch.agentId, this.calendar, this.now());
-    for (const state of this.states.values()) if (state.agentId === batch.agentId) {
-      state.usedTokens = total.tokens; state.usedUsd = total.nanoUsd / 1e9;
-    }
+    for (const state of this.states.values())
+      if (state.agentId === batch.agentId) {
+        state.usedTokens = total.tokens;
+        state.usedUsd = total.nanoUsd / 1e9;
+      }
     this.changed();
   }
-  private changed(): void { this.options.onState?.(); }
+  private changed(): void {
+    this.options.onState?.();
+  }
   private fail(error: unknown): void {
-    this.stopped = true; this.unsubscribe?.(); this.unsubscribeAgents?.(); this.unsubscribeUsage?.(); this.scheduled.clear();
+    this.stopped = true;
+    this.unsubscribe?.();
+    this.unsubscribeAgents?.();
+    this.unsubscribeUsage?.();
+    this.scheduled.clear();
     if (this.options.onError) this.options.onError(error);
     else process.emitWarning(`Scheduler stopped: ${errorText(error)}`);
   }
@@ -172,7 +277,11 @@ export class Scheduler {
     queueMicrotask(() => {
       this.pumping = false;
       if (this.stopped) return;
-      try { this.pump(); } catch (error) { this.fail(error); }
+      try {
+        this.pump();
+      } catch (error) {
+        this.fail(error);
+      }
     });
   }
   private runtime(key: string, agent: Agent, laneId: string | null): Runtime | undefined {
@@ -186,52 +295,99 @@ export class Scheduler {
     // No turn is draining here, so retiring a changed configuration is safe.
     if (old) {
       this.runtimes.delete(key);
-      this.track(old.provider.stop().catch(error => this.fail(error)));
+      this.track(old.provider.stop().catch((error) => this.fail(error)));
     }
     const provider = this.createProvider(agent, laneId);
-    const runtime: Runtime = { provider, configHash: hash, ready: false, starting: false, retryAt: 0, waiting: 0 };
+    const runtime: Runtime = {
+      provider,
+      configHash: hash,
+      ready: false,
+      starting: false,
+      retryAt: 0,
+      waiting: 0,
+    };
     this.runtimes.set(key, runtime);
-    provider.on('exit', error => {
-      runtime.ready = false; delete runtime.threadId; runtime.error = errorText(error);
+    provider.on('exit', (error) => {
+      runtime.ready = false;
+      delete runtime.threadId;
+      runtime.error = errorText(error);
       runtime.retryAt = this.now() + (this.options.providerRetryMs ?? 1_000);
       if (!this.stopped) this.scheduleLane(agent.id, laneId);
     });
     // Bind calls to this provider view's confirmed active turn, never a model-supplied sender.
-    provider.on('request', async request => {
+    provider.on('request', async (request) => {
       if (request.signal.aborted) return;
-      try { this.options.guard?.(); if(runtime.active)this.options.guardExecution?.(runtime.active.batch); }
-      catch(error){provider.respondError(request.id,{code:-32602,message:'Stale daemon/runtime execution'});this.fail(error);return;}
+      try {
+        this.options.guard?.();
+        if (runtime.active) this.options.guardExecution?.(runtime.active.batch);
+      } catch (error) {
+        provider.respondError(request.id, {
+          code: -32602,
+          message: 'Stale daemon/runtime execution',
+        });
+        this.fail(error);
+        return;
+      }
       if (request.method === 'approval/request') {
         const context = runtime.active;
-        if (!context || this.stopped || context.threadId !== request.params.threadId || context.turnId !== request.params.turnId || !this.options.onApproval) {
-          provider.respond(request.id, { decision: 'decline' }); return;
+        if (
+          !context ||
+          this.stopped ||
+          context.threadId !== request.params.threadId ||
+          context.turnId !== request.params.turnId ||
+          !this.options.onApproval
+        ) {
+          provider.respond(request.id, { decision: 'decline' });
+          return;
         }
         runtime.waiting++;
         try {
           const result = await this.options.onApproval(context, request.params, request.signal);
-          this.options.guard?.(); this.options.guardExecution?.(context.batch);
-          if (!request.signal.aborted && runtime.active === context && !this.stopped) provider.respond(request.id, result);
+          this.options.guard?.();
+          this.options.guardExecution?.(context.batch);
+          if (!request.signal.aborted && runtime.active === context && !this.stopped)
+            provider.respond(request.id, result);
         } catch (error) {
           if (!request.signal.aborted) provider.respond(request.id, { decision: 'decline' });
-        } finally { runtime.waiting--; }
+        } finally {
+          runtime.waiting--;
+        }
       } else {
         const context = runtime.active;
-        if (!this.options.tools || !context || this.stopped || context.threadId !== request.params.threadId || context.turnId !== request.params.turnId) {
-          provider.respondError(request.id, { code: -32602, message: 'No matching active Kru tool turn' }); return;
+        if (
+          !this.options.tools ||
+          !context ||
+          this.stopped ||
+          context.threadId !== request.params.threadId ||
+          context.turnId !== request.params.turnId
+        ) {
+          provider.respondError(request.id, {
+            code: -32602,
+            message: 'No matching active Kru tool turn',
+          });
+          return;
         }
         let result;
         runtime.waiting++;
         try {
           result = await this.options.tools.handle(context, request.params, request.signal);
           if (request.signal.aborted || this.stopped || runtime.active !== context) return;
-          this.options.guard?.(); this.options.guardExecution?.(context.batch);
-        }
-        catch (error) {
+          this.options.guard?.();
+          this.options.guardExecution?.(context.batch);
+        } catch (error) {
           if (request.signal.aborted) return;
-          if (!request.signal.aborted) provider.respondError(request.id, { code: -32603, message: 'Kru tool transaction failed' });
-          this.fail(error); return;
-        } finally { runtime.waiting--; }
-        if (!request.signal.aborted && runtime.active === context && !this.stopped) provider.respond(request.id, result);
+          if (!request.signal.aborted)
+            provider.respondError(request.id, {
+              code: -32603,
+              message: 'Kru tool transaction failed',
+            });
+          this.fail(error);
+          return;
+        } finally {
+          runtime.waiting--;
+        }
+        if (!request.signal.aborted && runtime.active === context && !this.stopped)
+          provider.respond(request.id, result);
       }
     });
     this.beginProvider(runtime, key);
@@ -240,32 +396,61 @@ export class Scheduler {
   private beginProvider(runtime: Runtime, key: string): void {
     if (this.stopped || runtime.starting) return;
     runtime.starting = true;
-    const task = abortable(Promise.resolve().then(() => {this.options.guard?.();return runtime.provider.start();}).then(async () => {
-      if (this.stopped) { await runtime.provider.forceStop(); return; }
-      runtime.ready = true; delete runtime.error;
-    }), this.setupAbort.signal, this.options.startTimeoutMs ?? 30_000).catch(async error => {
-      runtime.ready = false; runtime.error = errorText(error);
-      runtime.retryAt = this.now() + (this.options.providerRetryMs ?? 1_000);
-      await runtime.provider.stop();
-    }).finally(() => {
-      runtime.starting = false;
-      if (!this.stopped && this.runtimes.get(key) === runtime) { this.scheduled.add(key); this.pumpSoon(); }
-    });
+    const task = abortable(
+      Promise.resolve()
+        .then(() => {
+          this.options.guard?.();
+          return runtime.provider.start();
+        })
+        .then(async () => {
+          if (this.stopped) {
+            await runtime.provider.forceStop();
+            return;
+          }
+          runtime.ready = true;
+          delete runtime.error;
+        }),
+      this.setupAbort.signal,
+      this.options.startTimeoutMs ?? 30_000,
+    )
+      .catch(async (error) => {
+        runtime.ready = false;
+        runtime.error = errorText(error);
+        runtime.retryAt = this.now() + (this.options.providerRetryMs ?? 1_000);
+        await runtime.provider.stop();
+      })
+      .finally(() => {
+        runtime.starting = false;
+        if (!this.stopped && this.runtimes.get(key) === runtime) {
+          this.scheduled.add(key);
+          this.pumpSoon();
+        }
+      });
     this.track(task);
   }
   private track(task: Promise<void>): void {
     this.tasks.add(task);
-    void task.finally(() => this.tasks.delete(task)).catch(error => this.fail(error));
+    void task.finally(() => this.tasks.delete(task)).catch((error) => this.fail(error));
   }
   private pump(): void {
     this.options.guard?.();
-    const keys = [...this.scheduled]; this.scheduled.clear();
-    const candidates = keys.filter(k => !this.draining.has(k)).map(key => {
-      const lane = this.lanes.get(key)!;
-      const head = this.mailbox.listQueue(lane.agentId, lane.laneId).find(d => d.status === 'queued') ?? null;
-      return { key, lane: { ...lane, head } };
-    }).filter(c => c.lane.head).sort((a, b) =>
-      Number(a.lane.head!.sender.kind !== 'user') - Number(b.lane.head!.sender.kind !== 'user') || a.lane.head!.seq - b.lane.head!.seq);
+    const keys = [...this.scheduled];
+    this.scheduled.clear();
+    const candidates = keys
+      .filter((k) => !this.draining.has(k))
+      .map((key) => {
+        const lane = this.lanes.get(key)!;
+        const head =
+          this.mailbox.listQueue(lane.agentId, lane.laneId).find((d) => d.status === 'queued') ??
+          null;
+        return { key, lane: { ...lane, head } };
+      })
+      .filter((c) => c.lane.head)
+      .sort(
+        (a, b) =>
+          Number(a.lane.head!.sender.kind !== 'user') -
+            Number(b.lane.head!.sender.kind !== 'user') || a.lane.head!.seq - b.lane.head!.seq,
+      );
     for (const { key, lane } of candidates) {
       const base = this.agents.get(lane.agentId);
       if (!base) continue;
@@ -275,141 +460,318 @@ export class Scheduler {
       if (!agent.config.paused) {
         try {
           const connection = this.options.providerReadiness?.(agent);
-          if (connection && !connection.ready) error = connection.message ?? 'Connect this provider before running work';
+          if (connection && !connection.ready)
+            error = connection.message ?? 'Connect this provider before running work';
           else runtime = this.runtime(key, agent, lane.laneId);
+        } catch (e) {
+          error = errorText(e);
         }
-        catch (e) { error = errorText(e); }
       }
       const total = this.ledger.totals(agent.id, this.calendar, this.now());
       const dollars = agent.config.dailyUsd as number | undefined;
       const model = String(agent.config.model ?? (agent.provider === 'fake' ? 'fake' : 'unknown'));
-      const priced = this.ledger.isPriced(agent.provider, model, new Date(this.now()).toISOString());
-      const budgetDetail = total.unknownTokens && agent.config.dailyTokens !== undefined ? 'unknown usage'
-        : dollars !== undefined && (total.unknownUsd || !priced) ? 'unknown or unpriced USD usage'
-        : dollars !== undefined && total.nanoUsd >= nanoUsd(dollars) ? 'USD limit' : 'token limit';
-      const budgetBlocked = (agent.config.dailyTokens !== undefined && total.unknownTokens)
-        || (dollars !== undefined && (total.unknownUsd || !priced || total.nanoUsd >= nanoUsd(dollars)));
-      const reason = holdReason({ paused: agent.config.paused === true, ready: runtime?.ready ?? false,
-        busy: this.mailbox.laneBusy(agent.id, lane.laneId), used: this.used(agent.id),
-        limit: agent.config.dailyTokens as number | undefined, budgetBlocked, slots: this.slots.available });
+      const priced = this.ledger.isPriced(
+        agent.provider,
+        model,
+        new Date(this.now()).toISOString(),
+      );
+      const budgetDetail =
+        total.unknownTokens && agent.config.dailyTokens !== undefined
+          ? 'unknown usage'
+          : dollars !== undefined && (total.unknownUsd || !priced)
+            ? 'unknown or unpriced USD usage'
+            : dollars !== undefined && total.nanoUsd >= nanoUsd(dollars)
+              ? 'USD limit'
+              : 'token limit';
+      const budgetBlocked =
+        (agent.config.dailyTokens !== undefined && total.unknownTokens) ||
+        (dollars !== undefined &&
+          (total.unknownUsd || !priced || total.nanoUsd >= nanoUsd(dollars)));
+      const reason = holdReason({
+        paused: agent.config.paused === true,
+        ready: runtime?.ready ?? false,
+        busy: this.mailbox.laneBusy(agent.id, lane.laneId),
+        used: this.used(agent.id),
+        limit: agent.config.dailyTokens as number | undefined,
+        budgetBlocked,
+        slots: this.slots.available,
+      });
       if (reason) {
-        this.states.set(key, { agentId: agent.id, laneId: lane.laneId, state: 'held', reason, usedUsd: total.nanoUsd / 1e9, budgetDetail,
+        this.states.set(key, {
+          agentId: agent.id,
+          laneId: lane.laneId,
+          state: 'held',
+          reason,
+          usedUsd: total.nanoUsd / 1e9,
+          budgetDetail,
           ...(dollars !== undefined ? { dailyUsd: dollars } : {}),
-          usedTokens: this.used(agent.id), ...(agent.config.dailyTokens !== undefined ? { dailyTokens: Number(agent.config.dailyTokens) } : {}),
-          ...((error ?? runtime?.error) ? { error: error ?? runtime!.error! } : {}) });
+          usedTokens: this.used(agent.id),
+          ...(agent.config.dailyTokens !== undefined
+            ? { dailyTokens: Number(agent.config.dailyTokens) }
+            : {}),
+          ...((error ?? runtime?.error) ? { error: error ?? runtime!.error! } : {}),
+        });
         continue;
       }
       const releaseSlot = this.slots.acquire()!;
       this.draining.add(key);
       let batch: Batch | null;
-      try { batch = this.mailbox.claimBatch(agent.id, lane.laneId); }
-      catch (e) { this.draining.delete(key); releaseSlot(); throw e; }
-      if (!batch) { this.draining.delete(key); releaseSlot(); continue; }
+      try {
+        batch = this.mailbox.claimBatch(agent.id, lane.laneId);
+      } catch (e) {
+        this.draining.delete(key);
+        releaseSlot();
+        throw e;
+      }
+      if (!batch) {
+        this.draining.delete(key);
+        releaseSlot();
+        continue;
+      }
       this.ledger.begin(batch, agent.provider, model, new Date(this.now()).toISOString());
-      this.options.onClaim?.(batch,runtime!.provider);
-      const controller = new AbortController(); this.controllers.add(controller); this.laneControllers.set(key, controller);
-      this.states.set(key, { agentId: agent.id, laneId: lane.laneId, state: 'starting', batchId: batch.id,
-        batchSize: batch.deliveries.length, usedUsd: total.nanoUsd / 1e9, ...(dollars !== undefined ? { dailyUsd: dollars } : {}), usedTokens: this.used(agent.id),
-        ...(agent.config.dailyTokens !== undefined ? { dailyTokens: Number(agent.config.dailyTokens) } : {}) });
-      this.track(this.execute(runtime!, agent, batch, controller).catch(e => this.fail(e)).finally(() => {
-        this.options.beforeRelease?.(agent.id, lane.laneId);
-        this.controllers.delete(controller); this.laneControllers.delete(key); releaseSlot(); this.draining.delete(key); this.states.delete(key);
-        // Work arriving during the old draining flag must be checked after release.
-        if (!this.stopped) this.refresh();
-        this.changed();
-      }));
+      this.options.onClaim?.(batch, runtime!.provider);
+      const controller = new AbortController();
+      this.controllers.add(controller);
+      this.laneControllers.set(key, controller);
+      this.states.set(key, {
+        agentId: agent.id,
+        laneId: lane.laneId,
+        state: 'starting',
+        batchId: batch.id,
+        batchSize: batch.deliveries.length,
+        usedUsd: total.nanoUsd / 1e9,
+        ...(dollars !== undefined ? { dailyUsd: dollars } : {}),
+        usedTokens: this.used(agent.id),
+        ...(agent.config.dailyTokens !== undefined
+          ? { dailyTokens: Number(agent.config.dailyTokens) }
+          : {}),
+      });
+      this.track(
+        this.execute(runtime!, agent, batch, controller)
+          .catch((e) => this.fail(e))
+          .finally(() => {
+            this.options.beforeRelease?.(agent.id, lane.laneId);
+            this.controllers.delete(controller);
+            this.laneControllers.delete(key);
+            releaseSlot();
+            this.draining.delete(key);
+            this.states.delete(key);
+            // Work arriving during the old draining flag must be checked after release.
+            if (!this.stopped) this.refresh();
+            this.changed();
+          }),
+      );
     }
     this.changed();
   }
-  private async execute(runtime: Runtime, agent: Agent, batch: Batch, controller: AbortController): Promise<void> {
+  private async execute(
+    runtime: Runtime,
+    agent: Agent,
+    batch: Batch,
+    controller: AbortController,
+  ): Promise<void> {
     let prompt = this.options.tools?.render(batch) ?? batchPrompt(batch);
-    if (Buffer.byteLength(prompt) > Math.min(32768,runtime.provider.capabilities.maxInputBytes??32768)) {
-      this.ledger.abandon(batch.id, () => this.mailbox.finishBatch(batch.id, 'failed', 'Message exceeds the 32 KB turn input limit; send smaller messages'));
+    if (
+      Buffer.byteLength(prompt) >
+      Math.min(32768, runtime.provider.capabilities.maxInputBytes ?? 32768)
+    ) {
+      this.ledger.abandon(batch.id, () =>
+        this.mailbox.finishBatch(
+          batch.id,
+          'failed',
+          'Message exceeds the 32 KB turn input limit; send smaller messages',
+        ),
+      );
       return;
     }
     try {
-      const prepared=await abortable(prepareSession(runtime.provider,agent,batch.laneId,this.sessions,controller.signal,this.options.tools,{batchId:batch.id,excludeMessageIds:batch.deliveries.map(d=>d.messageId),maxChars:this.options.handoffChars??12000,
-        maxBytes:Math.min(32768,runtime.provider.capabilities.maxInputBytes??32768)-Buffer.byteLength(prompt)-2,...(runtime.threadId?{liveNativeThreadId:runtime.threadId}:{})}),controller.signal,this.options.startTimeoutMs??30000);
-      runtime.threadId=prepared.binding.nativeThreadId;
+      const prepared = await abortable(
+        prepareSession(
+          runtime.provider,
+          agent,
+          batch.laneId,
+          this.sessions,
+          controller.signal,
+          this.options.tools,
+          {
+            batchId: batch.id,
+            excludeMessageIds: batch.deliveries.map((d) => d.messageId),
+            maxChars: this.options.handoffChars ?? 12000,
+            maxBytes:
+              Math.min(32768, runtime.provider.capabilities.maxInputBytes ?? 32768) -
+              Buffer.byteLength(prompt) -
+              2,
+            ...(runtime.threadId ? { liveNativeThreadId: runtime.threadId } : {}),
+          },
+        ),
+        controller.signal,
+        this.options.startTimeoutMs ?? 30000,
+      );
+      runtime.threadId = prepared.binding.nativeThreadId;
     } catch (error) {
-      if(error instanceof SessionInputError){this.ledger.abandon(batch.id,()=>this.mailbox.finishBatch(batch.id,'failed',error.message));return;}
+      if (error instanceof SessionInputError) {
+        this.ledger.abandon(batch.id, () =>
+          this.mailbox.finishBatch(batch.id, 'failed', error.message),
+        );
+        return;
+      }
       // No turn/start was sent: preserve order and hold until the provider recovers.
       controller.abort();
-      runtime.ready = false; runtime.error = errorText(error);
+      runtime.ready = false;
+      runtime.error = errorText(error);
       runtime.retryAt = this.now() + (this.options.providerRetryMs ?? 1_000);
-      await runtime.provider.stop(); runtime.error = errorText(error); delete runtime.threadId;
-      this.ledger.abandon(batch.id, () => this.mailbox.restoreBatch(batch.id)); return;
+      await runtime.provider.stop();
+      runtime.error = errorText(error);
+      delete runtime.threadId;
+      this.ledger.abandon(batch.id, () => this.mailbox.restoreBatch(batch.id));
+      return;
     }
-    if (this.stopped || controller.signal.aborted) { this.ledger.abandon(batch.id, () => this.mailbox.restoreBatch(batch.id)); return; }
-    this.options.guard?.();this.options.onBound?.(batch,runtime.threadId);
-    const binding = this.sessions.get(agent.id,batch.laneId,agent.provider);
-    const handoff = binding ? this.sessions.handoff?.(binding,batch.deliveries.map(d => d.messageId),this.options.handoffChars ?? 12000,Math.min(32768,runtime.provider.capabilities.maxInputBytes??32768) - Buffer.byteLength(prompt) - 2) : undefined;
+    if (this.stopped || controller.signal.aborted) {
+      this.ledger.abandon(batch.id, () => this.mailbox.restoreBatch(batch.id));
+      return;
+    }
+    this.options.guard?.();
+    this.options.onBound?.(batch, runtime.threadId);
+    const binding = this.sessions.get(agent.id, batch.laneId, agent.provider);
+    const handoff = binding
+      ? this.sessions.handoff?.(
+          binding,
+          batch.deliveries.map((d) => d.messageId),
+          this.options.handoffChars ?? 12000,
+          Math.min(32768, runtime.provider.capabilities.maxInputBytes ?? 32768) -
+            Buffer.byteLength(prompt) -
+            2,
+        )
+      : undefined;
     if (handoff?.blocked) {
-      this.ledger.abandon(batch.id, () => this.mailbox.finishBatch(batch.id,'failed','Current request leaves no room for the conversation handoff; send a smaller message'));
+      this.ledger.abandon(batch.id, () =>
+        this.mailbox.finishBatch(
+          batch.id,
+          'failed',
+          'Current request leaves no room for the conversation handoff; send a smaller message',
+        ),
+      );
       return;
     }
     if (handoff?.text) prompt = handoff.text + '\n\n' + prompt;
     let mediaInputs: import('../providers/protocol').TurnInput[];
-    try { mediaInputs = this.options.turnInputs?.(batch, !!handoff?.text) ?? []; }
-    catch (error) { this.ledger.abandon(batch.id, () => this.mailbox.finishBatch(batch.id, 'failed', errorText(error))); return; }
-    const recording = this.options.turns?.prepare(batch, agent, runtime.threadId,
-      this.sessions.get(agent.id, batch.laneId, agent.provider)?.promptHash ?? 'unknown');
+    try {
+      mediaInputs = this.options.turnInputs?.(batch, !!handoff?.text) ?? [];
+    } catch (error) {
+      this.ledger.abandon(batch.id, () =>
+        this.mailbox.finishBatch(batch.id, 'failed', errorText(error)),
+      );
+      return;
+    }
+    const recording = this.options.turns?.prepare(
+      batch,
+      agent,
+      runtime.threadId,
+      this.sessions.get(agent.id, batch.laneId, agent.provider)?.promptHash ?? 'unknown',
+    );
     const answer = new TurnAnswer();
     let context: ToolContext | undefined;
     const outcome = await runScheduledTurn(runtime.provider, runtime.threadId, prompt, {
       input: [{ type: 'text', text: prompt }, ...mediaInputs],
       isWaiting: () => runtime.waiting > 0,
       signal: controller.signal,
-      onSubmitting: () => {this.options.guardExecution?.(batch);this.ledger.submitted(batch.id);},
-      ...(this.options.idleTimeoutMs !== undefined ? { idleTimeoutMs: this.options.idleTimeoutMs } : {}),
-      ...(this.options.startTimeoutMs !== undefined ? { startTimeoutMs: this.options.startTimeoutMs } : {}),
-      ...(this.options.startGraceMs !== undefined ? { startGraceMs: this.options.startGraceMs } : {}),
-      onStarted: turnId => {
+      onSubmitting: () => {
+        this.options.guardExecution?.(batch);
+        this.ledger.submitted(batch.id);
+      },
+      ...(this.options.idleTimeoutMs !== undefined
+        ? { idleTimeoutMs: this.options.idleTimeoutMs }
+        : {}),
+      ...(this.options.startTimeoutMs !== undefined
+        ? { startTimeoutMs: this.options.startTimeoutMs }
+        : {}),
+      ...(this.options.startGraceMs !== undefined
+        ? { startGraceMs: this.options.startGraceMs }
+        : {}),
+      onStarted: (turnId) => {
         this.options.guardExecution?.(batch);
         this.ledger.started(batch.id, runtime.threadId!, turnId, () => {
           recording?.started(turnId);
           this.mailbox.markBatchRunning(batch.id, turnId);
-          if (binding) this.sessions.acknowledgeHandoff?.(binding,batch.id);
+          if (binding) this.sessions.acknowledgeHandoff?.(binding, batch.id);
         });
-        context = { agent, batch, threadId: runtime.threadId!, turnId,...(runtime.provider.capabilities.maxToolResultBytes?{maxToolResultBytes:runtime.provider.capabilities.maxToolResultBytes}:{}) };
+        context = {
+          agent,
+          batch,
+          threadId: runtime.threadId!,
+          turnId,
+          ...(runtime.provider.capabilities.maxToolResultBytes
+            ? { maxToolResultBytes: runtime.provider.capabilities.maxToolResultBytes }
+            : {}),
+        };
         runtime.active = context;
         const state = this.states.get(keyOf(agent.id, batch.laneId));
-        if (state) { state.state = 'running'; state.turnId = turnId; this.changed(); }
+        if (state) {
+          state.state = 'running';
+          state.turnId = turnId;
+          this.changed();
+        }
       },
-      onUsage: value => {this.options.guardExecution?.(batch);this.account(batch, value);},
-      onNotification: notification => {this.options.guardExecution?.(batch);recording?.observe(notification); answer.observe(notification); this.options.onNotification?.(batch, notification); },
-      onFinished: () => { delete runtime.active; },
+      onUsage: (value) => {
+        this.options.guardExecution?.(batch);
+        this.account(batch, value);
+      },
+      onNotification: (notification) => {
+        this.options.guardExecution?.(batch);
+        recording?.observe(notification);
+        answer.observe(notification);
+        this.options.onNotification?.(batch, notification);
+      },
+      onFinished: () => {
+        delete runtime.active;
+      },
     });
     this.options.guardExecution?.(batch);
     if (outcome.retireSession) {
       const threadId = runtime.threadId;
       delete runtime.threadId;
-      if(binding&&this.sessions.quarantine)this.sessions.quarantine(binding,batch.id,outcome.error??'Turn outcome unknown');
+      if (binding && this.sessions.quarantine)
+        this.sessions.quarantine(binding, batch.id, outcome.error ?? 'Turn outcome unknown');
       else this.sessions.remove(agent.id, batch.laneId, agent.provider);
       // The adapter owns cancellation and liveness. Shared providers tombstone only this thread.
       await runtime.provider.retireThread(threadId);
     }
-    if (outcome.noExecution) this.ledger.observe(batch.id, { last: zeroTokens(), total: zeroTokens() });
-    this.ledger.settle(batch.id, outcome.status, !outcome.retireSession,
-      () => {
-        recording?.finish(outcome);
-        if (context) this.options.tools?.finish(context, answer.text(), outcome.status);
-        this.mailbox.finishBatch(batch.id, outcome.status, outcome.error);
-      });
+    if (outcome.noExecution)
+      this.ledger.observe(batch.id, { last: zeroTokens(), total: zeroTokens() });
+    this.ledger.settle(batch.id, outcome.status, !outcome.retireSession, () => {
+      recording?.finish(outcome);
+      if (context) this.options.tools?.finish(context, answer.text(), outcome.status);
+      this.mailbox.finishBatch(batch.id, outcome.status, outcome.error);
+    });
   }
   async stop(graceMs = 5_000): Promise<void> {
-    this.stopped = true; this.setupAbort.abort(); this.unsubscribe?.(); this.unsubscribeAgents?.(); this.unsubscribeUsage?.(); this.scheduled.clear();
+    this.stopped = true;
+    this.setupAbort.abort();
+    this.unsubscribe?.();
+    this.unsubscribeAgents?.();
+    this.unsubscribeUsage?.();
+    this.scheduled.clear();
     let timer: ReturnType<typeof setTimeout> | undefined;
     const pending = Promise.allSettled([...this.tasks]);
-    await Promise.race([pending, new Promise<void>(resolve => { timer = setTimeout(resolve, graceMs); })]);
+    await Promise.race([
+      pending,
+      new Promise<void>((resolve) => {
+        timer = setTimeout(resolve, graceMs);
+      }),
+    ]);
     clearTimeout(timer);
     for (const controller of this.controllers) controller.abort();
-    await Promise.allSettled([...this.runtimes.values()].map(r => r.provider.stop()));
+    await Promise.allSettled([...this.runtimes.values()].map((r) => r.provider.stop()));
     await Promise.allSettled([...this.tasks]);
   }
   async forceStop(): Promise<void> {
-    this.stopped = true; this.setupAbort.abort(); this.unsubscribe?.(); this.unsubscribeAgents?.(); this.unsubscribeUsage?.(); this.scheduled.clear();
+    this.stopped = true;
+    this.setupAbort.abort();
+    this.unsubscribe?.();
+    this.unsubscribeAgents?.();
+    this.unsubscribeUsage?.();
+    this.scheduled.clear();
     for (const controller of this.controllers) controller.abort();
-    await Promise.allSettled([...this.runtimes.values()].map(r => r.provider.forceStop()));
+    await Promise.allSettled([...this.runtimes.values()].map((r) => r.provider.forceStop()));
   }
 }

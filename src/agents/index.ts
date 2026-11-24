@@ -9,21 +9,42 @@ export interface Agent {
   config: Record<string, unknown>;
   createdAt: string;
 }
-interface AgentRow { id: string; name: string; provider: string; config_json: string; created_at: string }
-const decode = (row: AgentRow): Agent => ({ id: row.id, name: row.name, provider: row.provider, config: JSON.parse(row.config_json), createdAt: row.created_at });
+interface AgentRow {
+  id: string;
+  name: string;
+  provider: string;
+  config_json: string;
+  created_at: string;
+}
+const decode = (row: AgentRow): Agent => ({
+  id: row.id,
+  name: row.name,
+  provider: row.provider,
+  config: JSON.parse(row.config_json),
+  createdAt: row.created_at,
+});
 
 export class AgentRegistry {
   constructor(private readonly store: Store) {}
 
   create(input: { name: string; provider: string; config?: Record<string, unknown> }): Agent {
-    if (!input.name.trim() || !input.provider.trim()) throw new Error('Agent name and provider must not be empty');
+    if (!input.name.trim() || !input.provider.trim())
+      throw new Error('Agent name and provider must not be empty');
     validateAgentConfig(input.config ?? {});
     const config = JSON.stringify(input.config ?? {});
     if (!config || config[0] !== '{') throw new Error('Agent config must be a JSON object');
     const id = randomUUID();
-    this.store.command('agent.create', () => this.store.emit('agent.configured', {
-      row: { id, name: input.name, provider: input.provider, config_json: config, created_at: new Date().toISOString() },
-    }));
+    this.store.command('agent.create', () =>
+      this.store.emit('agent.configured', {
+        row: {
+          id,
+          name: input.name,
+          provider: input.provider,
+          config_json: config,
+          created_at: new Date().toISOString(),
+        },
+      }),
+    );
     const agent = this.get(id)!;
     this.store.publishChanges([{ topic: 'agents', id }]);
     return agent;
@@ -37,18 +58,33 @@ export class AgentRegistry {
       if (!provider.trim()) throw new Error('Agent provider must not be empty');
       const config = { ...current.config, ...patch.config };
       // Explicit null clears optional settings; stored configuration stays canonical.
-      for (const key of ['cwd', 'model', 'dailyTokens', 'dailyUsd']) if (patch.config?.[key] === null) delete config[key];
+      for (const key of ['cwd', 'model', 'dailyTokens', 'dailyUsd'])
+        if (patch.config?.[key] === null) delete config[key];
       if (provider !== current.provider) {
         if (patch.config?.model === undefined) delete config.model;
-        if (provider !== 'claude' && config.promptProfile === 'full' && patch.config?.promptProfile === undefined) config.promptProfile = 'minimal';
+        if (
+          provider !== 'claude' &&
+          config.promptProfile === 'full' &&
+          patch.config?.promptProfile === undefined
+        )
+          config.promptProfile = 'minimal';
       }
       if (patch.config?.permissions !== undefined) {
         const permissions = patch.config.permissions;
-        if (!permissions || typeof permissions !== 'object' || Array.isArray(permissions)) throw new Error('Invalid agent permissions');
-        config.permissions = { ...(current.config.permissions as object ?? {}), ...permissions };
+        if (!permissions || typeof permissions !== 'object' || Array.isArray(permissions))
+          throw new Error('Invalid agent permissions');
+        config.permissions = { ...((current.config.permissions as object) ?? {}), ...permissions };
       }
       validateAgentConfig(config);
-      this.store.emit('agent.configured', { row: { id, name: current.name, provider, config_json: JSON.stringify(config), created_at: current.createdAt } });
+      this.store.emit('agent.configured', {
+        row: {
+          id,
+          name: current.name,
+          provider,
+          config_json: JSON.stringify(config),
+          created_at: current.createdAt,
+        },
+      });
       return this.get(id)!;
     });
     this.store.publishChanges([{ topic: 'agents', id }]);
@@ -56,23 +92,33 @@ export class AgentRegistry {
   }
 
   onChange(listener: (agentId: string) => void): () => void {
-    return this.store.onChange(change => { if (change.topic === 'agents') listener(change.id); });
+    return this.store.onChange((change) => {
+      if (change.topic === 'agents') listener(change.id);
+    });
   }
 
   get(id: string): Agent | null {
-    const row = this.store.db.query<AgentRow, [string]>('SELECT * FROM agents WHERE id = ?').get(id);
+    const row = this.store.db
+      .query<AgentRow, [string]>('SELECT * FROM agents WHERE id = ?')
+      .get(id);
     return row ? decode(row) : null;
   }
 
   /** Exact ids win over names, so durable references are never ambiguous. */
   resolve(idOrName: string): Agent | null {
-    const row = this.store.db.query<AgentRow, [string, string, string]>('SELECT * FROM agents WHERE id = ? OR name = ? ORDER BY (id = ?) DESC LIMIT 1')
+    const row = this.store.db
+      .query<AgentRow, [string, string, string]>(
+        'SELECT * FROM agents WHERE id = ? OR name = ? ORDER BY (id = ?) DESC LIMIT 1',
+      )
       .get(idOrName, idOrName, idOrName);
     return row ? decode(row) : null;
   }
 
   list(): Agent[] {
-    return this.store.db.query<AgentRow, []>('SELECT * FROM agents ORDER BY created_at, id').all().map(decode);
+    return this.store.db
+      .query<AgentRow, []>('SELECT * FROM agents ORDER BY created_at, id')
+      .all()
+      .map(decode);
   }
 }
 

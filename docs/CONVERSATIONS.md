@@ -99,8 +99,8 @@ import formats and limitations.
 - `src/threads/conversations.ts`: thread metadata and effective model settings.
 - `src/scheduler/scheduler.ts`: resolve settings before claiming a lane.
 - `src/daemon/sessions.ts`: existing durable generations and context handoff.
-- `src/web/public/conversations.js`: thread sidebar, model picker and pagination.
-- `src/web/public/browser-panel.js`: native browser panel and navigation controls.
+- `src/web/client/conversations.js`: thread sidebar, model picker and pagination.
+- `src/web/client/browser-panel.js`: native browser panel and navigation controls.
 - `src/web/styles/conversations.css`: responsive conversation layout.
 - `src/workspace/browser.ts`: native browser IPC gateway, web search and page actions.
 - `test/conversations.test.ts`: model isolation, handoff, paging, replay, browser

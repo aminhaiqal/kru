@@ -1,3 +1,5 @@
+/* Browser globals are used only inside functions serialized into isolated page worlds. */
+/* global document, CSS, location, getSelection */
 const { WebContentsView, session, nativeTheme, Menu, clipboard } = require('electron');
 const { createHash, randomUUID } = require('node:crypto');
 const validAgent = (id) => typeof id === 'string' && /^[\w-]{1,100}$/.test(id);
@@ -8,14 +10,34 @@ const safeUrl = (value) => {
 };
 class NativeBrowserHost {
   constructor(workspace, changed, importer) {
-    Object.assign(this, { workspace, changed, importer, window: null, mounted: null, layoutState: null });
+    Object.assign(this, {
+      workspace,
+      changed,
+      importer,
+      window: null,
+      mounted: null,
+      layoutState: null,
+    });
     this.groups = new Map();
     this.queues = new Map();
     this.generations = new Map();
-    nativeTheme.themeSource = 'dark';
+    this.updateTheme = () => {
+      for (const group of this.groups.values())
+        for (const tab of group.tabs.values())
+          if (!tab.view.webContents.isDestroyed()) tab.view.setBackgroundColor(this.background());
+    };
+    nativeTheme.on('updated', this.updateTheme);
+  }
+  background() {
+    return nativeTheme.shouldUseDarkColors ? '#1c2027' : '#ffffff';
   }
   partition(id) {
-    return 'kru-browser-' + createHash('sha256').update(this.workspace).digest('hex').slice(0, 16) + '-' + id;
+    return (
+      'kru-browser-' +
+      createHash('sha256').update(this.workspace).digest('hex').slice(0, 16) +
+      '-' +
+      id
+    );
   }
   setWindow(window) {
     this.detach();
@@ -34,7 +56,8 @@ class NativeBrowserHost {
     if (!value || typeof value.visible !== 'boolean' || !validAgent(value.agentId)) return;
     if (
       value.visible &&
-      (!value.bounds || !['x', 'y', 'width', 'height'].every((key) => Number.isFinite(value.bounds[key])))
+      (!value.bounds ||
+        !['x', 'y', 'width', 'height'].every((key) => Number.isFinite(value.bounds[key])))
     )
       return;
     this.layoutState = value;
@@ -108,7 +131,9 @@ class NativeBrowserHost {
       target.setPermissionRequestHandler((_c, p, callback) =>
         callback(['fullscreen', 'clipboard-sanitized-write'].includes(p)),
       );
-      target.setPermissionCheckHandler((_c, p) => ['fullscreen', 'clipboard-sanitized-write'].includes(p));
+      target.setPermissionCheckHandler((_c, p) =>
+        ['fullscreen', 'clipboard-sanitized-write'].includes(p),
+      );
     }
     return target;
   }
@@ -151,7 +176,7 @@ class NativeBrowserHost {
     const view = new WebContentsView(
       contents ? { webContents: contents } : { webPreferences: this.webPreferences(g) },
     );
-    view.setBackgroundColor('#17191d');
+    view.setBackgroundColor(this.background());
     view.setBounds({ x: 0, y: 0, width: 1280, height: 800 });
     const tab = { id: randomUUID(), view };
     g.tabs.set(tab.id, tab);
@@ -402,7 +427,8 @@ class NativeBrowserHost {
                   const target = selector
                     ? document.querySelector(selector)
                     : document.activeElement || document.body;
-                  if (!target) throw new Error('Target not found; read the page for a fresh CSS selector');
+                  if (!target)
+                    throw new Error('Target not found; read the page for a fresh CSS selector');
                   target.scrollIntoView({ block: 'center', inline: 'nearest' });
                   const r = target.getBoundingClientRect(),
                     x = r.left + r.width / 2,
@@ -412,7 +438,8 @@ class NativeBrowserHost {
                     throw new Error('Target is covered; read the page again');
                   target.focus();
                   if (select) {
-                    if (target.readOnly || target.disabled) throw new Error('Target is not editable');
+                    if (target.readOnly || target.disabled)
+                      throw new Error('Target is not editable');
                     if (typeof target.select === 'function') target.select();
                     else if (target.isContentEditable) {
                       const range = document.createRange();
@@ -449,10 +476,13 @@ class NativeBrowserHost {
                 await this.evaluate(
                   tab,
                   (selector) => {
-                    const target = selector ? document.querySelector(selector) : document.activeElement;
+                    const target = selector
+                      ? document.querySelector(selector)
+                      : document.activeElement;
                     if (
                       !target ||
-                      (document.activeElement !== target && !target.contains(document.activeElement))
+                      (document.activeElement !== target &&
+                        !target.contains(document.activeElement))
                     )
                       throw new Error('Target lost focus; read the page again');
                   },
@@ -492,7 +522,11 @@ class NativeBrowserHost {
                       PageDown: 34,
                       Space: 32,
                     }[key] || (key.length === 1 ? key.toUpperCase().charCodeAt(0) : 0);
-                const event = { key: key === 'Space' ? ' ' : key, windowsVirtualKeyCode: code, modifiers };
+                const event = {
+                  key: key === 'Space' ? ' ' : key,
+                  windowsVirtualKeyCode: code,
+                  modifiers,
+                };
                 await this.cdp(tab, 'Input.dispatchKeyEvent', {
                   type: 'keyDown',
                   ...event,
@@ -542,6 +576,7 @@ class NativeBrowserHost {
     this.publish(g);
   }
   async close() {
+    nativeTheme.removeListener('updated', this.updateTheme);
     await Promise.allSettled([...this.groups.keys()].map((id) => this.stop(id)));
     this.detach();
   }

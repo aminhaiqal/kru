@@ -44,7 +44,11 @@ function systemRoots(home = homedir(), platform = process.platform) {
         cache: join(home, 'Library/Caches/BraveSoftware/Brave-Browser'),
         binary: '/Applications/Brave Browser.app/Contents/MacOS/Brave Browser',
       },
-      { name: 'Firefox', root: join(home, 'Library/Application Support/Firefox/Profiles'), kind: 'firefox' },
+      {
+        name: 'Firefox',
+        root: join(home, 'Library/Application Support/Firefox/Profiles'),
+        kind: 'firefox',
+      },
     ];
   const local = process.env.LOCALAPPDATA || join(home, 'AppData/Local'),
     roaming = process.env.APPDATA || join(home, 'AppData/Roaming');
@@ -53,7 +57,10 @@ function systemRoots(home = homedir(), platform = process.platform) {
       {
         name: 'Google Chrome',
         root: join(local, 'Google/Chrome/User Data'),
-        binary: join(process.env.PROGRAMFILES || 'C:/Program Files', 'Google/Chrome/Application/chrome.exe'),
+        binary: join(
+          process.env.PROGRAMFILES || 'C:/Program Files',
+          'Google/Chrome/Application/chrome.exe',
+        ),
       },
       {
         name: 'Microsoft Edge',
@@ -111,7 +118,9 @@ function sourceFor(root, profile) {
   if (!cookieFile || !exists(cookieFile)) return null;
   const cache =
     kind === 'chromium'
-      ? [root.cache && join(root.cache, profile, 'Cache'), join(path, 'Cache')].filter(Boolean).find(exists)
+      ? [root.cache && join(root.cache, profile, 'Cache'), join(path, 'Cache')]
+          .filter(Boolean)
+          .find(exists)
       : null;
   return {
     id: idFor(path),
@@ -146,7 +155,8 @@ async function chromiumCookies(source, children) {
     await backup(db, destination);
     db.close();
     db = null;
-    if (exists(source.localState)) await fsp.copyFile(source.localState, join(temporary, 'Local State'));
+    if (exists(source.localState))
+      await fsp.copyFile(source.localState, join(temporary, 'Local State'));
     await fsp.writeFile(
       join(profile, 'Preferences'),
       JSON.stringify({ profile: { exit_type: 'Crashed', exited_cleanly: false } }),
@@ -186,7 +196,9 @@ async function chromiumCookies(source, children) {
       child.once('error', fail);
       child.once('exit', () =>
         fail(
-          new Error('The source browser could not decrypt its cookies. Use a cookies export file instead.'),
+          new Error(
+            'The source browser could not decrypt its cookies. Use a cookies export file instead.',
+          ),
         ),
       );
       child.stdio[4].on('data', (chunk) => {
@@ -214,7 +226,9 @@ async function chromiumCookies(source, children) {
         }
       });
       child.stdio[3].on('error', fail);
-      child.stdio[3].write(JSON.stringify({ id: 1, method: 'Storage.getCookies', params: {} }) + '\0');
+      child.stdio[3].write(
+        JSON.stringify({ id: 1, method: 'Storage.getCookies', params: {} }) + '\0',
+      );
     });
     cookies.storedCount = storedCount;
     return cookies;
@@ -252,7 +266,7 @@ function firefoxCookies(path) {
 function parseCookieFile(path) {
   const data = fs.readFileSync(path, 'utf8');
   if (data.length > 32 * 1024 * 1024) throw new Error('Cookie export is too large');
-  if (/^\s*[\[{]/.test(data)) {
+  if (/^\s*[[{]/.test(data)) {
     let value;
     try {
       value = JSON.parse(data);
@@ -260,7 +274,8 @@ function parseCookieFile(path) {
       throw new Error('Cookie export is not valid JSON');
     }
     const cookies = Array.isArray(value) ? value : value?.cookies;
-    if (!Array.isArray(cookies)) throw new Error('Choose a JSON cookies array or Netscape cookies.txt');
+    if (!Array.isArray(cookies))
+      throw new Error('Choose a JSON cookies array or Netscape cookies.txt');
     return cookies;
   }
   return data.split(/\r?\n/).flatMap((line) => {
@@ -359,7 +374,8 @@ class BrowserImporter {
     this.known.clear();
     for (const root of this.roots)
       for (const profile of folders(root.root)) {
-        if (root.kind !== 'firefox' && profile !== 'Default' && !/^Profile \d+$/.test(profile)) continue;
+        if (root.kind !== 'firefox' && profile !== 'Default' && !/^Profile \d+$/.test(profile))
+          continue;
         const source = sourceFor(root, profile);
         if (source) this.known.set(source.id, source);
       }
@@ -485,7 +501,8 @@ class BrowserImporter {
       }
     }
     if (input.cache) {
-      if (!source.cache) result.notes.push('This profile has no compatible Chromium cache to import.');
+      if (!source.cache)
+        result.notes.push('This profile has no compatible Chromium cache to import.');
       else {
         try {
           result.cacheBytes = await this.stageCache(source.cache, partition);
@@ -520,7 +537,5 @@ module.exports = {
   BrowserImporter,
   cookieDetails,
   parseCookieFile,
-  firefoxCookies,
   chromiumCookies,
-  systemRoots,
 };

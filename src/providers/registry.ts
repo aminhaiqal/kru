@@ -4,7 +4,14 @@ import { ClaudeProvider, type ClaudeProviderOptions } from './claude/adapter';
 import { FakeProvider, type FakeProviderOptions } from './fake/adapter';
 
 /** The only application-level place that selects concrete adapters. */
-export function createProvider(name: string, options: { fake?: FakeProviderOptions; codex?: CodexProviderOptions; claude?: ClaudeProviderOptions } = {}): ProviderClient {
+export function createProvider(
+  name: string,
+  options: {
+    fake?: FakeProviderOptions;
+    codex?: CodexProviderOptions;
+    claude?: ClaudeProviderOptions;
+  } = {},
+): ProviderClient {
   if (name === 'fake') return new FakeProvider(options.fake);
   if (name === 'claude') return new ClaudeProvider(options.claude);
   if (name === 'codex') return new CodexProvider(options.codex);

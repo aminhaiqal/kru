@@ -5,7 +5,10 @@ export const allowedTransitions: Readonly<Record<DeliveryStatus, readonly Delive
   // A refusal before turn/start succeeds may fail; an unknown outcome is interrupted.
   starting: ['queued', 'running', 'failed', 'interrupted'],
   running: ['completed', 'failed', 'interrupted'],
-  completed: [], failed: [], interrupted: [], cancelled: [],
+  completed: [],
+  failed: [],
+  interrupted: [],
+  cancelled: [],
 };
 
 export class DeliveryTransitionError extends Error {
@@ -15,5 +18,8 @@ export class DeliveryTransitionError extends Error {
   }
 }
 export class IdempotencyConflictError extends Error {
-  constructor() { super('Idempotency key was already used with different content'); this.name = 'IdempotencyConflictError'; }
+  constructor() {
+    super('Idempotency key was already used with different content');
+    this.name = 'IdempotencyConflictError';
+  }
 }

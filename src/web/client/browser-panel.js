@@ -1,4 +1,21 @@
-'use strict';
+import { api, post } from './api.js';
+import { $, escape } from './dom.js';
+import { check, field, openForm, showInfo } from './forms.js';
+import {
+  browserAddIcon,
+  browserBackIcon,
+  browserCloseIcon,
+  browserCollapseIcon,
+  browserExpandIcon,
+  browserForwardIcon,
+  browserReloadIcon,
+  browserStopIcon,
+  chatGlobeIcon,
+  chatUploadIcon,
+} from './icons.js';
+import { S } from './state.js';
+
+('use strict');
 const BP = {
   open: false,
   expanded: false,
@@ -26,7 +43,9 @@ function browserPanelLayout() {
       BP.layoutFrame = null;
       const surface = $('#browser-native-surface'),
         box = surface?.getBoundingClientRect(),
-        covered = !!$('dialog[open], .workspace.menu-open, .conversation-sidebar.open, .chat-attach-menu');
+        covered = !!$(
+          'dialog[open], .workspace.menu-open, .conversation-sidebar.open, .chat-attach-menu, #theme-menu:popover-open',
+        );
       const input = {
         agentId: BP.agent,
         visible: !!(
@@ -98,7 +117,8 @@ function browserPanelUpdate(state) {
   activity.textContent = state.activity;
   activity.classList.toggle('working', state.busy);
   const address = $('#browser-url');
-  if (document.activeElement !== address) address.value = state.url === 'about:blank' ? '' : state.url || '';
+  if (document.activeElement !== address)
+    address.value = state.url === 'about:blank' ? '' : state.url || '';
   const signature = JSON.stringify(state.tabs);
   if (signature !== BP.tabSignature) {
     $('#browser-tabs').innerHTML =
@@ -115,6 +135,7 @@ function browserPanelUpdate(state) {
   browserPanelLayout();
 }
 function browserPanelInit() {
+  $('#theme-menu')?.addEventListener('toggle', browserPanelLayout);
   window.kruBrowser?.onState(({ agentId, state }) => {
     BP.states.set(agentId, state);
     const previous = BP.observed.get(agentId) || 0;
@@ -140,7 +161,11 @@ async function browserPanelAction(action, tabId) {
   browserPanelError('');
   try {
     if (action === 'stop') await post('/agents/' + BP.agent + '/browser/stop');
-    else await post('/agents/' + BP.agent + '/browser/action', { action, ...(tabId ? { tabId } : {}) });
+    else
+      await post('/agents/' + BP.agent + '/browser/action', {
+        action,
+        ...(tabId ? { tabId } : {}),
+      });
   } catch (error) {
     browserPanelError(error.message);
   } finally {
@@ -155,7 +180,10 @@ function browserImportResult(result) {
   );
 }
 async function browserPanelImport() {
-  showInfo('Import browser data', '<p class="help">Looking for browser profiles on this computer…</p>');
+  showInfo(
+    'Import browser data',
+    '<p class="help">Looking for browser profiles on this computer…</p>',
+  );
   try {
     const sources = await api('/agents/' + BP.agent + '/browser/import');
     BP.importSources = sources;
@@ -263,3 +291,5 @@ document.addEventListener('submit', async (event) => {
     BP.busy = false;
   }
 });
+
+export { browserPanelInit, browserPanelLayout, browserPanelOpen };

@@ -36,6 +36,19 @@ that database first. `KRU_DB` can explicitly choose a database; `KRU_USER_DATA_D
 can isolate the desktop profile. GUI launches resolve the user's login-shell
 PATH so locally installed Codex, Claude Code, Node and npm can be found.
 
+## Obsidian
+
+KRU's central knowledge and memory live in a dedicated Obsidian vault. See
+[Obsidian](BRAIN.md) for its layout and **Connector → Obsidian** controls.
+
+## Appearance
+
+The appearance button at the bottom of the sidebar offers **Light**, **Dark**,
+and **System**. System is the default and follows live operating-system changes.
+The selected preference is saved in the desktop profile and restored before
+the window loads. The shell, dialogs, workflow editor and native browser use the
+same appearance; websites that support a color-scheme preference follow it too.
+
 ## Personal chat
 
 Chat is a direct conversation with an LLM. It has no teammate selector or bot

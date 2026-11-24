@@ -1,53 +1,131 @@
 /** Kru's provider port. No process, transport, or provider imports belong here. */
 export interface ProviderCapabilities {
-  maxInputBytes?:number; maxToolResultBytes?:number;
+  maxInputBytes?: number;
+  maxToolResultBytes?: number;
   readonly steering: boolean;
   readonly subagents: boolean;
   readonly compaction: 'none' | 'provider';
 }
-export interface ToolDefinition { name: string; description: string; inputSchema: Record<string, unknown> }
+export interface ToolDefinition {
+  name: string;
+  description: string;
+  inputSchema: Record<string, unknown>;
+}
 export interface ThreadParams {
   effort?: import('./models').ReasoningEffort;
-  cwd?: string; model?: string; tools?: ToolDefinition[]; instructions?: string;
+  cwd?: string;
+  model?: string;
+  tools?: ToolDefinition[];
+  instructions?: string;
   promptProfile?: 'minimal' | 'coding' | 'full';
-  permissions?: { sandbox?: 'read-only' | 'workspace-write'; approvalPolicy?: 'on-request' | 'never'; writableRoots?: string[] };
+  permissions?: {
+    sandbox?: 'read-only' | 'workspace-write';
+    approvalPolicy?: 'on-request' | 'never';
+    writableRoots?: string[];
+  };
 }
-export interface Thread { id: string; prompt?: { profile: 'minimal' | 'coding' | 'full'; instructionBytes: number; toolCount: number; builtinToolCount?: number; prefixHash: string } }
-export interface AgentItem { id: string; type: string; text?: string; details?: unknown }
-export type TurnInput = { type: 'text'; text: string } | { type: 'localImage'; path: string; mime?: string };
-export interface Turn { id: string; status: 'inProgress' | 'completed' | 'failed' | 'interrupted'; error?: { message: string } | null }
+export interface Thread {
+  id: string;
+  prompt?: {
+    profile: 'minimal' | 'coding' | 'full';
+    instructionBytes: number;
+    toolCount: number;
+    builtinToolCount?: number;
+    prefixHash: string;
+  };
+}
+export interface AgentItem {
+  id: string;
+  type: string;
+  text?: string;
+  details?: unknown;
+}
+export type TurnInput =
+  { type: 'text'; text: string } | { type: 'localImage'; path: string; mime?: string };
+export interface Turn {
+  id: string;
+  status: 'inProgress' | 'completed' | 'failed' | 'interrupted';
+  error?: { message: string } | null;
+}
 export interface Methods {
   'thread/start': { params: ThreadParams; result: { thread: Thread } };
   'thread/resume': { params: ThreadParams & { threadId: string }; result: { thread: Thread } };
   'turn/start': { params: { threadId: string; input: TurnInput[] }; result: { turn: Turn } };
   'turn/interrupt': { params: { threadId: string; turnId: string }; result: Record<string, never> };
 }
-export interface TokenUsage { model?: string; modelSteps?: number; toolCalls?: number; last: TokenCount; total: TokenCount; modelContextWindow?: number | null }
+export interface TokenUsage {
+  model?: string;
+  modelSteps?: number;
+  toolCalls?: number;
+  last: TokenCount;
+  total: TokenCount;
+  modelContextWindow?: number | null;
+}
 /** Cache reads/writes are disjoint subsets of inputTotal, never additions to it. */
-export interface TokenCount { inputTotal: number; cachedRead: number; cacheWrite: number; output: number; totalTokens: number; cacheWriteByLifetime?: { fiveMinutes: number; oneHour: number } }
+export interface TokenCount {
+  inputTotal: number;
+  cachedRead: number;
+  cacheWrite: number;
+  output: number;
+  totalTokens: number;
+  cacheWriteByLifetime?: { fiveMinutes: number; oneHour: number };
+}
 export type Notification =
   | { method: 'turn/started' | 'turn/completed'; params: { threadId: string; turn: Turn } }
-  | { method: 'item/started' | 'item/completed'; params: { threadId: string; turnId: string; item: AgentItem } }
-  | { method: 'item/agentMessage/delta'; params: { threadId: string; turnId: string; itemId: string; delta: string } }
-  | { method: 'thread/tokenUsage/updated'; params: { threadId: string; turnId: string; tokenUsage: TokenUsage } };
-export interface ToolCall { threadId: string; turnId: string; callId: string; tool: string; arguments: unknown }
-export interface ToolResult { success: boolean; contentItems: { type: 'inputText'; text: string }[] }
-export interface ApprovalCall { threadId: string; turnId: string; kind: 'command' | 'file' | 'permissions' | 'elicitation' | 'tool'; input: unknown }
-export interface ApprovalResult { decision: 'accept' | 'decline'; content?: unknown }
+  | {
+      method: 'item/started' | 'item/completed';
+      params: { threadId: string; turnId: string; item: AgentItem };
+    }
+  | {
+      method: 'item/agentMessage/delta';
+      params: { threadId: string; turnId: string; itemId: string; delta: string };
+    }
+  | {
+      method: 'thread/tokenUsage/updated';
+      params: { threadId: string; turnId: string; tokenUsage: TokenUsage };
+    };
+export interface ToolCall {
+  threadId: string;
+  turnId: string;
+  callId: string;
+  tool: string;
+  arguments: unknown;
+}
+export interface ToolResult {
+  success: boolean;
+  contentItems: { type: 'inputText'; text: string }[];
+}
+export interface ApprovalCall {
+  threadId: string;
+  turnId: string;
+  kind: 'command' | 'file' | 'permissions' | 'elicitation' | 'tool';
+  input: unknown;
+}
+export interface ApprovalResult {
+  decision: 'accept' | 'decline';
+  content?: unknown;
+}
 export type ProviderRequest =
   | { id: string | number; method: 'item/tool/call'; params: ToolCall; signal: AbortSignal }
   | { id: string | number; method: 'approval/request'; params: ApprovalCall; signal: AbortSignal };
-export interface ProviderDiagnostic { kind: string; message?: string; method?: string }
+interface ProviderDiagnostic {
+  kind: string;
+  message?: string;
+  method?: string;
+}
 export interface ProviderEvents {
-  notification: [Notification]; request: [ProviderRequest]; exit: [Error]; diagnostic: [ProviderDiagnostic];
+  notification: [Notification];
+  request: [ProviderRequest];
+  exit: [Error];
+  diagnostic: [ProviderDiagnostic];
   activity: [{ threadId: string; turnId?: string }];
 }
 export interface ProviderClient {
-  sessionScope?(params?:ThreadParams):Promise<string>;
-  expectedPrefixHash?(params:ThreadParams):string;
-  sessionRuntimeToken?():string;
-  classifySessionFailure?(error:unknown):import('./session-errors').SessionFailureKind;
-  discardSession?(threadId:string):Promise<void>;
+  sessionScope?(params?: ThreadParams): Promise<string>;
+  expectedPrefixHash?(params: ThreadParams): string;
+  sessionRuntimeToken?(): string;
+  classifySessionFailure?(error: unknown): import('./session-errors').SessionFailureKind;
+  discardSession?(threadId: string): Promise<void>;
   setProcessScope?(scope: import('../boot/types').ProcessScope): string;
   readonly provider: string;
   readonly capabilities: ProviderCapabilities;
@@ -56,7 +134,11 @@ export interface ProviderClient {
   forceStop(): Promise<void>;
   /** Retire one native thread: suppress late events and cancel it without stopping unrelated threads when possible. */
   retireThread(threadId: string): Promise<void>;
-  request<M extends keyof Methods>(method: M, params: Methods[M]['params'], timeoutMs?: number): Promise<Methods[M]['result']>;
+  request<M extends keyof Methods>(
+    method: M,
+    params: Methods[M]['params'],
+    timeoutMs?: number,
+  ): Promise<Methods[M]['result']>;
   respond(id: string | number, result: ToolResult | ApprovalResult): void;
   respondError(id: string | number, error: { code: number; message: string }): void;
   on(event: 'notification', fn: (n: Notification) => void): unknown;

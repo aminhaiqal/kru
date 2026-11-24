@@ -1,4 +1,7 @@
-interface Stoppable { stop(): Promise<void>; forceStop(): Promise<void> }
+interface Stoppable {
+  stop(): Promise<void>;
+  forceStop(): Promise<void>;
+}
 
 /** Opt in at the application boundary; the transport never takes global signals. */
 export function installRpcSignalHandlers(connections: Iterable<Stoppable>): {
@@ -9,10 +12,11 @@ export function installRpcSignalHandlers(connections: Iterable<Stoppable>): {
   let stopping: Promise<PromiseSettledResult<void>[]> | undefined;
   let forcing: Promise<PromiseSettledResult<void>[]> | undefined;
   const tracked = new Set(connections);
-  const interrupt = (signal: "SIGINT" | "SIGTERM") => {
-    exitCode ??= signal === "SIGINT" ? 130 : 143;
+  const interrupt = (signal: 'SIGINT' | 'SIGTERM') => {
+    exitCode ??= signal === 'SIGINT' ? 130 : 143;
     for (const connection of connections) tracked.add(connection);
-    if (!stopping) stopping = Promise.allSettled(Array.from(tracked, (connection) => connection.stop()));
+    if (!stopping)
+      stopping = Promise.allSettled(Array.from(tracked, (connection) => connection.stop()));
     // Do not await one group before signalling the next. forceStop sends SIGKILL
     // synchronously, interrupts its grace period, and then waits only for reaping.
     else if (!forcing) {
@@ -20,15 +24,17 @@ export function installRpcSignalHandlers(connections: Iterable<Stoppable>): {
       void forcing.then(() => process.exit(exitCode ?? 130));
     }
   };
-  const onInt = () => interrupt("SIGINT");
-  const onTerm = () => interrupt("SIGTERM");
-  process.on("SIGINT", onInt);
-  process.on("SIGTERM", onTerm);
+  const onInt = () => interrupt('SIGINT');
+  const onTerm = () => interrupt('SIGTERM');
+  process.on('SIGINT', onInt);
+  process.on('SIGTERM', onTerm);
   return {
-    get exitCode() { return exitCode; },
+    get exitCode() {
+      return exitCode;
+    },
     dispose() {
-      process.removeListener("SIGINT", onInt);
-      process.removeListener("SIGTERM", onTerm);
+      process.removeListener('SIGINT', onInt);
+      process.removeListener('SIGTERM', onTerm);
     },
   };
 }

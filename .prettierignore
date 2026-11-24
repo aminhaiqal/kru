@@ -1,0 +1,7 @@
+node_modules/
+dist/
+.kru/
+src/web/public/*.js
+src/web/public/*.css
+src/web/public/THIRD_PARTY_NOTICES.txt
+test/fixtures/

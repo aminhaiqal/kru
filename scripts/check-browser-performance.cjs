@@ -1,11 +1,14 @@
+/* Browser globals below run inside the benchmark page. */
+/* global matchMedia, requestAnimationFrame */
 // Run with Electron directly: no automation/debugger flags, no external websites.
-const { app, BrowserWindow } = require('electron');
+const { app, BrowserWindow, nativeTheme } = require('electron');
 const { NativeBrowserHost } = require('../desktop/browser-host.cjs');
 const fs = require('node:fs'),
   { join, resolve } = require('node:path'),
   { tmpdir } = require('node:os'),
   http = require('node:http');
-const root = process.env.KRU_NATIVE_BENCH_ROOT || fs.mkdtempSync(join(tmpdir(), 'kru-native-performance-'));
+const root =
+  process.env.KRU_NATIVE_BENCH_ROOT || fs.mkdtempSync(join(tmpdir(), 'kru-native-performance-'));
 fs.mkdirSync(join(root, 'profile'));
 if (!process.env.KRU_NATIVE_BENCH_ROOT)
   process.on('exit', () => fs.rmSync(root, { recursive: true, force: true }));
@@ -15,6 +18,7 @@ let host, fixture;
 app
   .whenReady()
   .then(async () => {
+    nativeTheme.themeSource = 'dark';
     fixture = http.createServer((_request, response) => {
       response.setHeader('Content-Type', 'text/html');
       response.end(
@@ -30,7 +34,11 @@ app
     host = new NativeBrowserHost(join(root, 'workspace.sqlite'), () => {});
     host.setWindow(window);
     host.start('performance');
-    host.layout({ agentId: 'performance', visible: true, bounds: { x: 0, y: 0, width: 1000, height: 720 } });
+    host.layout({
+      agentId: 'performance',
+      visible: true,
+      bounds: { x: 0, y: 0, width: 1000, height: 720 },
+    });
     await host.action('performance', {
       action: 'navigate',
       url: 'http://127.0.0.1:' + fixture.address().port,
@@ -63,7 +71,10 @@ app
     );
     const artifacts = resolve(__dirname, '../dist/desktop-verification');
     fs.mkdirSync(artifacts, { recursive: true });
-    fs.writeFileSync(join(artifacts, 'browser-performance.json'), JSON.stringify(result, null, 2) + '\n');
+    fs.writeFileSync(
+      join(artifacts, 'browser-performance.json'),
+      JSON.stringify(result, null, 2) + '\n',
+    );
     console.log(JSON.stringify(result, null, 2));
     if (result.webdriver || !result.native || !result.dark || result.framesPerSecond < 20)
       throw new Error('Native rendering or normal browser identity check failed');

@@ -1,28 +1,39 @@
 // A deterministic JSON-RPC peer. No providers, credentials, or network access.
-import { spawn } from "node:child_process";
-import { ByteLineFramer } from "../../src/rpc/framing";
+import { spawn } from 'node:child_process';
+import { ByteLineFramer } from '../../src/rpc/framing';
 
-type Message = { jsonrpc?: unknown; id?: string | number; method?: string; params?: Record<string, unknown> | null; result?: unknown; error?: unknown };
+type Message = {
+  jsonrpc?: unknown;
+  id?: string | number;
+  method?: string;
+  params?: Record<string, unknown> | null;
+  result?: unknown;
+  error?: unknown;
+};
 const framer = new ByteLineFramer(64 * 1024 * 1024);
-const lite = process.argv.includes("--omit-jsonrpc");
+const lite = process.argv.includes('--omit-jsonrpc');
 const encode = (message: Message): string => {
   const { jsonrpc, ...body } = message;
-  return JSON.stringify(lite ? body : message) + "\n";
+  return JSON.stringify(lite ? body : message) + '\n';
 };
-const send = (message: Message): void => { process.stdout.write(encode(message)); };
-const result = (id: string | number, value: unknown): void => send({ jsonrpc: "2.0", id, result: value });
-const notification = (method: string, params: Record<string, unknown>): string => encode({ jsonrpc: "2.0", method, params });
+const send = (message: Message): void => {
+  process.stdout.write(encode(message));
+};
+const result = (id: string | number, value: unknown): void =>
+  send({ jsonrpc: '2.0', id, result: value });
+const notification = (method: string, params: Record<string, unknown>): string =>
+  encode({ jsonrpc: '2.0', method, params });
 const reverseRequests: Message[] = [];
 const callbacks = new Map<string | number, string | number>();
 let callbackId = 0;
 
 function handle(message: Message): void {
-  if (process.argv.includes("--require-omitted-jsonrpc") && "jsonrpc" in message) {
-    process.stderr.write("jsonrpc field must be omitted", () => process.exit(24));
+  if (process.argv.includes('--require-omitted-jsonrpc') && 'jsonrpc' in message) {
+    process.stderr.write('jsonrpc field must be omitted', () => process.exit(24));
     return;
   }
-  if (process.argv.includes("--require-jsonrpc") && message.jsonrpc !== "2.0") {
-    process.stderr.write("jsonrpc field is required", () => process.exit(24));
+  if (process.argv.includes('--require-jsonrpc') && message.jsonrpc !== '2.0') {
+    process.stderr.write('jsonrpc field is required', () => process.exit(24));
     return;
   }
   if (!message.method) {
@@ -37,26 +48,33 @@ function handle(message: Message): void {
   const id = message.id;
   const params = message.params ?? {};
   if (id === undefined) {
-    if (message.method === "notify-echo") process.stdout.write(notification("notified", params));
+    if (message.method === 'notify-echo') process.stdout.write(notification('notified', params));
     return;
   }
   switch (message.method) {
-    case "ping":
-      if (!process.argv.includes("--stall")) result(id, "pong");
+    case 'ping':
+      if (!process.argv.includes('--stall')) result(id, 'pong');
       break;
-    case "echo": result(id, message.params); break;
-    case "request-id": result(id, id); break;
-    case "wrong-jsonrpc":
-      process.stdout.write(JSON.stringify({ jsonrpc: params.value, id, result: "wrong" }) + "\n");
-      result(id, "valid");
+    case 'echo':
+      result(id, message.params);
       break;
-    case "graceful-stop":
-      process.on("SIGTERM", () => {
-        setTimeout(() => process.stderr.write("session saved", () => process.exit(0)), Number(params.delayMs ?? 200));
+    case 'request-id':
+      result(id, id);
+      break;
+    case 'wrong-jsonrpc':
+      process.stdout.write(JSON.stringify({ jsonrpc: params.value, id, result: 'wrong' }) + '\n');
+      result(id, 'valid');
+      break;
+    case 'graceful-stop':
+      process.on('SIGTERM', () => {
+        setTimeout(
+          () => process.stderr.write('session saved', () => process.exit(0)),
+          Number(params.delayMs ?? 200),
+        );
       });
-      result(id, "ready");
+      result(id, 'ready');
       break;
-    case "reverse": {
+    case 'reverse': {
       reverseRequests.push(message);
       if (reverseRequests.length === 100) {
         // Seeded Fisher-Yates: deliberately reordered, reproducible on every run.
@@ -70,62 +88,103 @@ function handle(message: Message): void {
       }
       break;
     }
-    case "error": send({ jsonrpc: "2.0", id, error: { code: -32042, message: "scripted failure", data: { retry: false } } }); break;
-    case "stall": break;
-    case "notifications":
-      for (let i = 0; i < 5; i++) process.stdout.write(notification("tick", { index: i }));
+    case 'error':
+      send({
+        jsonrpc: '2.0',
+        id,
+        error: { code: -32042, message: 'scripted failure', data: { retry: false } },
+      });
+      break;
+    case 'stall':
+      break;
+    case 'notifications':
+      for (let i = 0; i < 5; i++) process.stdout.write(notification('tick', { index: i }));
       result(id, null);
       break;
-    case "ask": {
+    case 'ask': {
       const requestId = params.numericId === true ? ++callbackId : `fake-${++callbackId}`;
       callbacks.set(requestId, id);
-      send({ jsonrpc: "2.0", id: requestId, method: "question", params: { text: "hello" } });
+      send({ jsonrpc: '2.0', id: requestId, method: 'question', params: { text: 'hello' } });
       break;
     }
-    case "fragments": {
-      const bytes = Buffer.from(notification("fragment", { text: "kru 🦜 café" }));
-      const splitAt = bytes.indexOf(Buffer.from("🦜")) + 2;
+    case 'fragments': {
+      const bytes = Buffer.from(notification('fragment', { text: 'kru 🦜 café' }));
+      const splitAt = bytes.indexOf(Buffer.from('🦜')) + 2;
       process.stdout.write(bytes.subarray(0, splitAt));
       setTimeout(() => {
-        process.stdout.write(Buffer.concat([
-          bytes.subarray(splitAt),
-          Buffer.from(notification("merged", { index: 1 }) + notification("merged", { index: 2 })),
-          Buffer.from(encode({ jsonrpc: "2.0", id, result: null })),
-        ]));
+        process.stdout.write(
+          Buffer.concat([
+            bytes.subarray(splitAt),
+            Buffer.from(
+              notification('merged', { index: 1 }) + notification('merged', { index: 2 }),
+            ),
+            Buffer.from(encode({ jsonrpc: '2.0', id, result: null })),
+          ]),
+        );
       }, 5);
       break;
     }
-    case "bad-between":
-      process.stdout.write(notification("good", { index: 1 }) + "not-json\n" + notification("good", { index: 2 }) + encode({ jsonrpc: "2.0", id, result: null }));
+    case 'bad-between':
+      process.stdout.write(
+        notification('good', { index: 1 }) +
+          'not-json\n' +
+          notification('good', { index: 2 }) +
+          encode({ jsonrpc: '2.0', id, result: null }),
+      );
       break;
-    case "bad-lines": process.stdout.write("broken\n".repeat(Number(params.count ?? 3))); break;
-    case "invalid-utf8":
-      process.stdout.write(Buffer.concat([Buffer.from('{"jsonrpc":"2.0","method":"bad","params":"'), Buffer.from([0xff]), Buffer.from('"}\n')]));
+    case 'bad-lines':
+      process.stdout.write('broken\n'.repeat(Number(params.count ?? 3)));
+      break;
+    case 'invalid-utf8':
+      process.stdout.write(
+        Buffer.concat([
+          Buffer.from('{"jsonrpc":"2.0","method":"bad","params":"'),
+          Buffer.from([0xff]),
+          Buffer.from('"}\n'),
+        ]),
+      );
       result(id, null);
       break;
-    case "oversize": process.stdout.write("x".repeat(Number(params.bytes))); break;
-    case "stderr": process.stderr.write("diagnostic 🦜\n"); result(id, "ok"); break;
-    case "late": setTimeout(() => result(id, "late"), Number(params.delayMs ?? 80)); break;
-    case "crash":
-      process.stderr.write("first error\nfinal crash detail", () => process.exit(23));
+    case 'oversize':
+      process.stdout.write('x'.repeat(Number(params.bytes)));
       break;
-    case "descendant": {
-      const child = spawn(process.execPath, ["-e", 'process.on("SIGTERM", () => {}); console.log("ready"); setInterval(() => {}, 1000)'], { stdio: ["ignore", "pipe", "inherit"] });
-      child.stdout.once("data", () => result(id, { pid: child.pid }));
+    case 'stderr':
+      process.stderr.write('diagnostic 🦜\n');
+      result(id, 'ok');
+      break;
+    case 'late':
+      setTimeout(() => result(id, 'late'), Number(params.delayMs ?? 80));
+      break;
+    case 'crash':
+      process.stderr.write('first error\nfinal crash detail', () => process.exit(23));
+      break;
+    case 'descendant': {
+      const child = spawn(
+        process.execPath,
+        [
+          '-e',
+          'process.on("SIGTERM", () => {}); console.log("ready"); setInterval(() => {}, 1000)',
+        ],
+        { stdio: ['ignore', 'pipe', 'inherit'] },
+      );
+      child.stdout.once('data', () => result(id, { pid: child.pid }));
       // Stay alive to reap the resistant child after the group's forced kill.
-      process.on("SIGTERM", () => {});
+      process.on('SIGTERM', () => {});
       break;
     }
-    default: send({ jsonrpc: "2.0", id, error: { code: -32601, message: "Unknown fake method" } });
+    default:
+      send({ jsonrpc: '2.0', id, error: { code: -32601, message: 'Unknown fake method' } });
   }
 }
 
-if (process.argv.includes("--no-read")) {
-  send({ jsonrpc: "2.0", method: "ready", params: null });
-  if (process.argv.includes("--crash-after-ready")) {
-    setTimeout(() => process.stderr.write("blocked stdin crash", () => process.exit(23)), 30);
+if (process.argv.includes('--no-read')) {
+  send({ jsonrpc: '2.0', method: 'ready', params: null });
+  if (process.argv.includes('--crash-after-ready')) {
+    setTimeout(() => process.stderr.write('blocked stdin crash', () => process.exit(23)), 30);
   }
   setInterval(() => {}, 1_000);
 } else {
-  process.stdin.on("data", (chunk: Buffer) => framer.push(chunk, (line) => handle(JSON.parse(line.toString("utf8")) as Message)));
+  process.stdin.on('data', (chunk: Buffer) =>
+    framer.push(chunk, (line) => handle(JSON.parse(line.toString('utf8')) as Message)),
+  );
 }

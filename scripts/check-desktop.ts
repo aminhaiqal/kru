@@ -1,5 +1,5 @@
 import { _electron as electron } from 'playwright-core';
-import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { Database } from 'bun:sqlite';
@@ -7,7 +7,8 @@ const directory = mkdtempSync(join(tmpdir(), 'kru-desktop-check-'));
 const artifacts = resolve('dist/desktop-verification');
 mkdirSync(artifacts, { recursive: true });
 const executable =
-  process.env.KRU_DESKTOP_EXECUTABLE || resolve('dist/desktop/KRU-darwin-arm64/KRU.app/Contents/MacOS/KRU');
+  process.env.KRU_DESKTOP_EXECUTABLE ||
+  resolve('dist/desktop/KRU-darwin-arm64/KRU.app/Contents/MacOS/KRU');
 const launch = () =>
   electron.launch({
     executablePath: executable,
@@ -58,9 +59,73 @@ try {
   const page = await application.firstWindow();
   page.on('pageerror', (error) => errors.push(error.message));
   await page.getByRole('textbox', { name: 'Message', exact: true }).waitFor({ timeout: 60000 });
-  if (!page.url().startsWith('kru://app/')) throw new Error('Desktop did not use its private protocol');
+  if (!page.url().startsWith('kru://app/'))
+    throw new Error('Desktop did not use its private protocol');
   checks.push('Native desktop opens its own bundled local engine through kru://');
-  if (await page.locator('#chat-bot').count()) throw new Error('Personal chat still has a teammate selector');
+  const chooseTheme = async (mode: string) => {
+    await page.locator('#theme-trigger').click();
+    await page.getByRole('menuitemradio', { name: mode, exact: mode !== 'System' }).click();
+    const deadline = Date.now() + 5000;
+    while (Date.now() < deadline) {
+      if (
+        (await application.evaluate(({ nativeTheme }) => nativeTheme.themeSource)) ===
+        mode.toLowerCase()
+      )
+        return;
+      await Bun.sleep(25);
+    }
+    throw new Error('Native theme did not switch to ' + mode);
+  };
+  if ((await application.evaluate(({ nativeTheme }) => nativeTheme.themeSource)) !== 'system')
+    throw new Error('A fresh desktop profile did not default to System');
+  await chooseTheme('Light');
+  await chooseTheme('Dark');
+  await page.screenshot({ path: join(artifacts, 'theme-dark-chat.png') });
+  checks.push(
+    'Desktop appearance defaults to System and switches native window and renderer themes',
+  );
+  await page.getByRole('button', { name: 'Connector', exact: true }).click();
+  await page.locator('.brain-card').getByText('Ready', { exact: true }).waitFor();
+  const vaultPath = realpathSync(join(directory, 'profile', 'KRU Brain'));
+  const brain = await page.evaluate(async () => {
+    const token = (globalThis as any).document.querySelector('meta[name="kru-token"]').content;
+    return (await (await fetch('/api/brain', { headers: { 'x-kru-token': token } })).json()) as {
+      path: string;
+    };
+  });
+  if (brain.path !== vaultPath) throw new Error('Desktop brain did not use its isolated profile');
+  await application.evaluate(({ shell }) => {
+    const global = globalThis as any;
+    global.__kruBrainOpenCalls = [];
+    global.__kruOriginalShell = { openExternal: shell.openExternal, openPath: shell.openPath };
+    shell.openExternal = async (value) => {
+      global.__kruBrainOpenCalls.push(value);
+    };
+    shell.openPath = async (value) => {
+      global.__kruBrainOpenCalls.push(value);
+      return '';
+    };
+  });
+  await page.getByRole('button', { name: 'Open in Obsidian', exact: true }).click();
+  await page
+    .getByRole('dialog')
+    .getByRole('heading', { name: 'Open Obsidian vault', exact: true })
+    .waitFor();
+  await page.getByRole('button', { name: 'Close dialog', exact: true }).click();
+  await page.getByRole('button', { name: 'Open folder', exact: true }).click();
+  const opened = await application.evaluate(({ shell }) => {
+    const global = globalThis as any;
+    Object.assign(shell, global.__kruOriginalShell);
+    return global.__kruBrainOpenCalls;
+  });
+  if (JSON.stringify(opened) !== JSON.stringify(['obsidian://choose-vault', vaultPath]))
+    throw new Error('Brain controls did not open only the dedicated vault');
+  checks.push(
+    'Desktop provisions a dedicated brain and exposes Obsidian setup and folder controls',
+  );
+  await page.getByRole('button', { name: 'Conversations', exact: true }).click();
+  if (await page.locator('#chat-bot').count())
+    throw new Error('Personal chat still has a teammate selector');
   checks.push('Personal chat has no teammate selector');
   await page.getByRole('button', { name: 'Change model for this conversation' }).click();
   await page.locator('.chat-model-list button').first().waitFor({ timeout: 30000 });
@@ -87,7 +152,11 @@ try {
   await page.getByRole('menuitem', { name: 'Upload or add files', exact: true }).click();
   await (
     await fileChooser
-  ).setFiles({ name: 'notes.md', mimeType: 'text/markdown', buffer: Buffer.from('Launch date: June 18') });
+  ).setFiles({
+    name: 'notes.md',
+    mimeType: 'text/markdown',
+    buffer: Buffer.from('Launch date: June 18'),
+  });
   await page.locator('.chat-attachments span[title="notes.md"]').waitFor();
   checks.push('Plus menu opens a native file picker and attaches text files');
   const folder = join(directory, 'project-files');
@@ -108,13 +177,16 @@ try {
   await page.getByRole('button', { name: 'Delete', exact: true }).click();
   await page.getByRole('dialog').waitFor({ state: 'hidden' });
   await page.waitForFunction(
-    (before: number) => (globalThis as any).document.querySelectorAll('.conversation-thread').length < before,
+    (before: number) =>
+      (globalThis as any).document.querySelectorAll('.conversation-thread').length < before,
     count,
   );
   checks.push('Threads can be removed in the desktop app');
   await page.getByRole('button', { name: 'Browser', exact: true }).click();
   await page.getByRole('complementary', { name: 'Browser panel' }).waitFor();
-  await page.getByLabel('Browser address', { exact: true }).fill('http://127.0.0.1:' + fixture.port);
+  await page
+    .getByLabel('Browser address', { exact: true })
+    .fill('http://127.0.0.1:' + fixture.port);
   await page.getByRole('button', { name: 'Navigate', exact: true }).click();
   const nativeDeadline = Date.now() + 15000;
   let nativePage;
@@ -123,7 +195,8 @@ try {
       .context()
       .pages()
       .find(
-        (candidate) => candidate !== page && candidate.url().startsWith('http://127.0.0.1:' + fixture.port),
+        (candidate) =>
+          candidate !== page && candidate.url().startsWith('http://127.0.0.1:' + fixture.port),
       );
     if (nativePage) break;
     await Bun.sleep(50);
@@ -141,17 +214,52 @@ try {
   await nativePage.getByRole('button', { name: 'Save', exact: true }).click();
   const saveDeadline = Date.now() + 10000;
   while (browserSaved !== 'Desktop user' && Date.now() < saveDeadline) await Bun.sleep(50);
-  if (browserSaved !== 'Desktop user') throw new Error('Native browser input did not submit the typed value');
-  checks.push('Native Chromium handles direct input and keyboard shortcuts without an image bridge');
+  if (browserSaved !== 'Desktop user')
+    throw new Error('Native browser input did not submit the typed value');
+  checks.push(
+    'Native Chromium handles direct input and keyboard shortcuts without an image bridge',
+  );
   const boundary = await nativePage.evaluate(() => ({
     node: typeof (globalThis as any).require,
     bridge: typeof (globalThis as any).kruBrowser,
+    theme: typeof (globalThis as any).kruTheme,
+    brain: typeof (globalThis as any).kruBrain,
     dark: (globalThis as any).matchMedia('(prefers-color-scheme: dark)').matches,
     webdriver: (globalThis as any).navigator.webdriver,
   }));
-  if (boundary.node !== 'undefined' || boundary.bridge !== 'undefined' || !boundary.dark)
-    throw new Error('Native browser isolation or dark preference is missing: ' + JSON.stringify(boundary));
+  if (
+    boundary.node !== 'undefined' ||
+    boundary.bridge !== 'undefined' ||
+    boundary.theme !== 'undefined' ||
+    boundary.brain !== 'undefined' ||
+    !boundary.dark
+  )
+    throw new Error(
+      'Native browser isolation or dark preference is missing: ' + JSON.stringify(boundary),
+    );
   checks.push('Website has no Node or application bridge and uses the dark preference');
+  await page.locator('#theme-trigger').click();
+  const covered = await application.evaluate(
+    ({ BrowserWindow }) => BrowserWindow.getAllWindows()[0]!.contentView.children.length,
+  );
+  if (covered !== 1) throw new Error('Native browser covered the theme menu');
+  await page.getByRole('menuitemradio', { name: 'Light', exact: true }).click();
+  await nativePage.waitForFunction(
+    () => !(globalThis as any).matchMedia('(prefers-color-scheme: dark)').matches,
+  );
+  await chooseTheme('System');
+  const systemDark = await application.evaluate(
+    ({ nativeTheme }) => nativeTheme.shouldUseDarkColors,
+  );
+  await nativePage.waitForFunction(
+    (dark) => (globalThis as any).matchMedia('(prefers-color-scheme: dark)').matches === dark,
+    systemDark,
+  );
+  await chooseTheme('Dark');
+  await nativePage.waitForFunction(
+    () => (globalThis as any).matchMedia('(prefers-color-scheme: dark)').matches,
+  );
+  checks.push('Theme menu stays above native pages and live appearance changes reach the browser');
   const state: any = await page.evaluate(async () => {
     const token = (globalThis as any).document.querySelector('meta[name="kru-token"]').content;
     return (await fetch('/api/state', { headers: { 'x-kru-token': token } })).json();
@@ -252,7 +360,13 @@ try {
   writeFileSync(
     exportedCookies,
     JSON.stringify([
-      { domain: '127.0.0.1', name: 'file_cookie', value: 'export-fixture', path: '/', secure: false },
+      {
+        domain: '127.0.0.1',
+        name: 'file_cookie',
+        value: 'export-fixture',
+        path: '/',
+        secure: false,
+      },
     ]),
   );
   await application.evaluate(({ dialog }, path) => {
@@ -267,7 +381,9 @@ try {
     ))
   )
     throw new Error('Cookie export file was not imported into the active page');
-  checks.push('Native file chooser imports cookie export files without exposing their values in the report');
+  checks.push(
+    'Native file chooser imports cookie export files without exposing their values in the report',
+  );
   await page.getByRole('button', { name: 'Close dialog', exact: true }).click();
   await application.evaluate(({ app }) => {
     const load = (globalThis as any).process
@@ -293,7 +409,12 @@ try {
     },
     { name: 'No-opener popup', mode: 'noopener', url: origin + '/popup-noopener', opener: false },
     { name: 'New-tab link', mode: 'link', url: origin + '/popup-link', opener: false },
-    { name: 'Link preserving its opener', mode: 'opener-link', url: origin + '/popup-opener', opener: true },
+    {
+      name: 'Link preserving its opener',
+      mode: 'opener-link',
+      url: origin + '/popup-opener',
+      opener: true,
+    },
     { name: 'Form submission', mode: 'form', url: origin + '/popup-form', opener: null },
     { name: 'Blank sign-in popup', mode: 'script', url: 'about:blank', opener: true },
   ];
@@ -321,7 +442,8 @@ try {
           document.body.append(form);
           form.submit();
           form.remove();
-        } else (globalThis as any).window.open(url, '_blank', mode === 'noopener' ? 'noopener' : '');
+        } else
+          (globalThis as any).window.open(url, '_blank', mode === 'noopener' ? 'noopener' : '');
       }, item),
       Bun.sleep(10000).then(() => {
         throw new Error(item.name + ' did not return');
@@ -376,7 +498,9 @@ try {
   const surface = await page.locator('#browser-native-surface').boundingBox();
   const viewBounds = await application.evaluate(({ BrowserWindow }, origin) => {
     const window = BrowserWindow.getAllWindows()[0]!,
-      view = window.contentView.children.find((child: any) => child.webContents?.getURL().startsWith(origin));
+      view = window.contentView.children.find((child: any) =>
+        child.webContents?.getURL().startsWith(origin),
+      );
     return view?.getBounds();
   }, 'http://127.0.0.1:' + fixture.port);
   if (
@@ -407,7 +531,15 @@ try {
   await application.close();
   application = await launch();
   const restoredWindow = await application.firstWindow();
-  await restoredWindow.getByRole('textbox', { name: 'Message', exact: true }).waitFor({ timeout: 60000 });
+  await restoredWindow
+    .getByRole('textbox', { name: 'Message', exact: true })
+    .waitFor({ timeout: 60000 });
+  if (
+    (await application.evaluate(({ nativeTheme }) => nativeTheme.themeSource)) !== 'dark' ||
+    (await restoredWindow.locator('html').getAttribute('data-theme')) !== 'dark'
+  )
+    throw new Error('Desktop appearance did not persist across restart');
+  checks.push('Saved desktop appearance restores before the renderer opens after restart');
   await restoredWindow.getByRole('button', { name: 'Browser', exact: true }).click();
   await restoredWindow
     .getByLabel('Browser address', { exact: true })
@@ -421,7 +553,8 @@ try {
       .pages()
       .find(
         (candidate) =>
-          candidate !== restoredWindow && candidate.url().startsWith('http://127.0.0.1:' + fixture.port),
+          candidate !== restoredWindow &&
+          candidate.url().startsWith('http://127.0.0.1:' + fixture.port),
       );
     if (restoredPage) break;
     await Bun.sleep(50);
@@ -435,7 +568,9 @@ try {
     ))
   )
     throw new Error('Native browser profile did not survive restart');
-  checks.push('Native browser profiles preserve imported cookies and local storage across desktop restarts');
+  checks.push(
+    'Native browser profiles preserve imported cookies and local storage across desktop restarts',
+  );
   console.log(JSON.stringify({ passed: checks.length, checks, artifacts, modelCalls: 0 }, null, 2));
 } catch (error) {
   const page = await application.firstWindow().catch(() => null);
