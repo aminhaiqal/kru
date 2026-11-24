@@ -3,6 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="kru-desktop" content="__KRU_DESKTOP__">
   <meta name="kru-token" content="__KRU_TOKEN__">
   <meta name="theme-color" content="#f5f7fb">
   <title>KRU · Agent workspace</title>
@@ -11,9 +12,14 @@
   <link rel="stylesheet" href="/navigation.css">
   <script src="/work.js" defer></script>
   <script src="/workflows.js" defer></script>
+  <script src="/icons.js" defer></script>
+  <script src="/markdown.js" defer></script>
+  <script src="/conversations.js" defer></script>
+  <script src="/browser-panel.js" defer></script>
   <script src="/app.js" defer></script>
 </head>
 <body>
+  <div class="desktop-titlebar" aria-hidden="true"></div>
   <div id="app" class="workspace">
     <aside class="sidebar" aria-label="Workspace navigation">
       <a class="wordmark" href="/" aria-label="KRU home"><span class="brand-mark">k</span><span class="brand-name">kru</span><span class="local-label">LOCAL</span></a>
@@ -24,13 +30,15 @@
       <div class="sidebar-bottom"><span id="connection" class="connection">Connecting</span><span>Local engine · v0.1.1</span></div>
     </aside>
     <main>
-      <header class="topbar"><button class="icon-button mobile-menu" data-action="menu" aria-label="Toggle navigation" aria-controls="navigation" aria-expanded="false">☰</button><div id="breadcrumb">Workspace</div><div id="engine-status"></div></header>
+      <button class="icon-button mobile-menu" data-action="menu" aria-label="Toggle navigation" aria-controls="navigation" aria-expanded="false">☰</button>
       <div id="banner" role="status" hidden></div>
       <div id="attention-reminder" role="status" hidden></div>
-      <section id="content" aria-live="polite"><div class="loading">Connecting to your workspace…</div></section>
+      <div class="workspace-body"><section id="content" aria-live="polite"><div class="loading">Connecting to your workspace…</div></section><aside id="browser-panel" class="browser-panel" aria-label="Browser panel" hidden></aside></div>
     </main>
   </div>
   <dialog id="dialog" aria-labelledby="dialog-title"><div id="dialog-content"></div></dialog>
+  <input id="chat-files" type="file" multiple hidden>
+  <input id="chat-folder" type="file" webkitdirectory directory multiple hidden>
   <div id="toast" role="status" hidden></div>
 </body>
 </html>

@@ -7,6 +7,25 @@ Planned release line v0.2.
 
 ### Added
 
+- Ship an Electron desktop shell and a bundled native engine, private `kru://`
+  application protocol, native workspace menu, icon and macOS app packaging.
+- Make Chat personal user-to-LLM conversation, with thread deletion, isolated
+  image attachments and live CLI provider/model/effort selection. Forward model
+  and reasoning effort to the native Codex and Claude CLI requests.
+
+- Redesign Conversations with searchable past threads, independent new chats,
+  per-thread provider/model selection and durable context handoff. Add migration
+  13 conversation settings/media and replay all 33 projections.
+- Replace the Firefox screenshot/input bridge with native Electron Chromium tabs,
+  persistent profiles and private engine IPC. Add selected-profile cookie imports,
+  cookie export files and compatible cache staging. Browser access remains enabled
+  by default; bot actions retain their Ask/Allow policy.
+
+- Remove the Routines page and its UI actions; scheduled workflows remain in Skills.
+
+- Consolidate Codex and Claude Code setup into account cards on Connector and
+  remove the separate AI connections navigation page.
+
 - Turn Skills into a visual workflow builder inspired by n8n's graph/execution
   separation: draggable nodes, wired ports, manual/interval triggers, bot tasks,
   existing Connector tools, mapped data, conditions and execution inspection.

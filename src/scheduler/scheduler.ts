@@ -31,6 +31,8 @@ interface Runtime {
   error?: string; threadId?: string;
 }
 export interface SchedulerOptions {
+  turnInputs?: (batch: Batch, handoff: boolean) => import('../providers/protocol').TurnInput[];
+  resolveAgent?: (agent: Agent, laneId: string | null) => Agent;
   providerReadiness?: (agent: Agent) => { ready: boolean; message?: string };
   onApproval?: (context: ToolContext, call: ApprovalCall, signal: AbortSignal) => Promise<ApprovalResult>;
   onNotification?: (batch: Batch, notification: Notification) => void;
@@ -265,8 +267,9 @@ export class Scheduler {
     }).filter(c => c.lane.head).sort((a, b) =>
       Number(a.lane.head!.sender.kind !== 'user') - Number(b.lane.head!.sender.kind !== 'user') || a.lane.head!.seq - b.lane.head!.seq);
     for (const { key, lane } of candidates) {
-      const agent = this.agents.get(lane.agentId);
-      if (!agent) continue;
+      const base = this.agents.get(lane.agentId);
+      if (!base) continue;
+      const agent = this.options.resolveAgent?.(base, lane.laneId) ?? base;
       let runtime: Runtime | undefined;
       let error: string | undefined;
       if (!agent.config.paused) {
@@ -346,11 +349,15 @@ export class Scheduler {
       return;
     }
     if (handoff?.text) prompt = handoff.text + '\n\n' + prompt;
+    let mediaInputs: import('../providers/protocol').TurnInput[];
+    try { mediaInputs = this.options.turnInputs?.(batch, !!handoff?.text) ?? []; }
+    catch (error) { this.ledger.abandon(batch.id, () => this.mailbox.finishBatch(batch.id, 'failed', errorText(error))); return; }
     const recording = this.options.turns?.prepare(batch, agent, runtime.threadId,
       this.sessions.get(agent.id, batch.laneId, agent.provider)?.promptHash ?? 'unknown');
     const answer = new TurnAnswer();
     let context: ToolContext | undefined;
     const outcome = await runScheduledTurn(runtime.provider, runtime.threadId, prompt, {
+      input: [{ type: 'text', text: prompt }, ...mediaInputs],
       isWaiting: () => runtime.waiting > 0,
       signal: controller.signal,
       onSubmitting: () => {this.options.guardExecution?.(batch);this.ledger.submitted(batch.id);},

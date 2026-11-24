@@ -1,3 +1,8 @@
+import { ConversationMedia } from '../threads/media';
+import { ModelCatalog, type ModelOption } from '../providers/models';
+import { CodexProvider } from '../providers/codex/adapter';
+import { ClaudeProvider } from '../providers/claude/adapter';
+import { Conversations } from '../threads/conversations';
 import type { Store } from '../store';
 import { AgentRegistry } from '../agents';
 import { SqliteMailbox } from '../mailbox';
@@ -18,11 +23,12 @@ import type { ProcessScope } from '../boot/types';
 import { ProviderConnections, type ConnectionOptions } from '../providers/connections';
 import { CodexRuntime, type CodexProviderOptions } from '../providers/codex/adapter';
 
-export interface DaemonOptions extends SchedulerOptions { pollMs?: number; heartbeatMs?: number; shutdownGraceMs?: number; recovery?:RecoveryOptions; connections?: ConnectionOptions }
+export interface DaemonOptions extends SchedulerOptions { pollMs?: number; heartbeatMs?: number; shutdownGraceMs?: number; recovery?:RecoveryOptions; connections?: ConnectionOptions; modelCatalog?: (provider: 'codex' | 'claude') => Promise<ModelOption[]> }
 export class Daemon {
   readonly scheduler: Scheduler;
   readonly workspace: WorkspaceRuntime;
   readonly connections: ProviderConnections;
+  readonly models: ModelCatalog;
   readonly connectionsEnabled: boolean;
   private unsubscribeConnections: (() => void) | undefined;
   private nextWorkspaceTick = 0;
@@ -62,10 +68,19 @@ export class Daemon {
       ...(options.now ? { now: options.now } : {}),
       onError: error => { this.failure = error; void this.stop(0); },
     });
-    const agents = new AgentRegistry(store);
+    const agents = new AgentRegistry(store), conversations = new Conversations(store), media = new ConversationMedia(store);
     this.workspace = new WorkspaceRuntime(store, () => this.processScope(), options.maxHops, (agentId, laneId) => this.scheduler.cancelLane(agentId, laneId));
     this.connections = new ProviderConnections(store.path, store.databaseId, () => this.processScope(), options.connections);
     this.connectionsEnabled = !factory || options.connections !== undefined;
+    const metadataProviders = new Set<CodexProvider | ClaudeProvider>();
+    this.models = new ModelCatalog(options.modelCatalog ?? (async id => {
+      const executable = this.connections.binary(id); if (!executable) throw new Error('Install and connect ' + id + ' in Connector first');
+      const provider = id === 'codex' ? new CodexProvider({ transport: { command: executable.command } }) : new ClaudeProvider({ executablePath: executable.command });
+      metadataProviders.add(provider); provider.setProcessScope(this.processScope());
+      try { await provider.start(); return await provider.listModels(); }
+      finally { await provider.stop(); metadataProviders.delete(provider); }
+    }), async () => { await Promise.allSettled([...metadataProviders].map(provider => provider.forceStop())); });
+
     const tools = options.tools ?? this.workspace.tools;
     const runtimeIds=new WeakMap<ProviderClient,string>();
     const codexRuntimes = new Map<string, CodexRuntime>();
@@ -93,7 +108,7 @@ export class Daemon {
         const scope = this.processScope();
         runtimeIds.set(provider,provider.setProcessScope?.(scope)??scope.runtimeId);return provider;
       }, {
-        ...options, tools, ledger: this.ledger, turns: options.turns ?? this.history,
+        ...options, resolveAgent: (agent, lane) => conversations.effective(agent, lane), turnInputs: (batch, handoff) => media.inputs(batch, handoff), tools, ledger: this.ledger, turns: options.turns ?? this.history,
         ...(options.providerReadiness ? {} : this.connectionsEnabled ? { providerReadiness: agent => this.connections.readiness(agent.provider) } : {}),
         guard,guardExecution,
         onApproval: options.onApproval ?? ((context, call, signal) => this.workspace.approval(context, call, signal)),
@@ -172,7 +187,7 @@ export class Daemon {
     clearInterval(this.usageTimer);
     this.workspace.approvals.close();
     this.unsubscribeConnections?.();
-    this.stopPromise = Promise.resolve(this.bootTask).catch(()=>{}).then(async () => { try { await this.scheduler.stop(graceMs); } finally { await Promise.all([this.workspace.close(), this.connections.close()]); } }).catch(error => { this.failure ??= error; }).finally(() => {
+    this.stopPromise = Promise.resolve(this.bootTask).catch(()=>{}).then(async () => { try { await this.scheduler.stop(graceMs); } finally { await Promise.all([this.workspace.close(), this.connections.close(), this.models.close()]); } }).catch(error => { this.failure ??= error; }).finally(() => {
       try { this.lock.release(); } catch (error) { this.failure ??= error; }
       this.store.setWriteFence();
       this.resolveClosed();

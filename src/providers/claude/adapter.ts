@@ -11,6 +11,8 @@ import { resolve } from 'node:path';
 import { fileDecision } from '../permissions';
 import { InputQueue } from './input-queue';
 import { addTokens, claudeTokens, zeroTokens } from '../token-usage';
+import { claudeModels, type ModelOption } from '../models';
+import { readFileSync } from 'node:fs';
 
 export type ClaudeQuery = AsyncIterable<SDKMessage> & { interrupt(): Promise<unknown>; close(): void };
 export type ClaudeQueryFactory = (args: { prompt: AsyncIterable<SDKUserMessage>; options: Options }) => ClaudeQuery;
@@ -21,6 +23,7 @@ interface Active {
   nativeTools: Map<string, string>; approvedTools: Set<string>; modelSteps: Set<string>; toolCalls: Set<string>;
 }
 interface Session {
+  metadata?: boolean;
   id: string; params: ThreadParams; profile: PreparedThread; nativeId?: string;
   query?: ClaudeQuery; input: InputQueue<SDKUserMessage>; reader?: Promise<void>;
   child?: ChildProcess; record?: string; force: AbortController; closing: boolean;
@@ -33,6 +36,11 @@ function builtinTools(profile: PreparedThread): string[] | undefined {
     ? ['Read', 'Glob', 'Grep'] : ['Read', 'Edit', 'Bash', 'Write', 'Glob', 'Grep'];
 }
 export class ClaudeProvider extends ProviderBase {
+  async listModels(): Promise<ModelOption[]> {
+    this.requireReady(); const session = this.session({ promptProfile: 'minimal' }); session.metadata = true;
+    try { this.open(session); const query = session.query as unknown as Query; return claudeModels(await query.supportedModels()); }
+    finally { await this.closeSession(session); this.sessions.delete(session.id); }
+  }
   override expectedPrefixHash(params:ThreadParams):string{const p=prepareThread(params);return promptMetadata(p,builtinTools(p)).prefixHash;}
   private scope:import('../../boot/types').ProcessScope|undefined;
   setProcessScope(scope:import('../../boot/types').ProcessScope):string { this.scope=scope;return scope.runtimeId; }
@@ -111,11 +119,12 @@ export class ClaudeProvider extends ProviderBase {
         await session.query?.interrupt(); result = {};
       } else if (method === 'turn/start') {
         if (session.active) throw new RpcResponseError(-32600, 'A turn is already active');
-        if (!Array.isArray(p.input) || !p.input.every(i => i.type === 'text' && typeof i.text === 'string')) throw new RpcResponseError(-32602, 'Invalid text input');
+        if (!Array.isArray(p.input) || !p.input.every(i => i.type === 'text' ? typeof i.text === 'string' : i.type === 'localImage' && typeof i.path === 'string')) throw new RpcResponseError(-32602, 'Invalid turn input');
         if (!session.query) this.open(session);
         const active: Active = { id: crypto.randomUUID(), controller: new AbortController(), interrupted: false, messageId: crypto.randomUUID(), blocks: new Map(), nativeTools: new Map(), approvedTools: new Set(), modelSteps: new Set(), toolCalls: new Set() };
         session.active = active;
-        session.input.push({ type: 'user', ...(session.profile.promptProfile === 'full' ? {} : { client_composed: true as const }), session_id: session.nativeId ?? session.id, uuid: active.id as `${string}-${string}-${string}-${string}-${string}`, parent_tool_use_id: null, message: { role: 'user', content: p.input.map(i => i.text).join('\n') } });
+        const content = p.input.map(input => input.type === 'text' ? { type: 'text' as const, text: input.text } : { type: 'image' as const, source: { type: 'base64' as const, media_type: input.mime as 'image/png' | 'image/jpeg' | 'image/gif' | 'image/webp', data: readFileSync(input.path).toString('base64') } });
+        session.input.push({ type: 'user', ...(session.profile.promptProfile === 'full' ? {} : { client_composed: true as const }), session_id: session.nativeId ?? session.id, uuid: active.id as `${string}-${string}-${string}-${string}-${string}`, parent_tool_use_id: null, message: { role: 'user', content: p.input.every(input => input.type === 'text') ? p.input.map(input => input.type === 'text' ? input.text : '').join('\n') : content } });
         this.emit('notification', { method: 'turn/started', params: { threadId: session.id, turn: { id: active.id, status: 'inProgress' } } });
         result = { turn: { id: active.id, status: 'inProgress' } };
       } else throw new RpcResponseError(-32601, `Method not found: ${method}`);
@@ -158,6 +167,8 @@ export class ClaudeProvider extends ProviderBase {
         kind: file ? 'file' : name === 'Bash' ? 'command' : 'tool', input: { name, input } }, signal)).decision === 'accept';
     };
     const options: Options = {
+      ...(session.metadata ? { persistSession: false } : {}),
+      ...(session.params.effort ? { effort: session.params.effort as NonNullable<Options['effort']>, env: { ...process.env, CLAUDE_CODE_EFFORT_LEVEL: session.params.effort } } : {}),
       ...(this.options.executablePath ? { pathToClaudeCodeExecutable: this.options.executablePath } : {}),
       ...(session.params.cwd ? { cwd: session.params.cwd } : {}), ...(session.params.model ? { model: session.params.model } : {}),
       ...(session.nativeId ? { resume: session.nativeId } : { sessionId: session.id }),
@@ -169,14 +180,14 @@ export class ClaudeProvider extends ProviderBase {
       ...(session.profile.permissions.sandbox === 'read-only' ? { disallowedTools: ['Bash', 'Edit', 'Write', 'NotebookEdit'] } : {}),
       permissionMode: session.profile.permissions.approvalPolicy === 'never' ? 'dontAsk' : 'default',
       additionalDirectories: session.profile.permissions.writableRoots,
-      hooks: { PreToolUse: [{ onFailure: 'block', hooks: [async (input, _id, context) => {
+      ...(session.metadata || session.profile.promptProfile === 'minimal' ? {} : { hooks: { PreToolUse: [{ onFailure: 'block', hooks: [async (input, _id, context) => {
         if (input.hook_event_name !== 'PreToolUse') return {};
         // Run before project allow rules and dontAsk, which can bypass canUseTool.
         if (!['Write', 'Edit', 'NotebookEdit', 'Bash'].includes(input.tool_name)) return {};
         const allowed = await decide(input.tool_name, input.tool_input as Record<string, unknown>, context.signal);
         if (allowed) session.active?.approvedTools.add(input.tool_use_id);
         return { hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: allowed ? 'allow' : 'deny' } };
-      }] }] },
+      }] }] } }),
       mcpServers: definitions.length ? { kru: sdk.createSdkMcpServer({ name: 'kru', tools: definitions }) } : {},
       canUseTool: async (name, input, context) => {
         if (definitions.some(def => name === `mcp__kru__${def.name}`) && context.mcpServer?.source === 'sdk' && context.mcpServer.name === 'kru') return { behavior: 'allow', updatedInput: input };

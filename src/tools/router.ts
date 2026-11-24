@@ -57,7 +57,7 @@ export class ToolRouter implements AgentTools {
           }
           if (call.tool === 'list_agents') {
             if (Object.keys(args).length) throw new ToolInputError('list_agents accepts no arguments');
-            return result(true, { agents: this.agents.list().map(a => ({ id: a.id, name: a.name, provider: a.provider, paused: a.config.paused === true })) });
+            return result(true, { agents: this.agents.list().filter(agent => !agent.config.personalChat).map(a => ({ id: a.id, name: a.name, provider: a.provider, paused: a.config.paused === true })) });
           }
           if (call.tool !== 'send_message') throw new ToolInputError(`Unknown Kru tool: ${call.tool}`);
           return this.send(context, args, id);
@@ -79,7 +79,7 @@ export class ToolRouter implements AgentTools {
     const source = args.inReplyTo === undefined ? context.batch.deliveries.at(-1)
       : context.batch.deliveries.find(d => d.messageId === args.inReplyTo);
     if (!source) throw new ToolInputError('inReplyTo must select a message in the active batch');
-    const all = this.agents.list();
+    const all = this.agents.list().filter(agent => !agent.config.personalChat);
     const ids = args.to.map(name => {
       text(name, 'recipient');
       const agent = all.find(a => a.id === name) ?? all.find(a => a.name === name);

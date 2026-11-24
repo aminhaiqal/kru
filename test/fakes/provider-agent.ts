@@ -107,14 +107,14 @@ async function handle(message: Record<string, unknown>) {
         send({method:'item/agentMessage/delta',params:{threadId:p.threadId,turnId,itemId:'partial',delta:'latest durable partial answer'}});
         for(const inputTotal of [10,20,20])send({method:'thread/tokenUsage/updated',params:{threadId:p.threadId,turnId,tokenUsage:{last:{inputTokens:inputTotal,cachedInputTokens:0,outputTokens:3,totalTokens:inputTotal+3},total:{inputTokens:inputTotal,cachedInputTokens:0,outputTokens:3,totalTokens:inputTotal+3}}}});
       }
-      if (p.input[0]?.text === 'late-start') {
+      if (p.input.find(i => i.type === 'text')?.text === 'late-start') {
         const turnId = (result as Methods['turn/start']['result']).turn.id;
         send({ method: 'item/agentMessage/delta', params: { threadId: p.threadId, turnId, itemId: 'late', delta: 'discard this output' } });
         for (let i = 0; i < 3; i++) send({ method: 'item/agentMessage/delta', params: { threadId: p.threadId, turnId, itemId: 42, delta: false } });
         send({ id: `late-approval-${id}`, method: 'item/commandExecution/requestApproval', params: { threadId: p.threadId, turnId, command: 'echo late' } });
         send({ id: `late-tool-${id}`, method: 'item/tool/call', params: { threadId: p.threadId, turnId, callId: 'late-tool', tool: 'late_tool', arguments: {} } });
       }
-      const nativeCommand = p.input[0]?.text.match(/^native-command:(quiet|post-quiet|output|progress)$/);
+      const nativeCommand = p.input.find(i => i.type === 'text')?.text.match(/^native-command:(quiet|post-quiet|output|progress)$/);
       if (nativeCommand) {
         const turnId = (result as Methods['turn/start']['result']).turn.id;
         void (async () => {
@@ -130,7 +130,7 @@ async function handle(message: Record<string, unknown>) {
           if (command !== 'post-quiet') send({ method: 'turn/completed', params: { threadId: p.threadId, turn: { id: turnId, status: 'completed' } } });
         })();
       }
-      const approval = p.input[0]?.text.match(/^(approval|elicitation):(accept|decline)$/);
+      const approval = p.input.find(i => i.type === 'text')?.text.match(/^(approval|elicitation):(accept|decline)$/);
       if (approval) {
         const requestId = `approval-${id}`;
         const answer = new Promise<unknown>(resolve => approvals.set(requestId, resolve));
@@ -142,7 +142,7 @@ async function handle(message: Record<string, unknown>) {
     if (process.env.KRU_BAD_RESULT === message.method) result = { turn: { id: 42, status: 'bad' } };
     if (message.method === 'turn/start') {
       const p = message.params as Methods['turn/start']['params'];
-      const corrupt = p.input[0]?.text.match(/^corrupt:(\d+)$/);
+      const corrupt = p.input.find(i => i.type === 'text')?.text.match(/^corrupt:(\d+)$/);
       if (corrupt) {
         const turnId = (result as Methods['turn/start']['result']).turn.id;
         process.stdout.write(Array.from({ length: Number(corrupt[1]) }, () => JSON.stringify({ method: 'item/agentMessage/delta', params: { threadId: p.threadId, turnId, itemId: 42, delta: false } }) + '\n').join(''));

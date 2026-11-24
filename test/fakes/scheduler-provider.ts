@@ -31,7 +31,7 @@ export class SchedulerFake extends FakeProvider {
     if (!this.threadReady && (method === 'thread/start' || method === 'thread/resume')) throw new RpcResponseError(-32000, 'Session service unavailable');
     if (method === 'turn/start') {
       const p = params as Methods['turn/start']['params'];
-      this.starts.push(p.input.map(i => i.text).join('\n'));
+      this.starts.push(p.input.filter(i => i.type === 'text').map(i => i.text).join('\n'));
       if (this.mode === 'refused') throw new RpcResponseError(-32602, 'Definite start refusal');
       if (this.mode === 'unknown' || this.mode === 'late') {
         if (this.mode === 'late') {

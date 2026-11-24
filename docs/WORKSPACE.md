@@ -1,6 +1,9 @@
 # Local agent workspace
 
-Run `bun install` and `bun run ui`, then open <http://127.0.0.1:4310>.
+Run `bun install`, `bunx install-electron` and `bun run desktop`.
+The packaged Electron app bundles and starts its own engine. See
+[Desktop setup](DESKTOP.md) for building and opening existing workspaces.
+`bun run ui` remains a development-only browser harness for the same UI/API.
 The UI, API, daemon and routine runner share one process and one SQLite database.
 `kru serve` is an alias for `kru ui`. Both accept `--port` and `--db`.
 An existing daemon must stop before the UI can own that same database. Multiple
@@ -25,7 +28,7 @@ shadcn/ui components are not installed.
 
 ### Connect Codex and Claude Code
 
-Open **AI connections**. KRU checks `codex login status` and
+Open **Connector → AI accounts**. KRU checks `codex login status` and
 `claude auth status --json` on this computer. The page starts in Checking and
 distinguishes Not installed, Not connected, Connected, and Needs attention.
 Executable presence or an imported SDK alone never produces Connected. A status
@@ -49,7 +52,7 @@ cancelled and expires after ten minutes (five minutes for installation).
 Completing setup triggers another status check. **Recheck** also picks up sign-in
 or sign-out performed in another terminal; checks refresh every thirty seconds
 while the UI runs. Disconnected providers hold queued work, and the conversation
-composer links to the connection page. Reconnecting refreshes idle provider
+composer links to Connector. Reconnecting refreshes idle provider
 runtimes so newly installed executables and credentials are used. Existing active
 turns finish normally. Demo teammates require no connection.
 
@@ -78,7 +81,12 @@ initial UI default. The full profile is available for Claude. Permissions remain
 provider-specific as documented in the project README.
 
 Conversations stream through an authenticated event connection. Main chat, work runs
-and routines have separate durable lanes, selectable using the Thread menu.
+and routines have separate durable lanes, selectable in the searchable conversation
+sidebar. New conversation starts a separate thread. Select the model button in
+the composer to change Codex/Claude provider or model for that thread; earlier
+messages remain available through KRU’s context handoff. See
+[Conversations and model switching](CONVERSATIONS.md) for history, input budgets
+and provider settings.
 Agent configuration, pausing, budgets and cancellation operate on the existing
 registry and scheduler. The activity view reports observed tokens and estimated
 main-agent spend; unknown usage and external service charges are not invented.
@@ -219,27 +227,26 @@ provides exactly-once guarantees for a third-party service.
 
 ## Browser sessions
 
-Install the matching Chromium browser with `bunx playwright-core install chromium`.
-Alternatively, set `KRU_BROWSER_EXECUTABLE` to a compatible Chromium executable.
-Enable browser access separately for each teammate in settings. Start session
-is available from **Conversations → Browser**, including on mobile. It
-uses a headless browser. Open for sign-in starts a visible browser so you can sign
-in directly; stop an existing headless session before starting a visible one.
+The desktop uses native Chromium WebContentsView tabs. The browser panel and LLM
+operate the same page in a persistent profile scoped to workspace and bot.
+Closing the panel keeps work running; Stop closes tabs and flushes session data.
+There is no separate Firefox runtime or screenshot/input proxy.
 
-Each teammate receives a separate context. Cookies and local storage persist in
-private `.kru/browsers/<agent-id>/state.json` files (directory 0700, file 0600).
-With `--db`, the browser directory is beside that database. Session storage,
-downloads, arbitrary JavaScript execution and a general desktop computer-control
-driver are not included. Browser servers bind to loopback and have tracked process
-ownership for cleanup. This provides web automation, not an independent OS sandbox.
+`use_tool` supports web search, navigation, reading page text and fresh CSS
+selectors, clicking, filling, key presses and tab management. Non-read agent
+actions retain the existing Ask/Allow policy. Human verification is completed
+by the user directly in the native page. External content remains untrusted.
 
-`use_tool` supports browser navigation, reading visible text and element metadata,
-CSS-selector clicks, filling fields, key presses, and a screenshot preview. Actions
-are serialized per teammate. Non-read actions ask for approval unless explicitly
-allowed by the operator. The operator UI can navigate and refresh the current
-browser preview directly. Browser and tool output are untrusted data.
+Use **Browser → Import browser data** for detected Chrome/Edge/Brave profiles,
+Firefox cookies or cookie export files. Compatible Chromium cache is staged for
+the next app start. Source browser data is not modified. See [Native browser](BROWSER.md)
+for security boundaries, imports and verification.
 
 ## Routines and webhooks
+
+There is no Routines page. Use **Skills → Workflow settings** for scheduled
+workflows. Existing routine records, their conversation history and the routine
+API remain available to bots and existing integrations.
 
 Routines support daily wall-clock time with an IANA timezone, intervals of at
 least one minute, and authenticated webhook events. The schedule and queued
@@ -249,8 +256,9 @@ produce a replay storm. A nonexistent DST wall-clock time is skipped; a repeated
 wall-clock time runs once per local date. Paused routines do not trigger work.
 Daily/interval routines run in `kru daemon` as well as `kru ui`.
 
-Generate a webhook token from its routine row. The token is shown once, stored
-only as a SHA-256 hash, and can be rotated. Send JSON to the displayed endpoint
+Generate a webhook token with `POST /api/records/routine/:id/token`. The token
+is returned once, stored only as a SHA-256 hash, and can be rotated. Send JSON to
+`/api/webhooks/:id`
 with `Authorization: Bearer <token>` and an `Idempotency-Key` of at most 200
 characters. Repeated keys with identical content reuse the existing delivery;
 changed content is rejected. Event payloads are bounded and labelled as untrusted
@@ -333,6 +341,8 @@ Core routes:
 | GET | `/api/events` | Authenticated server-sent events |
 | POST / PATCH | `/api/agents[/:id]` | Create or configure a teammate |
 | POST / GET | `/api/agents/:id/messages` | Queue text or retrieve a lane |
+| GET / POST | `/api/conversations` | List past threads/model suggestions or create a thread |
+| PATCH | `/api/conversations/:id` | Rename or revision-guard a thread provider/model selection |
 | GET / POST | `/api/workflows` | List workflow definitions/runs or create a draft |
 | GET / PATCH | `/api/workflows/:id` | Read or revision-guard a workflow definition |
 | POST | `/api/workflows/:id/run` | Start with JSON input and `Idempotency-Key` |
@@ -359,8 +369,9 @@ Migration 10 adds `workspace_records`. Versioned workspace events participate in
 the same transaction, ownership fence and replay verification as core domain
 events. Migration 11 adds projects, work items, stage runs and activity, all
 event-backed. Migration 12 adds workflow definitions, runs and node execution
-state. Replay now verifies 30 projection tables. This upgrade is forward-only;
-an older KRU binary rejects a database with migration 12. Back up the database
+state. Migration 13 adds conversation model settings and titles, and enables
+browser access by default. Media metadata and message links are event-backed as well. Replay now verifies 33 projection tables. This upgrade is forward-only;
+an older KRU binary rejects a database with migration 13. Back up the database
 before returning to an older checkout.
 
 ## Verification
@@ -375,9 +386,9 @@ bun run test:ui
 The browser check creates an isolated temporary database, uses scripted providers,
 launches a real MCP process, and drives Chromium through the operator UI. It covers
 teammate creation, streamed chat, memory, skills, Work projects, stage handoffs, review, drag-and-drop, comments, search,
-archive/restore, routines,
-connector discovery, approval decisions, browser navigation/fill/click, cookie
-persistence and mobile layout. Screenshots and a JSON result go to
+archive/restore, workflow execution, thread search and model switching,
+connector discovery, approval decisions, chat formatting and mobile layout. Native
+desktop checks cover Chromium browsing, profile imports and persistence across restarts. Screenshots and a JSON result go to
 `$TMPDIR/kru-workspace-verification`, or `KRU_UI_ARTIFACT_DIR` when set.
 Live Codex/Claude model tests remain opt-in. On macOS, ownership/process tests and
 Chromium require an execution environment that permits `/bin/ps` and child processes.

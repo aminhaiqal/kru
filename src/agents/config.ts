@@ -2,9 +2,11 @@ import type { ThreadParams } from '../providers/protocol';
 import { nanoUsd } from '../usage/pricing';
 import { prepareThread } from '../providers/prompt-profile';
 import { z } from 'zod';
+import { effortValues } from '../providers/models';
 
 export function threadParams(config: Record<string, unknown>): ThreadParams {
   const result: ThreadParams = {};
+  if (config.reasoningEffort !== undefined) result.effort = z.enum(effortValues).parse(config.reasoningEffort);
   for (const key of ['cwd', 'model', 'instructions'] as const) {
     const value = config[key];
     if (value !== undefined) {

@@ -14,7 +14,7 @@ const dir = mkdtempSync(join(tmpdir(), 'kru-ui-')), store = new Store(join(dir, 
 const artifactDir = process.env.KRU_UI_ARTIFACT_DIR || join(tmpdir(), 'kru-workspace-verification'); mkdirSync(artifactDir, { recursive: true });
 const signedIn = { codex: false, claude: false }, installed = { codex: true, claude: false };
 const completeLogin: Partial<Record<ConnectedProvider, () => void>> = {};
-const daemon = new Daemon(store, { pollMs: 10, connections: {
+const daemon = new Daemon(store, { pollMs: 10, modelCatalog: async provider => [{ id: provider === 'codex' ? 'gpt-6.2-sol' : 'opus', name: provider === 'codex' ? 'GPT-6.2 Sol' : 'Opus', description: 'CLI model fixture', efforts: ['low', 'medium', 'high', 'xhigh', 'max'], defaultEffort: 'medium', isDefault: true, imageInput: true }], connections: {
   find: id => installed[id] ? { command: '/test/' + id, source: id === 'claude' ? 'managed' : 'system' } : null,
   npm: () => '/test/npm',
   run: async command => {
@@ -32,6 +32,16 @@ const daemon = new Daemon(store, { pollMs: 10, connections: {
     });
   },
 } }, () => new FakeProvider({ script: async (prompt, call) => {
+  if (prompt.endsWith('Show **Markdown** sample.')) return [
+    '## Markdown reply', '', '**OpenBot** is a project. [Official website](https://www.openbot.org/)', '',
+    '- **Cost:** Example pricing', '- Purpose: Education', '',
+    '> A useful quote.', '', 'Use `bun run desktop`.', '',
+    '```ts', 'const ready = true;', '```', '',
+    '| Feature | Status |', '| --- | --- |', '| Markdown | Ready |', '',
+    '<img src=x onerror="globalThis.__markdownUnsafe=true">', '', '[Unsafe](javascript:alert(1))',
+  ].join('\n');
+  if (prompt.endsWith('Draft our launch plan.')) return prompt.includes('June 18') ? 'I will plan the launch for June 18.' : 'Missing launch context.';
+  if (prompt.endsWith('Confirm the launch date.')) return prompt.includes('June 18') ? 'The launch date is June 18, as agreed earlier.' : 'Missing launch context.';
   if (prompt.includes('For reviews, prioritize clear outcomes and verified changes.')) {
     if (!daemon.workspace.tools.instructions.includes('Automatic memory:')) throw new Error('Missing automatic memory guidance');
     const saved = await call('workspace', { action: 'remember', key: 'review/preferences', text: 'Prioritize clear outcomes and verified changes.' });
@@ -59,7 +69,6 @@ const daemon = new Daemon(store, { pollMs: 10, connections: {
 } }));
 let browser: Browser | undefined, web: ReturnType<typeof createWebServer> | undefined, page: Page | undefined;
 const errors: string[] = [], checks: string[] = [];
-const fixture = Bun.serve({ hostname: '127.0.0.1', port: 0, fetch: () => new Response('<!doctype html><title>Browser verification</title><h1>Connected browser</h1><label>Name <input id="name"></label><button id="save">Save</button><p id="result"></p><script>document.getElementById("save").onclick=()=>{document.cookie="session=kru-test; path=/"; document.getElementById("result").textContent="Saved "+document.getElementById("name").value}; if(document.cookie.includes("session=kru-test"))document.getElementById("result").textContent="Session restored";</script>', { headers: { 'Content-Type': 'text/html' } }) });
 async function check(condition: boolean, name: string) { if (!condition) throw new Error(name); checks.push(name); }
 async function waitText(page: Page, text: string) { await page.getByText(text, { exact: false }).first().waitFor(); }
 async function saveDialog(page: Page, name = 'Save') { await page.getByRole('dialog').getByRole('button', { name, exact: true }).click(); await page.getByRole('dialog').waitFor({ state: 'hidden' }); }
@@ -87,22 +96,25 @@ try {
   const shellGeometry = () => page!.evaluate(() => {
     const document = (globalThis as any).document;
     const rect = (element: any) => { const box = element.getBoundingClientRect(); return [box.x, box.y, box.width, box.height]; };
-    return { sidebar: rect(document.querySelector('.sidebar')), header: rect(document.querySelector('.topbar')), navigation: [...document.querySelectorAll('#navigation button')].map(rect) };
+    return { sidebar: rect(document.querySelector('.sidebar')), main: rect(document.querySelector('main')), navigation: [...document.querySelectorAll('#navigation button')].map(rect) };
   });
   const workShell = await shellGeometry();
-  for (const label of ['Conversations', 'Routines', 'AI connections', 'Connector', 'Skills', 'Activity', 'Work']) {
+  for (const label of ['Conversations', 'Connector', 'Skills', 'Activity', 'Work']) {
     await page.getByRole('button', { name: label, exact: true }).click();
-    if (JSON.stringify(await shellGeometry()) !== JSON.stringify(workShell)) throw new Error('Sidebar or header geometry changed on ' + label);
+    if (JSON.stringify(await shellGeometry()) !== JSON.stringify(workShell)) throw new Error('Sidebar or content geometry changed on ' + label);
     await check(await page.locator('#navigation [aria-current="page"]').getAttribute('aria-label') === label, 'Shared rail geometry and active state stay consistent on ' + label);
   }
   await check(await page.getByRole('button', { name: 'Approvals', exact: true }).count() === 0, 'Approval requests have no separate navigation page');
   await check(await page.getByRole('button', { name: 'Memory', exact: true }).count() === 0, 'Bot memory has no separate management page');
+  await check(await page.locator('#navigation [data-view="routine"]').count() === 0, 'Routines has no separate navigation page');
   await page.screenshot({ path: join(artifactDir, 'navigation-work.png'), fullPage: true, animations: 'disabled' });
-  await page.getByRole('button', { name: 'AI connections', exact: true }).click();
+  await check(await page.locator('#navigation [data-view="connections"]').count() === 0, 'AI accounts have no separate navigation page');
+  await page.getByRole('button', { name: 'Connector', exact: true }).click();
+  await check(await page.locator('.provider-cards [data-provider]').count() === 2, 'Connector contains Codex and Claude Code account cards alongside apps');
   const codex = page.locator('[data-provider="codex"]'), claude = page.locator('[data-provider="claude"]');
   await codex.getByText('Not connected', { exact: true }).waitFor();
   await claude.getByText('Not installed', { exact: true }).waitFor();
-  checks.push('AI connections shows checked signed-out and missing CLI states');
+  checks.push('Connector account cards show checked signed-out and missing CLI states');
   await page.screenshot({ path: join(artifactDir, 'connections-before.png'), fullPage: true });
   await codex.getByRole('button', { name: 'Sign in', exact: true }).click(); await codex.getByText('ABCD-EFGH', { exact: true }).waitFor();
   completeLogin.codex!(); await codex.getByText('Connected', { exact: true }).waitFor();
@@ -117,14 +129,43 @@ try {
   await page.getByRole('button', { name: 'Conversations', exact: true }).click();
   await page.getByRole('button', { name: 'Create teammate', exact: true }).last().click();
   await page.getByLabel('Name', { exact: true }).fill('Morgan'); await page.getByLabel('Provider', { exact: true }).selectOption('fake');
-  await page.getByLabel('Enable this teammate’s browser').check();
+  await check(await page.getByLabel('Enable this teammate’s browser').isChecked(), 'Browser access is enabled automatically for new teammates');
   await saveDialog(page, 'Create teammate'); await waitText(page, 'This is a demo teammate.');
-  await page.getByRole('textbox', { name: 'Message teammate' }).fill('Review the workspace and report back.'); await page.getByRole('button', { name: 'Send message' }).click();
+  await page.locator('#message-input').fill('Review the workspace and report back.'); await page.getByRole('button', { name: 'Send message' }).click();
   await waitText(page, 'Echo: Review the workspace and report back.'); checks.push('Create teammate and complete a streamed conversation');
+  await page.locator('#message-input').fill('Show **Markdown** sample.'); await page.getByRole('button', { name: 'Send message' }).click();
+  await page.locator('.message.assistant').getByRole('heading', { name: 'Markdown reply', exact: true }).waitFor();
+  const formatted = page.locator('.message.assistant').filter({ has: page.getByRole('heading', { name: 'Markdown reply', exact: true }) });
+  await check(await formatted.locator('strong').first().innerText() === 'OpenBot' && await formatted.locator('li').count() === 2 && await formatted.locator('pre code').innerText() === 'const ready = true;\n' && await formatted.locator('table tbody tr').count() === 1, 'LLM replies render Markdown bold, lists, headings, code and tables');
+  const replyLink = formatted.getByRole('link', { name: 'Official website', exact: true });
+  await check(await replyLink.getAttribute('href') === 'https://www.openbot.org/' && await replyLink.getAttribute('target') === '_blank', 'Markdown links open externally with their actual destination');
+  await check(await formatted.locator('img, script, [onerror], a[href^="javascript:"]').count() === 0 && await page.evaluate(() => !(globalThis as any).__markdownUnsafe), 'Markdown content cannot inject application markup or executable links');
+  await check(await page.locator('.message.user').last().innerText().then(text => text.includes('Show **Markdown** sample.')), 'User messages retain their original text');
+  await page.screenshot({ path: join(artifactDir, 'conversation-markdown.png'), fullPage: true });
+  await page.getByRole('button', { name: 'New conversation', exact: true }).click();
+  await page.locator('#message-input').fill('Remember our launch date is June 18.'); await page.getByRole('button', { name: 'Send message' }).click(); await waitText(page, 'Echo: Remember our launch date is June 18.');
+  await page.getByRole('button', { name: 'Change model for this conversation', exact: true }).click();
+  await page.locator('.chat-provider-tabs').getByRole('button', { name: 'Codex', exact: true }).click(); await page.locator('.chat-model-list button').first().click(); await page.getByRole('combobox', { name: 'Thinking effort', exact: true }).selectOption('high'); await saveDialog(page, 'Use model');
+  await page.locator('#message-input').fill('Draft our launch plan.'); await page.getByRole('button', { name: 'Send message' }).click(); await waitText(page, 'Draft our launch plan.');
+  await page.waitForFunction(() => !(globalThis as any).document.querySelector('[data-action="chat-model"]')?.disabled);
+  await page.getByRole('button', { name: 'Change model for this conversation', exact: true }).click();
+  await page.locator('.chat-provider-tabs').getByRole('button', { name: 'Claude Code', exact: true }).click(); await page.locator('.chat-model-list button').first().click(); await page.getByRole('combobox', { name: 'Thinking effort', exact: true }).selectOption('xhigh'); await saveDialog(page, 'Use model');
+  await page.locator('#message-input').fill('Confirm the launch date.'); await page.getByRole('button', { name: 'Send message' }).click();
+  await waitText(page, 'The launch date is June 18, as agreed earlier.');
+  await check(await page.locator('.conversation-model').innerText().then(text => text.includes('Opus')), 'Conversation switches between Codex and Claude models and hands off the original context');
+  await page.waitForFunction(() => !(globalThis as any).document.querySelector('[data-action="chat-model"]')?.disabled);
+  await page.screenshot({ path: join(artifactDir, 'conversation-model-switch.png'), fullPage: true, animations: 'disabled' });
+  await page.getByRole('searchbox', { name: 'Search conversations' }).fill('Remember our launch');
+  await check(await page.locator('.conversation-thread').count() === 1, 'Past conversation search finds a thread by its first message');
+  await page.getByRole('searchbox', { name: 'Search conversations' }).fill('');
+  await page.locator('[data-agent]').first().click();
+  await waitText(page, 'Echo: Review the workspace and report back.');
+  checks.push('Personal chat stays separate from teammate conversation history');
 
-  await page.getByRole('textbox', { name: 'Message teammate' }).fill('For reviews, prioritize clear outcomes and verified changes.');
+
+  await page.locator('#message-input').fill('For reviews, prioritize clear outcomes and verified changes.');
   await page.getByRole('button', { name: 'Send message' }).click(); await waitText(page, 'I will use that review preference in future conversations.');
-  await page.getByRole('textbox', { name: 'Message teammate' }).fill('What review preference do you have for me?');
+  await page.locator('#message-input').fill('What review preference do you have for me?');
   await page.getByRole('button', { name: 'Send message' }).click(); await waitText(page, 'Your saved review preference: Prioritize clear outcomes and verified changes.');
   await check(daemon.workspace.records.list('memory').length === 1, 'Bot maintains its private memory during conversation and recalls it on a later turn');
 
@@ -204,12 +245,6 @@ try {
   await check(await page.evaluate(() => (globalThis as any).document.documentElement.scrollWidth <= (globalThis as any).innerWidth), 'Work board scrolls within its mobile viewport');
   await page.setViewportSize({ width: 1440, height: 960 });
 
-  await page.getByRole('button', { name: 'Routines', exact: true }).click(); await page.getByRole('button', { name: 'New routine', exact: true }).first().click();
-  await page.getByLabel('Name', { exact: true }).fill('Daily review'); await page.getByLabel('Instructions', { exact: true }).fill('Review the current project status.');
-  await page.getByLabel('Trigger', { exact: true }).selectOption('interval'); await page.getByLabel('Interval in minutes').fill('60'); await saveDialog(page);
-  await waitText(page, 'Every 60 minutes'); await page.getByRole('button', { name: 'Run now', exact: true }).click();
-  await page.getByRole('button', { name: 'History', exact: true }).click(); await waitText(page, 'Echo: Kru delivery context'); checks.push('Configure a routine, trigger it, and open its isolated history');
-
   await page.getByRole('button', { name: 'Connector', exact: true }).click(); await page.getByRole('button', { name: 'Connect app', exact: true }).click();
   await page.getByLabel('App name').fill('Local echo'); await page.getByLabel('Connection method', { exact: true }).selectOption('stdio');
   await page.getByLabel('Executable', { exact: true }).fill(process.execPath); await page.getByLabel('Arguments', { exact: true }).fill(JSON.stringify([new URL('../test/fakes/workspace-mcp.ts', import.meta.url).pathname])); await saveDialog(page, 'Connect app');
@@ -221,7 +256,7 @@ try {
   await page.locator('.connector-row').getByRole('button', { name: 'Connect', exact: true }).click();
   await page.locator('.connector-row').getByText('Connected', { exact: true }).waitFor();
   checks.push('Disconnect and reconnect an app with verified status');
-  await check(await page.getByRole('button', { name: 'Tools & browser', exact: true }).count() === 0, 'Connector replaces Tools & browser and contains only app connections');
+  await check(await page.getByRole('button', { name: 'Tools & browser', exact: true }).count() === 0, 'Connector replaces Tools & browser with AI accounts and app connections');
   await page.setViewportSize({ width: 390, height: 844 });
   await check(await page.evaluate(() => (globalThis as any).document.documentElement.scrollWidth <= (globalThis as any).innerWidth), 'Connector app rows and actions fit mobile');
   await page.waitForTimeout(250);
@@ -269,7 +304,7 @@ try {
   await page.screenshot({ path: join(artifactDir, 'workflow-mobile.png'), fullPage: true, animations: 'disabled' });
   await page.setViewportSize({ width: 1440, height: 960 });
   await page.locator(`[data-agent="${agentId}"]`).click();
-  await page.getByRole('textbox', { name: 'Message teammate' }).fill('Use the connected tool'); await page.getByRole('button', { name: 'Send message' }).click();
+  await page.locator('#message-input').fill('Use the connected tool'); await page.getByRole('button', { name: 'Send message' }).click();
   await page.locator('.conversation-approval').waitFor();
   await page.screenshot({ path: join(artifactDir, 'approval-conversation.png'), fullPage: true, animations: 'disabled' });
   await page.getByRole('button', { name: 'Work', exact: true }).click();
@@ -286,7 +321,7 @@ try {
   const sideRequest = await fetch(web.url + '/api/agents/' + agentId + '/messages', { method: 'POST', headers: { 'X-Kru-Token': web.token, 'Content-Type': 'application/json' }, body: JSON.stringify({ text: 'Use the connected tool', laneId: 'approval-side-thread' }) });
   if (!sideRequest.ok) throw new Error('Unable to queue isolated approval request');
   await page.locator('#attention-reminder').getByRole('button', { name: 'Open conversation', exact: true }).click();
-  await page.waitForFunction(() => (globalThis as any).document.querySelector('#lane-select')?.value === 'approval-side-thread');
+  await page.waitForFunction(() => (globalThis as any).document.querySelector('[data-current-lane]')?.dataset.currentLane === 'approval-side-thread');
   await page.locator('.conversation-approval').waitFor();
   await check(await page.evaluate(() => (globalThis as any).__requestNotifications.length === 1), 'Opt-in notifications remind once for a new request in another thread');
   await page.getByRole('button', { name: 'Decline', exact: true }).click(); await waitText(page, 'External action was declined.');
@@ -296,32 +331,28 @@ try {
 
   await page.waitForTimeout(250);
   await page.screenshot({ path: join(artifactDir, 'desktop.png'), fullPage: true });
-  await page.locator(`[data-agent="${agentId}"]`).click(); await page.locator('.chat-lanes').getByRole('button', { name: 'Browser', exact: true }).click();
-  await page.getByRole('dialog').getByRole('button', { name: 'Start session', exact: true }).click();
-  await page.getByRole('dialog').getByRole('button', { name: 'View browser', exact: true }).click(); await page.getByLabel('Navigate to URL').fill(`http://127.0.0.1:${fixture.port}`); await page.getByRole('button', { name: 'Navigate', exact: true }).click();
-  await page.waitForFunction(() => (globalThis as any).document.querySelector('#browser-form button[type=submit]')?.disabled === false);
-  await page.waitForFunction(() => { const img = (globalThis as any).document.querySelector('.browser-image'); return img?.complete && img.naturalWidth > 0; });
-  await page.getByRole('button', { name: 'Close dialog' }).click();
-  const context = daemon.workspace;
-  await context.browser.act(agentId, { action: 'fill', selector: '#name', text: 'Morgan' });
-  const clicked = await context.browser.act(agentId, { action: 'click', selector: '#save' });
-  await check(clicked.text.includes('Saved Morgan'), 'Browser navigates, fills and clicks through the real automation adapter');
-  await context.browser.stop(agentId);
-  const restored = await context.browser.act(agentId, { action: 'navigate', url: `http://127.0.0.1:${fixture.port}` });
-  await check(restored.text.includes('Session restored'), 'Browser cookies survive session restart');
-
+  await page.locator(`[data-agent="${agentId}"]`).click(); await page.getByRole('button', { name: 'Browser', exact: true }).click();
+  await page.getByRole('complementary', { name: 'Browser panel' }).waitFor();
+  await check(await page.locator('#browser-native-surface').count() === 1 && await page.locator('#browser-live-frame, #browser-keyboard').count() === 0, 'Browser panel uses a native desktop surface without screenshot or input proxy elements');
+  await page.getByRole('button', { name: 'Close browser panel', exact: true }).click();
   await page.locator(`[data-agent="${agentId}"]`).click(); await page.setViewportSize({ width: 390, height: 844 });
   await page.waitForTimeout(250);
   await check(await page.evaluate(() => (globalThis as any).document.documentElement.scrollWidth <= (globalThis as any).innerWidth), 'Mobile layout has no horizontal overflow');
-  await page.getByRole('button', { name: 'Toggle navigation' }).click(); await page.getByRole('button', { name: 'Conversations', exact: true }).click(); await page.getByRole('textbox', { name: 'Message teammate' }).waitFor();
+  await page.getByRole('button', { name: 'Toggle navigation' }).click(); await page.getByRole('button', { name: 'Conversations', exact: true }).click(); await page.locator('#message-input').waitFor();
   await page.screenshot({ path: join(artifactDir, 'mobile.png'), fullPage: true });
+  await page.getByRole('button', { name: 'Show threads', exact: true }).click();
+  await page.locator('.conversation-sidebar.open').waitFor();
+  await check(await page.locator('.conversation-sidebar.open .conversation-thread').count() > 1, 'Mobile conversation drawer exposes past threads');
+  await page.screenshot({ path: join(artifactDir, 'conversation-threads-mobile.png'), fullPage: true });
+  await page.getByRole('button', { name: 'Close threads', exact: true }).first().click();
+
   await page.getByRole('button', { name: 'Toggle navigation' }).click();
   await check(await page.getByRole('button', { name: 'Toggle navigation' }).getAttribute('aria-expanded') === 'true', 'Mobile navigation announces its expanded state');
   await page.screenshot({ path: join(artifactDir, 'navigation-mobile.png'), fullPage: true, animations: 'disabled' });
   await page.keyboard.press('Escape');
   await check(await page.getByRole('button', { name: 'Toggle navigation' }).getAttribute('aria-expanded') === 'false', 'Escape closes mobile navigation and restores menu focus');
   await check(errors.length === 0, 'No browser JavaScript or console errors: ' + errors.join('; '));
-  await Bun.write(join(artifactDir, 'result.json'), JSON.stringify({ checkedAt: new Date().toISOString(), checks, screenshots: ['workflow-builder.png', 'workflow-connector.png', 'workflow-mobile.png', 'connector.png', 'connector-mobile.png', 'navigation-work.png', 'navigation-mobile.png', 'approval-conversation.png', 'approval-reminder.png', 'connections-before.png', 'connections.png', 'work-board.png', 'work-detail.png', 'work-mobile.png', 'desktop.png', 'mobile.png'] }, null, 2) + '\n');
+  await Bun.write(join(artifactDir, 'result.json'), JSON.stringify({ checkedAt: new Date().toISOString(), checks, screenshots: ['conversation-model-switch.png', 'conversation-threads-mobile.png', 'workflow-builder.png', 'workflow-connector.png', 'workflow-mobile.png', 'connector.png', 'connector-mobile.png', 'navigation-work.png', 'navigation-mobile.png', 'approval-conversation.png', 'approval-reminder.png', 'connections-before.png', 'connections.png', 'work-board.png', 'work-detail.png', 'work-mobile.png', 'desktop.png', 'mobile.png'] }, null, 2) + '\n');
   console.log(JSON.stringify({ passed: checks.length, artifactDir, checks }, null, 2));
 } catch (error) {
   await page?.screenshot({ path: join(artifactDir, 'failure.png'), fullPage: true }).catch(() => {});
@@ -329,5 +360,5 @@ try {
   console.error(JSON.stringify({ completedChecks: checks, errors, artifactDir }, null, 2));
   throw error;
 } finally {
-  await browser?.close(); await web?.close(); await daemon.stop(0); await fixture.stop(true); store.close(); rmSync(dir, { recursive: true, force: true });
+  await browser?.close(); await web?.close(); await daemon.stop(0); store.close(); rmSync(dir, { recursive: true, force: true });
 }

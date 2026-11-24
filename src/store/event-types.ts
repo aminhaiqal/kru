@@ -36,6 +36,9 @@ export interface ItemRow {
 }
 type DeliveryEvent = 'delivery.imported' | 'delivery.claimed' | 'delivery.running' | 'delivery.restored' | 'delivery.finished' | 'delivery.cancelled' | 'delivery.retried';
 export type Payloads = {
+  'conversation.media_saved': { row: import('../threads/media').MediaRow };
+  'conversation.media_linked': { row: { message_id: string; media_id: string } };
+  'conversation.saved': { row: import('../threads/conversations').ConversationRow };
   'workflow.saved': { row: import('../workflows/types').DefinitionRow };
   'workflow.run_saved': { row: import('../workflows/types').RunRow };
   'workflow.node_saved': { row: import('../workflows/types').NodeRow };

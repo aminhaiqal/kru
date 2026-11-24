@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
-import { existsSync, mkdtempSync, readdirSync, rmSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -11,6 +11,16 @@ const peer = fileURLToPath(new URL('./fakes/provider-agent.ts', import.meta.url)
 const tool: ToolDefinition = { name: 'kru_echo', description: 'Return the supplied text.', inputSchema: { type: 'object', properties: { text: { type: 'string' } }, required: ['text'], additionalProperties: false } };
 let directory: string;
 const clients: ProviderClient[] = [];
+test('selected model and reasoning effort reach native Codex RPC and Claude CLI options', async () => {
+  const capture = join(directory, 'codex-rpc.jsonl'), codex = make('codex', 'echo', 500, { KRU_CAPTURE_FILE: capture }); await codex.start();
+  const { thread } = await codex.request('thread/start', { model: 'gpt-6.2-sol', effort: 'xhigh' }); await runChatTurn(codex, thread.id, 'Verify settings');
+  const requests = readFileSync(capture, 'utf8').trim().split('\n').map(line => JSON.parse(line));
+  expect(requests.find(row => row.method === 'thread/start').params).toMatchObject({ model: 'gpt-6.2-sol', config: { model_reasoning_effort: 'xhigh' } });
+  expect(requests.find(row => row.method === 'turn/start').params.effort).toBe('xhigh');
+  let options: any; const claude = new ClaudeProvider({ query: scriptedClaude('echo', args => { options = args.options; }) }); clients.push(claude); await claude.start();
+  const claudeThread = await claude.request('thread/start', { model: 'opus', effort: 'max' }); await runChatTurn(claude, claudeThread.thread.id, 'Verify settings');
+  expect(options.model).toBe('opus'); expect(options.effort).toBe('max'); expect(options.env.CLAUDE_CODE_EFFORT_LEVEL).toBe('max');
+});
 beforeEach(() => { directory = mkdtempSync(join(tmpdir(), 'kru-provider-')); });
 afterEach(async () => {
   await Promise.all(clients.map(client => client.stop()));

@@ -1,8 +1,8 @@
 # Kru
 
 Kru is a local-first workspace and engine for running AI agent CLIs as persistent
-teammates. A local browser UI now connects conversations, Work boards, approvals,
-routines, MCP integrations, browser sessions and skills to the engine. Each bot
+teammates. An Electron desktop app connects personal chat, Work boards, approvals,
+MCP integrations, browser sessions and skills to the engine. Each bot
 maintains its own persistent memory internally, across conversations and restarts.
 **M0–M7 are implemented:** a generic JSON-RPC transport, a typed
 provider port with fake, Codex and Claude adapters, streaming terminal chat,
@@ -16,45 +16,51 @@ The expanded M6 implementation includes durable session generations, guarded
 setup/activation, frozen handoffs and snapshot-bound history retrieval. See the
 [M6 acceptance results](docs/verification/m6-expanded-2026-11-05.json).
 
-## Start the workspace UI
+## Start KRU desktop
 
 ```sh
 bun install
-bun run ui
-# http://127.0.0.1:4310
+bunx install-electron
+bun run desktop
 ```
 
-This starts the UI, local API, daemon and routine runner in one process, and
-initializes a project database if needed. Stop any separate daemon for this
-database first. Use `bun run ui --port 4311 --db /path/to/kru.sqlite` to choose
-another port or database. Keep the command running for background work.
+Build a standalone app with `bun run desktop:package`. On this Mac, open
+`dist/desktop/KRU-darwin-arm64/KRU.app`. It bundles and starts its own engine;
+no terminal or separate browser is required. Use **File → Open workspace…** to
+open an existing `.kru/kru.sqlite`. See [Desktop setup](docs/DESKTOP.md).
+
+Chat is personal user-to-LLM conversation, with searchable/deletable threads,
+file/folder attachments and a provider → model → thinking effort picker. Models and
+supported efforts are read from your installed CLI and sent back to that CLI
+when selected. Context stays with the logical thread when switching models.
+Sign in through **Connector → AI accounts**.
 
 Create a teammate using **Codex**, **Claude**, or **Demo**. Real providers use
-their existing local login. Open **AI connections** to check their actual local
+their existing local login. Open **Connector → AI accounts** to check their actual local
 sign-in status, install a missing CLI, or complete the provider's sign-in flow.
 Disconnected providers hold queued work until connected. Demo echoes messages
 without model calls. Choose
 the coding profile and workspace write access when a teammate should edit code.
 
-The UI opens on **Work**: project boards, configurable workflow stages, agent
+The **Work** page provides project boards, configurable workflow stages, agent
 assignments, comments, run history and a human Review gate. Active stages run
 their assigned agents and hand results to the next stage. Existing tasks retain
 their history as work items. See [the Work architecture](docs/WORK_ARCHITECTURE.md)
 for the Multica reference and how it maps to KRU.
 
-The UI also includes streamed conversations, steps and explicit completion,
-expiring approvals, daily/interval/webhook routines, per-agent MCP connections,
+Conversations includes searchable past threads and per-thread model switching.
+Change Codex/Claude models in the composer while retaining history and context;
+see [Conversations](docs/CONVERSATIONS.md). The UI also includes streamed responses, steps and explicit completion,
+expiring approvals, scheduled Skills workflows, per-agent MCP connections,
 browser sessions with saved cookies, automatic per-bot memory, visual Skills workflows, and activity
-and estimated usage. Install Chromium once for browser sessions:
-
-```sh
-bunx playwright-core install chromium
-```
+and estimated usage. The native Chromium browser starts automatically when used; its tabs,
+cookies and cache are shared with the LLM. Import supported browser profiles from
+**Browser → Import browser data**. See [Native browser](docs/BROWSER.md).
 
 Read the [workspace guide](docs/WORKSPACE.md) for setup, credentials, automation
 semantics, API usage and verification. The [workflow architecture](docs/WORKFLOW_ARCHITECTURE.md)
 explains the n8n-inspired builder and how it reuses existing connectors. Workspace state is included in event replay;
-existing databases upgrade transactionally through migration 12.
+existing databases upgrade transactionally through migration 13.
 
 ## Try M0
 
@@ -220,7 +226,7 @@ bun run dev -- replay --verify
 
 Daemon inputs, assistant answers, tool/command details, turns and usage survive
 restart. Domain writes append versioned events and update projections in the
-same transaction. Replay verification now rebuilds thirty projection tables in an
+same transaction. Replay verification now rebuilds thirty-three projection tables in an
 isolated database and reports drift without changing live state. Existing v1–v3
 databases upgrade through migration v4 with genesis events preserving queue order.
 See [M4 specification](docs/Kru_Project_Plan_and_Milestones.pdf) and `bun run test:history:repeat`.

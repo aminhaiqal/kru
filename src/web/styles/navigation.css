@@ -3,6 +3,9 @@
 @import "tailwindcss/theme.css" layer(theme);
 @import "tailwindcss/utilities.css" layer(utilities) source(none);
 @import "./workflows.css";
+@import "./conversations.css";
+@import "./browser-panel.css";
+@import "./markdown.css";
 
 /* Semantic sidebar tokens follow shadcn/ui's theming conventions. */
 @theme inline {
@@ -44,7 +47,7 @@
   color: var(--sidebar-foreground);
 }
 .sidebar .nav-item svg { @apply size-[21px]; }
-.sidebar .nav-label { @apply invisible text-xs leading-none; white-space: nowrap; }
+.sidebar .nav-label { @apply invisible text-[10px] leading-none; white-space: nowrap; }
 .sidebar .nav-label-full { @apply hidden; }
 .sidebar .nav-item.active {
   @apply bg-sidebar-primary text-sidebar-primary-foreground shadow-none;
@@ -68,7 +71,6 @@
 .sidebar .sidebar-bottom { @apply flex items-center; margin-top: auto; padding: 20px 0 0; }
 .sidebar .sidebar-bottom > span:last-child { @apply hidden; }
 .sidebar .connection { @apply justify-center; width: 100%; font-size: 0; }
-.workspace .topbar { height: 48px; min-height: 48px; padding: 0 26px; background: white; }
 
 .sidebar .agent-attention {
   @apply absolute bottom-1 right-1 grid size-4 place-items-center rounded-full text-xs font-semibold;
@@ -99,6 +101,21 @@
 .conversation-decision summary time { margin-left: 12px; font-size: .6875rem; }
 .busy-indicator > button { margin-left: 10px; }
 .connector-page { max-width: 1250px; margin: 0 auto; }
+.connector-section-heading { margin: 28px 0 18px; }
+.connector-section-heading h2 { font-size: 1rem; margin: 0 0 8px; font-weight: 600; }
+.connector-section-heading p { color: var(--muted); font-size: .8125rem; line-height: 1.6; margin: 0; }
+.provider-cards { @apply grid gap-5; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.provider-cards .provider-card { @apply flex flex-col gap-4; min-width: 0; padding: 24px; border: 1px solid var(--line); border-radius: 12px; background: var(--surface); }
+.provider-cards .provider-identity { gap: 12px; }
+.provider-cards .provider-identity h2 { font-size: 1rem; }
+.provider-cards .provider-state { margin: 0; }
+.provider-cards .provider-state p { font-size: .8125rem; max-width: none; }
+.provider-cards .provider-actions { @apply justify-start; max-width: none; margin-top: auto; }
+.provider-cards .provider-details { border-top: 1px solid var(--line); padding-top: 16px; overflow-wrap: anywhere; }
+.provider-cards .provider-details summary { line-height: 1.6; }
+.provider-cards .provider-signin { padding: 16px; min-width: 0; }
+.provider-cards .device-code { @apply flex-wrap; gap: 12px; }
+.provider-cards .provider-action-result { margin: 0; }
 .connector-toolbar { @apply flex items-center justify-between gap-4; padding-bottom: 20px; border-bottom: 1px solid var(--line); }
 .connector-toolbar .filter { margin: 0; }
 .connector-toolbar > span { color: var(--muted); font-size: .75rem; white-space: nowrap; }
@@ -121,12 +138,15 @@
 .connector-app-body .connector-checked { font-size: .6875rem; margin-top: 14px; }
 .connector-actions { @apply flex flex-wrap justify-end gap-2; max-width: 310px; }
 .connector-note { color: var(--muted); font-size: .75rem; line-height: 1.7; margin-top: 23px; }
-.connector-empty { @apply flex flex-col items-center justify-center text-center; min-height: 410px; padding: 35px 20px; }
+.connector-empty { @apply flex flex-col items-center justify-center text-center; min-height: 300px; padding: 35px 20px; }
 .connector-empty-icon { @apply grid size-12 place-items-center rounded-xl; color: var(--accent); background: var(--tint); font-size: 1.5rem; }
 .connector-empty h2 { font-size: 1.375rem; letter-spacing: -.5px; margin: 23px 0 0; }
 .connector-empty > p { max-width: 395px; color: var(--muted); font-size: .875rem; line-height: 1.7; margin: 15px 0 22px; }
 .connector-empty > p.help { font-size: .75rem; margin-bottom: 0; }
-.browser-controls { @apply flex flex-wrap gap-2; }
+
+@media (max-width: 900px) {
+  .provider-cards { grid-template-columns: minmax(0, 1fr); }
+}
 
 @media (max-width: 680px) {
   .workspace { grid-template-columns: minmax(0, 1fr); }
@@ -147,11 +167,12 @@
   .sidebar .small-empty { @apply block; }
   .sidebar .sidebar-bottom { @apply items-start; padding: 20px 12px 0; }
   .sidebar .connection { @apply justify-start text-xs; }
-  .workspace .topbar { height: 52px; min-height: 52px; padding: 0 15px; }
+  .workspace .mobile-menu { flex-shrink: 0; margin: 8px 12px; }
   #attention-reminder { @apply flex-col items-start gap-2; padding: 10px 16px; }
   #attention-reminder > div { @apply flex-wrap; }
   .conversation-approval { padding: 15px; }
   .connector-toolbar { @apply flex-wrap; }
+  .provider-cards .provider-card { padding: 20px; }
   .connector-row { grid-template-columns: 38px minmax(0, 1fr); gap: 13px; }
   .connector-app-mark { width: 38px; height: 38px; }
   .connector-actions { grid-column: 2; justify-content: flex-start; max-width: none; }

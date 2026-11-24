@@ -2,6 +2,7 @@ import type { Store } from '../store';
 export interface LogEntry {
   id: string; agentId: string; laneId: string | null; role: string; text: string | null;
   details?: unknown; turnId?: string; timestamp: string; partial: boolean;
+  provider?: string; model?: string; media?: { id: string; name: string; mime: string; bytes: number }[];
 }
 export function readLog(store: Store, agentId: string, laneId?: string | null, live = false): LogEntry[] {
   return store.db.transaction(() => {
@@ -11,13 +12,13 @@ export function readLog(store: Store, agentId: string, laneId?: string | null, l
       `SELECT m.id, m.text, m.sender_kind, m.created_at, d.lane_id FROM messages m JOIN deliveries d ON d.message_id = m.id WHERE d.recipient_id = ?${lane} GROUP BY m.id, d.lane_id ORDER BY min(d.seq)`)
       .all(agentId, ...(laneId === undefined ? [] : [laneId]));
     for (const row of inputs) entries.push({ id: `message:${row.id}:${row.lane_id ?? ''}`, agentId, laneId: row.lane_id, role: row.sender_kind, text: row.text, timestamp: row.created_at, partial: false });
-    const items = store.db.query<{ turn_id: string; item_id: string; lane_key: string; type: string; text: string | null; details_json: string | null; completed_at: string }, [string, ...string[]]>(
-      `SELECT * FROM thread_messages WHERE agent_id = ?${laneId === undefined ? '' : ' AND lane_key = ?'} ORDER BY seq`).all(agentId, ...(laneId === undefined ? [] : [laneId ?? '']));
+    const items = store.db.query<{ turn_id: string; item_id: string; lane_key: string; type: string; text: string | null; details_json: string | null; completed_at: string; provider: string; model: string }, [string, ...string[]]>(
+      `SELECT i.*,t.provider,t.model FROM thread_messages i JOIN turns t ON t.id=i.turn_id WHERE i.agent_id = ?${laneId === undefined ? '' : ' AND i.lane_key = ?'} ORDER BY i.seq`).all(agentId, ...(laneId === undefined ? [] : [laneId ?? '']));
     for (const row of items) {
       const details = row.details_json ? JSON.parse(row.details_json) : undefined;
       entries.push({ id: `item:${row.turn_id}:${row.item_id}`, agentId, laneId: row.lane_key || null,
         role: row.type === 'agentMessage' ? 'assistant' : row.type, text: row.text, details,
-        turnId: row.turn_id, timestamp: row.completed_at, partial: details?.partial === true });
+        turnId: row.turn_id, timestamp: row.completed_at, partial: details?.partial === true, provider: row.provider, model: row.model });
     }
     if (live) {
       const scratch = store.db.query<{ turn_id: string; lane_key: string; items_json: string; updated_at: string }, [string, ...string[]]>(

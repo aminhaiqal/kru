@@ -2,6 +2,7 @@ import type { Notification, ProviderClient, TokenUsage } from '../providers/prot
 
 export interface TurnOutcome { status: 'completed' | 'failed' | 'interrupted'; error?: string; retireSession?: boolean; noExecution?: boolean }
 export interface RunnerOptions {
+  input?: import('../providers/protocol').TurnInput[];
   isWaiting?: () => boolean;
   idleTimeoutMs?: number; startTimeoutMs?: number; startGraceMs?: number;
   onSubmitting?: () => void;
@@ -96,7 +97,7 @@ export function runScheduledTurn(provider: ProviderClient, threadId: string, tex
       if (done) return undefined;
       try { options.onSubmitting?.(); }
       catch (error) { finish({ status: 'failed', error: message(error), noExecution: true }); return undefined; }
-      return provider.request('turn/start', { threadId, input: [{ type: 'text', text }] }, options.startTimeoutMs ?? 30_000);
+      return provider.request('turn/start', { threadId, input: options.input ?? [{ type: 'text', text }] }, options.startTimeoutMs ?? 30_000);
     }).then(result => {
       if (!result) return;
       if (done) {

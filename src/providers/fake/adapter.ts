@@ -51,11 +51,11 @@ export class FakeProvider extends ProviderBase {
         this.complete(session, session.active, 'interrupted'); result = {};
       } else if (method === 'turn/start') {
         if (session.active) throw new RpcResponseError(-32600, 'A turn is already active');
-        if (!Array.isArray(p.input) || !p.input.every(i => i.type === 'text' && typeof i.text === 'string')) throw new RpcResponseError(-32602, 'Invalid text input');
+        if (!Array.isArray(p.input) || !p.input.every(i => i.type === 'text' ? typeof i.text === 'string' : i.type === 'localImage' && typeof i.path === 'string')) throw new RpcResponseError(-32602, 'Invalid text input');
         const active: Active = { id: crypto.randomUUID(), controller: new AbortController(), text: '', itemId: crypto.randomUUID() };
         session.active = active;
         this.emit('notification', { method: 'turn/started', params: { threadId: session.id, turn: { id: active.id, status: 'inProgress' } } });
-        if (session.active === active) active.timer = setTimeout(() => { void this.run(session, active, p.input.map(i => i.text).join('\n')); }, this.options.delayMs ?? 1);
+        if (session.active === active) active.timer = setTimeout(() => { void this.run(session, active, p.input.filter(i => i.type === 'text').map(i => i.text).join('\n')); }, this.options.delayMs ?? 1);
         result = { turn: { id: active.id, status: 'inProgress' } };
       } else throw new RpcResponseError(-32601, `Method not found: ${method}`);
     }

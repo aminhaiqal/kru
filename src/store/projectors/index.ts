@@ -4,6 +4,9 @@ import { projectHistory,putHistory } from '../../threads/records';
 
 /** Fixed columns, never payload-derived SQL. Projectors have no clocks or transaction ownership. */
 export const columns = {
+  conversation_media: 'id,thread_id,name,mime,bytes,sha256,path,created_at',
+  conversation_message_media: 'message_id,media_id',
+  conversation_settings: 'thread_id,title,provider,model,effort,deleted_at,revision,updated_at',
   workflow_definitions: 'id,agent_id,name,description,graph_json,active,interval_minutes,next_run_at,legacy_skill_id,revision,created_at,updated_at',
   workflow_runs: 'id,workflow_id,agent_id,name,graph_json,input_json,status,error,started_at,ended_at',
   workflow_node_runs: 'id,run_id,node_id,status,input_json,output_json,binding_json,error,task_id,approval_id,started_at,ended_at',
@@ -36,7 +39,7 @@ export const columns = {
   thread_messages: 'seq,turn_id,item_id,agent_id,lane_key,type,text,details_json,completed_at',
 } as const;
 export type ProjectionTable = keyof typeof columns;
-const keys: Record<ProjectionTable, string> = { workflow_definitions: 'id', workflow_runs: 'id', workflow_node_runs: 'id', work_projects: 'id', work_items: 'id', work_runs: 'task_id', work_activity: 'id', workspace_records: 'id', history_state:'id',message_threads:'message_id,thread_id',history_versions:'thread_id,source_id,version_seq',history_gaps:'thread_id,recorded_seq',session_generations:'id',handoffs:'id',handoff_uses:'execution_id',turn_generations:'turn_id',recoveries: 'execution_id', session_quarantines: 'generation_id', recovery_usage: 'execution_id', threads: 'id', turn_threads: 'turn_id', message_routes: 'message_id', delivery_replies: 'delivery_id', agents: 'id', messages: 'id', deliveries: 'id', prices: 'id', usage_records: 'batch_id', turns: 'id', thread_messages: 'turn_id,item_id' };
+const keys: Record<ProjectionTable, string> = { conversation_media: 'id', conversation_message_media: 'message_id,media_id', conversation_settings: 'thread_id', workflow_definitions: 'id', workflow_runs: 'id', workflow_node_runs: 'id', work_projects: 'id', work_items: 'id', work_runs: 'task_id', work_activity: 'id', workspace_records: 'id', history_state:'id',message_threads:'message_id,thread_id',history_versions:'thread_id,source_id,version_seq',history_gaps:'thread_id,recorded_seq',session_generations:'id',handoffs:'id',handoff_uses:'execution_id',turn_generations:'turn_id',recoveries: 'execution_id', session_quarantines: 'generation_id', recovery_usage: 'execution_id', threads: 'id', turn_threads: 'turn_id', message_routes: 'message_id', delivery_replies: 'delivery_id', agents: 'id', messages: 'id', deliveries: 'id', prices: 'id', usage_records: 'batch_id', turns: 'id', thread_messages: 'turn_id,item_id' };
 function put(db: Database, table: ProjectionTable, value: object): void {
   const names = columns[table].split(','), row = value as Record<string, SQLQueryBindings>;
   if (names.some(name => row[name] === undefined)) throw new Error(`Incomplete ${table} event payload`);
@@ -55,6 +58,9 @@ function put(db: Database, table: ProjectionTable, value: object): void {
 }
 export function project(db: Database, event: DomainEvent): void {
   switch (event.type) {
+    case 'conversation.media_saved': put(db, 'conversation_media', event.payload.row); break;
+    case 'conversation.media_linked': put(db, 'conversation_message_media', event.payload.row); break;
+    case 'conversation.saved': put(db, 'conversation_settings', event.payload.row); break;
     case 'workflow.saved': put(db, 'workflow_definitions', event.payload.row); break;
     case 'workflow.run_saved': put(db, 'workflow_runs', event.payload.row); break;
     case 'workflow.node_saved': put(db, 'workflow_node_runs', event.payload.row); break;

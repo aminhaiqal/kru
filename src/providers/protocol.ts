@@ -7,17 +7,19 @@ export interface ProviderCapabilities {
 }
 export interface ToolDefinition { name: string; description: string; inputSchema: Record<string, unknown> }
 export interface ThreadParams {
+  effort?: import('./models').ReasoningEffort;
   cwd?: string; model?: string; tools?: ToolDefinition[]; instructions?: string;
   promptProfile?: 'minimal' | 'coding' | 'full';
   permissions?: { sandbox?: 'read-only' | 'workspace-write'; approvalPolicy?: 'on-request' | 'never'; writableRoots?: string[] };
 }
 export interface Thread { id: string; prompt?: { profile: 'minimal' | 'coding' | 'full'; instructionBytes: number; toolCount: number; builtinToolCount?: number; prefixHash: string } }
 export interface AgentItem { id: string; type: string; text?: string; details?: unknown }
+export type TurnInput = { type: 'text'; text: string } | { type: 'localImage'; path: string; mime?: string };
 export interface Turn { id: string; status: 'inProgress' | 'completed' | 'failed' | 'interrupted'; error?: { message: string } | null }
 export interface Methods {
   'thread/start': { params: ThreadParams; result: { thread: Thread } };
   'thread/resume': { params: ThreadParams & { threadId: string }; result: { thread: Thread } };
-  'turn/start': { params: { threadId: string; input: { type: 'text'; text: string }[] }; result: { turn: Turn } };
+  'turn/start': { params: { threadId: string; input: TurnInput[] }; result: { turn: Turn } };
   'turn/interrupt': { params: { threadId: string; turnId: string }; result: Record<string, never> };
 }
 export interface TokenUsage { model?: string; modelSteps?: number; toolCalls?: number; last: TokenCount; total: TokenCount; modelContextWindow?: number | null }

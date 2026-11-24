@@ -6,6 +6,7 @@ import type { Methods, Notification, ThreadParams, ApprovalCall } from '../proto
 import { prepareThread, promptMetadata, type PreparedThread } from '../prompt-profile';
 import { decodeNotification, decodeResult, decodeToolCall, object } from '../validation';
 import { createCodexRpcConnection, type CodexConnectionOptions } from './transport';
+import { codexModels, type ModelOption } from '../models';
 
 export class CodexRuntime {
   readonly connection: RpcConnection;
@@ -151,6 +152,11 @@ export class CodexRuntime {
 let sharedRuntime: CodexRuntime | undefined;
 export interface CodexProviderOptions { transport?: CodexConnectionOptions; runtime?: CodexRuntime; maxBadNotifications?: number; toolTimeoutMs?: number; answerTimeoutMs?: number }
 export class CodexProvider extends ProviderBase {
+  async listModels(): Promise<ModelOption[]> {
+    this.requireReady(); const models: any[] = []; let cursor: string | null = null;
+    do { const page = await this.runtime.request('model/list', { limit: 100, includeHidden: false, ...(cursor ? { cursor } : {}) }) as any; models.push(...page.data); cursor = page.nextCursor || null; } while (cursor && models.length < 1000);
+    return codexModels(models);
+  }
   override async sessionScope(params?:ThreadParams):Promise<string>{
     this.requireReady();const local=await super.sessionScope(params),reply=await this.runtime.request<{account:unknown}>('account/read',{refreshToken:false});
     if(!reply||!Object.hasOwn(reply,'account'))throw new Error('Invalid local account/read result');
@@ -260,10 +266,11 @@ export class CodexProvider extends ProviderBase {
       const effective = { ...(p.threadId ? this.parameters.get(p.threadId) : {}), ...p };
       if (effective.promptProfile === 'full') throw new RpcResponseError(-32602, 'The full Claude Code profile requires the Claude provider');
       const prepared = prepareThread(effective);
-      const { tools: _tools, instructions: _instructions, promptProfile: _profile, permissions: _permissions, ...rest } = p;
+      const { tools: _tools, instructions: _instructions, promptProfile: _profile, permissions: _permissions, effort: _effort, ...rest } = p;
       if (p.threadId) this.runtime.claim(p.threadId, this);
       const result = await this.runtime.request(method, { ...rest, sandbox: prepared.permissions.sandbox, approvalPolicy: prepared.permissions.approvalPolicy,
         config: { 'sandbox_workspace_write.writable_roots': prepared.permissions.writableRoots,
+          ...(effective.effort ? { model_reasoning_effort: effective.effort } : {}),
           'sandbox_workspace_write.exclude_tmpdir_env_var': true, 'sandbox_workspace_write.exclude_slash_tmp': true },
         baseInstructions: prepared.instructions,
         ...(method === 'thread/start' ? { dynamicTools: prepared.tools.map(tool => ({ ...tool, type: 'function', deferLoading: false })) } : {}),
@@ -279,7 +286,9 @@ export class CodexProvider extends ProviderBase {
       this.activeTurns.set(p.threadId, reservation);
     }
     try {
-      const result = await this.runtime.request(method, params, { ...(timeoutMs === undefined ? {} : { timeoutMs }), decode: value => decodeResult(method, value) });
+      const effort = this.parameters.get(p.threadId)?.effort;
+      const native = method === 'turn/start' ? { ...params, input: p.input.map(input => input.type === 'localImage' ? { type: 'localImage', path: input.path } : input), ...(effort ? { effort } : {}) } : params;
+      const result = await this.runtime.request(method, native, { ...(timeoutMs === undefined ? {} : { timeoutMs }), decode: value => decodeResult(method, value) });
       if (method === 'turn/start' && this.runtime.isRetired(p.threadId)) {
         const { turn } = result as Methods['turn/start']['result'];
         if (turn.status === 'inProgress') this.runtime.interruptRetired(p.threadId, turn.id);

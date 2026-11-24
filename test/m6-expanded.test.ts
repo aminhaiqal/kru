@@ -38,7 +38,7 @@ class InspectProvider extends FakeProvider {
   raw(call:ToolCall):Promise<ToolResult>{return this.callTool(call,new AbortController().signal);}
   override async discardSession(id:string){this.discarded.push(id);await super.discardSession(id);}
   override async request<M extends keyof Methods>(method:M,params:Methods[M]['params']):Promise<Methods[M]['result']>{
-    this.calls.push(method);if(method==='turn/start')this.inputs.push((params as Methods['turn/start']['params']).input.map(i=>i.text).join('\n'));
+    this.calls.push(method);if(method==='turn/start')this.inputs.push((params as Methods['turn/start']['params']).input.map(i=>i.type==='text'?i.text:'').join('\n'));
     const result=await super.request(method,params);if(method==='thread/start'){this.params.push(structuredClone(params as ThreadParams));if(this.gate)await this.gate;}return result;
   }
 }

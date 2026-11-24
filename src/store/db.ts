@@ -1,3 +1,4 @@
+import { readMigration } from './sql';
 import { Database } from 'bun:sqlite';
 import { readFileSync, mkdirSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
@@ -7,23 +8,25 @@ import { dispatch, emit, type Command } from './events';
 import { importGenesis } from './genesis';
 import { importThreads } from '../threads/migrate';
 import { importSessionHistory } from '../threads/import-session-history';
+import { enableBrowserDefaults } from '../workspace/browser-defaults';
 import type { EventType, Payloads } from './event-types';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 
 const migrations = [
-  { version: 1, sql: readFileSync(new URL('./migrations/001-initial.sql', import.meta.url), 'utf8') },
-  { version: 2, sql: readFileSync(new URL('./migrations/002-scheduler.sql', import.meta.url), 'utf8') },
-  { version: 3, sql: readFileSync(new URL('./migrations/003-usage-ledger.sql', import.meta.url), 'utf8') },
-  { version: 4, sql: readFileSync(new URL('./migrations/004-events.sql', import.meta.url), 'utf8') },
-  { version: 5, sql: readFileSync(new URL('./migrations/005-tools.sql', import.meta.url), 'utf8') },
-  { version: 6, sql: readFileSync(new URL('./migrations/006-key-retention.sql', import.meta.url), 'utf8') },
-  { version: 7, sql: readFileSync(new URL('./migrations/007-threads.sql', import.meta.url), 'utf8') },
-  { version: 8, sql: readFileSync(new URL('./migrations/008-recovery.sql', import.meta.url), 'utf8') },
-  { version: 9, sql: readFileSync(new URL('./migrations/009-session-history.sql', import.meta.url), 'utf8') },
-  { version: 10, sql: readFileSync(new URL('./migrations/010-workspace.sql', import.meta.url), 'utf8') },
-  { version: 11, sql: readFileSync(new URL('./migrations/011-work.sql', import.meta.url), 'utf8') },
-  { version: 12, sql: readFileSync(new URL('./migrations/012-workflows.sql', import.meta.url), 'utf8') },
+  { version: 1, sql: readMigration('001-initial.sql') },
+  { version: 2, sql: readMigration('002-scheduler.sql') },
+  { version: 3, sql: readMigration('003-usage-ledger.sql') },
+  { version: 4, sql: readMigration('004-events.sql') },
+  { version: 5, sql: readMigration('005-tools.sql') },
+  { version: 6, sql: readMigration('006-key-retention.sql') },
+  { version: 7, sql: readMigration('007-threads.sql') },
+  { version: 8, sql: readMigration('008-recovery.sql') },
+  { version: 9, sql: readMigration('009-session-history.sql') },
+  { version: 10, sql: readMigration('010-workspace.sql') },
+  { version: 11, sql: readMigration('011-work.sql') },
+  { version: 12, sql: readMigration('012-workflows.sql') },
+  { version: 13, sql: readMigration('013-conversations.sql') },
 ];
 
 export interface StoreChange { topic: string; id: string; value?: unknown }
@@ -68,6 +71,7 @@ export class Store {
           if (migration.version === 4) importGenesis(this.db);
           if (migration.version === 7) importThreads(this.db);
           if (migration.version === 9) importSessionHistory(this.db);
+          if (migration.version === 13) enableBrowserDefaults(this.db);
           this.db.query('INSERT INTO schema_migrations (version, applied_at) VALUES (?, ?)').run(migration.version, new Date().toISOString());
         }
       });

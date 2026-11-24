@@ -38,7 +38,7 @@ const taskDefinition: ToolDefinition = {
   } },
 };
 const useDefinition: ToolDefinition = {
-  name: 'use_tool', description: 'Call an external MCP tool or the agent browser. For MCP use target=mcp, connectorId, name and arguments; discover schemas with workspace connector_tools. For browser use target=browser and arguments containing action=read|navigate|click|fill|press|screenshot, url, selector, text or key. External actions may wait for user approval. Never bypass a denial through another tool.',
+  name: 'use_tool', description: 'Call an external MCP tool or the agent browser. For MCP use target=mcp, connectorId, name and arguments; discover schemas with workspace connector_tools. For browser use target=browser and arguments containing action=read|search|navigate|click|fill|press|screenshot|back|forward|reload|new_tab|switch_tab|close_tab, query, url, selector, text, key or tabId. The native Chromium browser starts automatically when first used. Use CSS selectors from the current page snapshot. If a challenge says needs-user, wait for the user to complete it in the browser; do not solve or retry it. External actions may wait for user approval. Never bypass a denial through another tool.',
   inputSchema: { type: 'object', required: ['target', 'arguments'], additionalProperties: false, properties: {
     target: { type: 'string', enum: ['mcp', 'browser'] }, connectorId: { type: 'string' }, name: { type: 'string' }, arguments: { type: 'object', additionalProperties: true },
   } },
@@ -63,19 +63,21 @@ export class WorkspaceRuntime {
     this.memory = new AgentMemory(this.records);
     this.tasks = new TaskRunner(this.records); this.routines = new RoutineRunner(this.records);
     this.work = new WorkService(store, interrupt);
-    this.integrations = new IntegrationGateway(this.records, scope); this.browser = new BrowserGateway(store.path, scope);
+    this.integrations = new IntegrationGateway(this.records, scope); this.browser = new BrowserGateway();
     this.workflows = new WorkflowService(store, this.integrations, interrupt, () => { scope(); });
     const base = new ToolRouter(new SqliteMailbox(store), new AgentRegistry(store), new SqliteToolState(store), { history: new SqliteHistory(store), ...(maxHops === undefined ? {} : { maxHops }) });
     this.tools = {
       definitions: [...base.definitions, workspaceDefinition, taskDefinition, useDefinition],
-      instructions: base.instructions + '\n' + memoryGuidance + '\nUse workspace for skills/connectors, use_tool for integrations/browser, task_update for progress. Respect permissions.',
+      instructions: base.instructions + '\n' + memoryGuidance + '\nUse workspace for skills/connectors, use_tool for integrations/browser, task_update for progress. Native Chromium browser access is enabled by default and starts on first use: use target=browser with action=search and query for web search, navigate and url to open a page, then read/click/fill/press to inspect and act. Respect permissions.',
       render: batch => {
+        if (new AgentRegistry(this.store).get(batch.agentId)?.config.personalChat) return batch.deliveries.map(delivery => delivery.text).join('\n\n');
         const skills = this.records.list('skill', batch.agentId).map(s => ({ id: s.id, name: s.data.name, description: s.data.description }));
         const prompt = base.render(batch);
         const context = this.memory.context(batch.agentId, skills, Math.max(0, Math.min(6000, 28000 - Buffer.byteLength(prompt) - Buffer.byteLength(memoryContextBoundary))));
         return context ? context + memoryContextBoundary + prompt : prompt;
       },
       handle: (context, call, signal) => {
+        if (context.agent.config.personalChat && (!['history_search', 'workspace', 'use_tool'].includes(call.tool) || (call.tool === 'workspace' && !['connectors', 'connector_tools'].includes(String((call.arguments as any)?.action))))) return result(false, { error: 'This tool is not available in personal chat' });
         if (!['workspace', 'task_update', 'use_tool'].includes(call.tool)) return base.handle(context, call);
         if (call.threadId !== context.threadId || call.turnId !== context.turnId || signal?.aborted) return result(false, { error: 'Tool call does not belong to this active turn' });
         const key = JSON.stringify([context.batch.id, call.callId]);
@@ -119,10 +121,10 @@ export class WorkspaceRuntime {
     const input = z.object({ target: z.enum(['mcp', 'browser']), connectorId: z.string().optional(), name: z.string().optional(), arguments: z.record(z.string(), z.unknown()) }).strict().parse(call.arguments);
     if (input.target === 'browser') {
       const config = new AgentRegistry(this.store).get(context.agent.id)?.config.browser as { enabled?: boolean; permission?: string } | undefined;
-      if (!config?.enabled) throw new Error('Enable browser access for this agent in its settings');
+      if (config?.enabled === false) throw new Error('Browser access is disabled for this agent');
       const action = browserActionSchema.parse(input.arguments);
-      if (!['read', 'screenshot'].includes(action.action) && config.permission !== 'allow') await this.requireApproval(context, { kind: 'tool', threadId: context.threadId, turnId: context.turnId, input: { browser: action } }, signal);
-      if (!(new AgentRegistry(this.store).get(context.agent.id)?.config.browser as { enabled?: boolean } | undefined)?.enabled) throw new Error('Browser access was disabled');
+      if (!['read', 'screenshot'].includes(action.action) && config?.permission !== 'allow') await this.requireApproval(context, { kind: 'tool', threadId: context.threadId, turnId: context.turnId, input: { browser: action } }, signal);
+      if ((new AgentRegistry(this.store).get(context.agent.id)?.config.browser as { enabled?: boolean } | undefined)?.enabled === false) throw new Error('Browser access was disabled');
       return result(true, await this.browser.act(context.agent.id, action, signal), limit);
     }
     const entry = this.integrations.entry(input.connectorId ?? '', context.agent.id);
