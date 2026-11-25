@@ -8,9 +8,13 @@ const {
   shell,
   ipcMain,
   nativeTheme,
+  safeStorage,
 } = require('electron');
 const { NativeBrowserHost } = require('./browser-host.cjs');
 const { BrowserImporter } = require('./browser-import.cjs');
+const { GitHubCredentials } = require('./github-credentials.cjs');
+const { configuration, contentSecurityPolicy, createAccountBridge } = require('./clerk.cjs');
+const { randomUUID } = require('node:crypto');
 const { spawn, execFileSync } = require('node:child_process');
 const { join, resolve, dirname } = require('node:path');
 const {
@@ -22,12 +26,6 @@ const {
   mkdirSync,
   appendFileSync,
 } = require('node:fs');
-protocol.registerSchemesAsPrivileged([
-  {
-    scheme: 'kru',
-    privileges: { standard: true, secure: true, supportFetchAPI: true, stream: true },
-  },
-]);
 app.setName('KRU');
 if (process.env.KRU_USER_DATA_DIR) {
   app.setPath('userData', resolve(process.env.KRU_USER_DATA_DIR));
@@ -40,6 +38,30 @@ let engine,
   quitting = false,
   stopped = false;
 const browserRequests = new Map();
+const githubRequests = new Map();
+const githubCredentials = () =>
+  new GitHubCredentials(safeStorage, join(app.getPath('userData'), 'credentials'), workspace());
+function updateGitHubToken(token) {
+  if (!engine?.connected) return Promise.reject(new Error('The local engine is unavailable.'));
+  return new Promise((resolve, reject) => {
+    const id = randomUUID();
+    const timer = setTimeout(() => {
+      githubRequests.delete(id);
+      reject(new Error('GitHub setup timed out. Reopen KRU and recheck.'));
+    }, 10000);
+    githubRequests.set(id, (message) => {
+      clearTimeout(timer);
+      message.error ? reject(new Error(message.error)) : resolve();
+    });
+    engine.send({ type: 'github:token', id, token }, (error) => {
+      if (error) {
+        clearTimeout(timer);
+        githubRequests.delete(id);
+        reject(new Error('The local engine is unavailable.'));
+      }
+    });
+  });
+}
 const development = !app.isPackaged;
 const brainPath = () => {
   const path = resolve(
@@ -101,6 +123,12 @@ function workspace() {
     : join(app.getPath('userData'), 'workspace', 'kru.sqlite');
 }
 async function startEngine() {
+  let initialGitHubToken = null;
+  try {
+    initialGitHubToken = githubCredentials().read();
+  } catch {
+    /* Setup can replace unreadable credentials. */
+  }
   const env = {
     ...environment(),
     KRU_DB: workspace(),
@@ -125,6 +153,16 @@ async function startEngine() {
     windowsHide: true,
   });
   engine.on('message', async (message) => {
+    if (message?.type === 'github:request') {
+      if (engine.connected) engine.send({ type: 'github:initialize', token: initialGitHubToken });
+      initialGitHubToken = null;
+      return;
+    }
+    if (message?.type === 'github:updated') {
+      githubRequests.get(message.id)?.(message);
+      githubRequests.delete(message.id);
+      return;
+    }
     if (message?.type === 'browser:cancel') {
       browserRequests.get(message.id)?.abort();
       return;
@@ -208,7 +246,9 @@ async function createWindow() {
     titleBarStyle: 'hiddenInset',
     trafficLightPosition: { x: 18, y: 16 },
     webPreferences: {
-      preload: join(__dirname, 'preload.cjs'),
+      preload: development
+        ? resolve(__dirname, '../dist/desktop-bridges/preload.cjs')
+        : join(__dirname, 'preload.cjs'),
       nodeIntegration: false,
       contextIsolation: true,
       sandbox: true,
@@ -227,6 +267,9 @@ async function createWindow() {
       external(url);
     }
   });
+  window.webContents.on('will-redirect', (event, url) => {
+    if (!url.startsWith('kru://app/')) event.preventDefault();
+  });
   window.webContents.session.setPermissionRequestHandler((contents, permission, callback) =>
     callback(
       contents === window.webContents &&
@@ -238,6 +281,8 @@ async function createWindow() {
 }
 if (!app.requestSingleInstanceLock()) app.quit();
 else {
+  const accountBridge = createAccountBridge();
+  app.on('will-quit', () => accountBridge.cleanup());
   app.on('second-instance', () => {
     if (window) {
       window.show();
@@ -247,6 +292,10 @@ else {
   app
     .whenReady()
     .then(async () => {
+      ipcMain.handle('kru:account-configuration', (event) => {
+        if (!trustedFrame(event)) throw new Error('Invalid account request');
+        return configuration();
+      });
       nativeTheme.themeSource = loadTheme();
       nativeTheme.on('updated', () => {
         if (window && !window.isDestroyed()) window.setBackgroundColor(windowBackground());
@@ -262,6 +311,17 @@ else {
         renameSync(path + '.tmp', path);
         nativeTheme.themeSource = value;
         return value;
+      });
+      ipcMain.handle('kru:github-status', (event) => {
+        if (!trustedFrame(event)) throw new Error('Invalid GitHub request');
+        return githubCredentials().status();
+      });
+      ipcMain.handle('kru:github-token', async (event, value) => {
+        if (!trustedFrame(event)) throw new Error('Invalid GitHub request');
+        const credentials = githubCredentials();
+        const token = credentials.save(value);
+        await updateGitHubToken(token);
+        return credentials.status();
       });
       ipcMain.handle('kru:brain-open', async (event, target) => {
         if (!trustedFrame(event) || !['vault', 'folder'].includes(target))
@@ -314,6 +374,10 @@ else {
       ipcMain.on('kru:browser-layout', (event, input) => {
         if (trustedFrame(event)) browserHost.layout(input);
       });
+      ipcMain.handle('kru:browser-external', (event, id) => {
+        if (!trustedFrame(event)) throw new Error('Invalid browser request');
+        return browserHost.openExternal(id);
+      });
       endpoint = await startEngine();
       protocol.handle('kru', async (request) => {
         const url = new URL(request.url);
@@ -325,10 +389,17 @@ else {
         const body = ['GET', 'HEAD'].includes(request.method)
           ? undefined
           : await request.arrayBuffer();
-        return net.fetch(endpoint.url + url.pathname + url.search, {
+        const response = await net.fetch(endpoint.url + url.pathname + url.search, {
           method: request.method,
           headers,
           ...(body ? { body } : {}),
+        });
+        if (url.pathname !== '/') return response;
+        const responseHeaders = new Headers(response.headers);
+        responseHeaders.set('Content-Security-Policy', contentSecurityPolicy());
+        return new Response(response.body, {
+          status: response.status,
+          headers: responseHeaders,
         });
       });
       Menu.setApplicationMenu(

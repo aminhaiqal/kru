@@ -3,7 +3,8 @@ import { patch, post } from './api.js';
 import { toast } from './dom.js';
 import { $, actions, escape } from './dom.js';
 import { field, openForm, requireTeammate, showInfo } from './forms.js';
-import { chatFolderIcon } from './icons.js';
+import { githubUrl, githubTokenReference, isGitHubConnector } from '../../shared/github.ts';
+import { chatFolderIcon, githubIcon } from './icons.js';
 import { S, connectionLabel, name, records } from './state.js';
 
 function renderProviderCards() {
@@ -27,7 +28,55 @@ function renderProviderCards() {
 function renderConnectors() {
   const connections = records('connector');
   $('#content').innerHTML =
-    `<div class="page connector-page"><div class="page-heading"><h1>Connector</h1><button class="primary" data-action="new-connector">Connect app</button></div><div class="connector-grid">${renderProviderCards()}${renderBrainCard()}${connections.map(renderConnector).join('')}</div></div>`;
+    `<div class="page connector-page"><div class="page-heading"><h1>Connector</h1><button class="primary" data-action="new-connector">Connect app</button></div><div class="connector-grid">${renderProviderCards()}${renderBrainCard()}${connections.some(isGitHubConnector) ? '' : renderGitHubCard()}${connections.map(renderConnector).join('')}</div></div>`;
+}
+function renderGitHubCard() {
+  return `<article class="connector-card github-card"><header class="connector-card-header"><div class="connector-card-mark" aria-hidden="true">${githubIcon}</div><div><h2>GitHub</h2><span class="connector-status">Not connected</span></div></header><p class="connector-card-caption">Repositories, issues and pull requests.</p><footer class="connector-card-actions"><button class="primary" data-action="github-setup">Connect</button></footer></article>`;
+}
+async function openGitHub(id) {
+  const entry =
+      records('connector').find((item) => item.id === id) ||
+      records('connector').find(isGitHubConnector),
+    storage = await window.kruGitHub?.status();
+  openForm(
+    entry ? 'GitHub settings' : 'Connect GitHub',
+    (storage?.available
+      ? field('GitHub token', 'githubToken', '', {
+          type: 'password',
+          required: !storage.saved,
+          help: storage.saved
+            ? 'Leave blank to keep your saved token.'
+            : 'Choose the repositories and permissions KRU can use.',
+        })
+      : '<p class="help">Set GITHUB_TOKEN before starting KRU to connect GitHub on this computer.</p>') +
+      '<p class="help"><a href="https://github.com/settings/personal-access-tokens/new" target="_blank" rel="noopener noreferrer">Create a GitHub token</a>' +
+      (storage?.available ? ' · Saved using your system’s secure storage.' : '') +
+      '</p>' +
+      (storage?.error ? `<p class="record-error">${escape(storage.error)}</p>` : ''),
+    async (form) => {
+      const token = form.get('githubToken')?.trim();
+      if (token) {
+        await window.kruGitHub.saveToken(token);
+        $('#f-githubToken').value = '';
+      }
+      const existing = entry;
+      const data = {
+        ...existing?.data,
+        name: 'GitHub',
+        transport: 'http',
+        url: githubUrl,
+        headers: { ...existing?.data.headers, Authorization: githubTokenReference },
+        permission: 'allow',
+        enabled: true,
+      };
+      const saved = existing
+        ? await patch('/records/connector/' + existing.id, data)
+        : await post('/records/connector', { agentId: null, data });
+      await refresh();
+      if (await checkConnector(saved.id)) toast('GitHub connected');
+    },
+    entry ? 'Save & reconnect' : 'Connect GitHub',
+  );
 }
 function renderBrainCard() {
   const brain = S.state.brain;
@@ -36,6 +85,7 @@ function renderBrainCard() {
   return `<article class="connector-card brain-card"><header class="connector-card-header"><div class="connector-card-mark" aria-hidden="true">${chatFolderIcon}</div><div><h2>Obsidian</h2><span class="connector-status ${ready ? 'connected' : 'error'}">${ready ? 'Ready' : 'Needs attention'}</span></div></header><p class="connector-card-caption">${ready ? `${brain.sharedNotes} shared notes · ${brain.privateNotes} private memories` : escape(brain.message)}</p><footer class="connector-card-actions"><button data-action="brain-open" ${!window.kruBrain || !ready ? 'disabled' : ''}>Open in Obsidian</button><button class="quiet" data-action="brain-folder" ${!window.kruBrain || !ready ? 'disabled' : ''}>Open folder</button></footer></article>`;
 }
 function renderConnector(entry) {
+  const github = isGitHubConnector(entry);
   const data = entry.data,
     health = S.state.connectorStatus?.[entry.id] || {
       state: data.enabled ? 'not_checked' : 'disabled',
@@ -57,7 +107,7 @@ function renderConnector(entry) {
       : state === 'error' || state === 'disconnected'
         ? 'Reconnect'
         : 'Connect';
-  return `<article class="connector-card connector-row" data-connector-id="${entry.id}"><header class="connector-card-header"><div class="connector-card-mark" aria-hidden="true">${escape(data.name.slice(0, 1).toUpperCase())}</div><div><h2>${escape(data.name)}</h2><span class="connector-status ${escape(state)}">${label}</span></div></header><p class="connector-card-caption">Bot: ${escape(name(entry.agentId))}${health.toolCount != null ? ` · ${health.toolCount} ${health.toolCount === 1 ? 'tool' : 'tools'}` : ''}</p>${health.error ? `<p class="record-error">${escape(health.error)}</p>` : ''}<footer class="connector-card-actions">${checking ? '<span class="subtext">Checking…</span>' : data.enabled ? `${actions('test-connector', connectLabel, entry.id, state === 'connected' ? 'quiet' : 'primary')}${state === 'connected' ? actions('connector-tools', 'View tools', entry.id, 'quiet') : ''}${actions('toggle-connector', 'Disconnect', entry.id, 'quiet')}` : actions('toggle-connector', 'Connect', entry.id, 'primary')}${actions('edit-connector', 'Edit', entry.id, 'quiet')}</footer></article>`;
+  return `<article class="connector-card connector-row ${github ? 'github-card' : ''}" data-connector-id="${entry.id}"><header class="connector-card-header"><div class="connector-card-mark" aria-hidden="true">${github ? githubIcon : escape(data.name.slice(0, 1).toUpperCase())}</div><div><h2>${escape(data.name)}</h2><span class="connector-status ${escape(state)}">${label}</span></div></header><p class="connector-card-caption">${github ? 'Available throughout Kru' : 'Bot: ' + escape(name(entry.agentId))}${health.toolCount != null ? ` · ${health.toolCount} ${health.toolCount === 1 ? 'tool' : 'tools'}` : ''}</p>${health.error ? `<p class="record-error">${escape(health.error)}</p>` : ''}<footer class="connector-card-actions">${checking ? '<span class="subtext">Checking…</span>' : data.enabled ? `${actions('test-connector', connectLabel, entry.id, state === 'connected' ? 'quiet' : 'primary')}${state === 'connected' ? actions('connector-tools', 'View tools', entry.id, 'quiet') : ''}${actions('toggle-connector', 'Disconnect', entry.id, 'quiet')}` : actions('toggle-connector', 'Connect', entry.id, 'primary')}${actions(github ? 'github-setup' : 'edit-connector', 'Edit', entry.id, 'quiet')}</footer></article>`;
 }
 function parseObject(text) {
   try {
@@ -184,4 +234,4 @@ async function checkConnector(id, showTools = false) {
   }
 }
 
-export { checkConnector, openConnector, renderConnectors, updateConnectorFields };
+export { checkConnector, openConnector, openGitHub, renderConnectors, updateConnectorFields };

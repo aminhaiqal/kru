@@ -72,6 +72,22 @@ function builtinTools(profile: PreparedThread): string[] | undefined {
     : ['Read', 'Edit', 'Bash', 'Write', 'Glob', 'Grep'];
 }
 export class ClaudeProvider extends ProviderBase {
+  async usageLimits(): Promise<import('../limits').LimitWindow[]> {
+    this.requireReady();
+    const session = this.session({ promptProfile: 'minimal' });
+    session.metadata = true;
+    try {
+      this.open(session);
+      const query = session.query as unknown as Query;
+      const read = query.usage_EXPERIMENTAL_MAY_CHANGE_DO_NOT_RELY_ON_THIS_API_YET;
+      if (typeof read !== 'function') return [];
+      const { claudeLimits } = await import('../limits');
+      return claudeLimits(await read.call(query, { skipBehaviors: true }));
+    } finally {
+      await this.closeSession(session);
+      this.sessions.delete(session.id);
+    }
+  }
   async listModels(): Promise<ModelOption[]> {
     this.requireReady();
     const session = this.session({ promptProfile: 'minimal' });

@@ -36,6 +36,18 @@ that database first. `KRU_DB` can explicitly choose a database; `KRU_USER_DATA_D
 can isolate the desktop profile. GUI launches resolve the user's login-shell
 PATH so locally installed Codex, Claude Code, Node and npm can be found.
 
+## Accounts
+
+Sign in on the startup screen using Clerk's email or social sign-in controls.
+Sign-in is required before opening the desktop workspace. See [Clerk setup](CLERK.md)
+for the selected development application, desktop callbacks, and production setup.
+
+## GitHub
+
+The GitHub card in Connector saves a personal access token using OS encryption,
+scoped to the selected workspace. See [GitHub setup](GITHUB.md) for permissions,
+reconnecting, and workflow use.
+
 ## Obsidian
 
 KRU's central knowledge and memory live in a dedicated Obsidian vault. See
@@ -103,3 +115,33 @@ tabs, direct input, LLM actions on the same page, profile import and persistence
 across app restarts. They use fixture browser profiles and submit no paid model
 turn. Screenshots and performance reports go to `dist/desktop-verification`.
 Native GUI tests require permission to launch desktop apps.
+
+## Sites that reject embedded browsers
+
+The embedded browser uses Electron's bundled Chromium, not the separately installed
+Google Chrome application. Browser sessions preserve the actual Chromium version
+while excluding app product tokens. Clerk's optional session-label user-agent
+override is omitted because it replaces the application-wide browser identity.
+This does not guarantee acceptance by a site's verification service.
+
+Use **Open in browser** in the verification banner to open the
+active HTTP(S) page in your installed default browser. Make Chrome your system
+default if you want that button to use Chrome. This is an explicit user action;
+remote pages and agents cannot invoke the desktop bridge. The external browser
+has its own cookies/session and isn't controlled by Kru. Completing verification
+there does not automatically unlock the embedded session.
+
+## Provider usage limits
+
+The indicator above your profile follows the conversation's selected provider.
+The outer ring shows weekly usage; the inner ring shows the shorter window,
+typically five hours. Click it for percentages, reset times, and any additional
+reported limits. Dotted rings mean that window is unavailable, not zero usage.
+
+Kru reads account metadata through Codex's
+[account/rateLimits/read](https://developers.openai.com/codex/app-server)
+and Claude Agent SDK's structured usage query. Reads are cached for two minutes
+and never send a model prompt. API-key accounts and older CLIs may not expose
+subscription limits. Claude's usage query is currently experimental; unsupported
+versions fall back to unavailable. Kru does not read credential files or estimate
+plan usage from its own token ledger.

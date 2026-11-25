@@ -28,6 +28,7 @@ const migrations = [
   { version: 12, sql: readMigration('012-workflows.sql') },
   { version: 13, sql: readMigration('013-conversations.sql') },
   { version: 14, sql: readMigration('014-conversation-projects.sql') },
+  { version: 15, sql: readMigration('015-project-files.sql') },
 ];
 
 export interface StoreChange {

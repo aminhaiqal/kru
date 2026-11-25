@@ -7,6 +7,9 @@ import { RpcConnection } from '../rpc';
 import { getDefaultEnvironment } from '@modelcontextprotocol/sdk/client/stdio.js';
 import { WorkspaceRecords, type RecordEntry } from './records';
 import { storedError } from '../store/errors';
+import { githubTokenReference, connectorAvailable } from '../shared/github';
+import { githubAuthorization } from './github';
+import type { FetchLike } from '@modelcontextprotocol/sdk/shared/transport.js';
 
 /** Reuse Kru's tracked process groups rather than launching unowned MCP children. */
 class TrackedTransport implements Transport {
@@ -14,7 +17,7 @@ class TrackedTransport implements Transport {
   onerror?: (error: Error) => void;
   onmessage?: (message: JSONRPCMessage) => void;
   private readonly rpc: RpcConnection;
-  constructor(entry: RecordEntry<'connector'>, scope: ProcessScope) {
+  constructor(entry: RecordEntry<'connector'>, scope: () => ProcessScope) {
     const env = {
       ...getDefaultEnvironment(),
       ...Object.fromEntries(
@@ -31,7 +34,7 @@ class TrackedTransport implements Transport {
       maxQueuedWriteBytes: 4 * 1024 * 1024,
       maxBadLines: 3,
     });
-    this.rpc.setProcessScope(scope);
+    this.rpc.setProcessScope(scope());
     this.rpc.on('notification', (n) =>
       this.onmessage?.({
         jsonrpc: '2.0',
@@ -77,6 +80,8 @@ class TrackedTransport implements Transport {
   }
 }
 function requiredEnv(name: string): string {
+  if (name === githubTokenReference)
+    throw new Error('GitHub credentials require the official GitHub connector.');
   const value = process.env[name];
   if (!value) throw new Error(`Set environment variable ${name} before starting KRU`);
   return value;
@@ -91,6 +96,7 @@ export class IntegrationGateway {
   constructor(
     private readonly records: WorkspaceRecords,
     private readonly scope: () => ProcessScope,
+    private readonly request?: FetchLike,
   ) {}
   status(id: string) {
     const entry = this.records.require('connector', id),
@@ -132,11 +138,17 @@ export class IntegrationGateway {
       const client = new Client({ name: 'kru', version: '0.1.1' }, { capabilities: {} });
       const transport =
         entry.data.transport === 'stdio'
-          ? new TrackedTransport(entry, this.scope())
+          ? new TrackedTransport(entry, this.scope)
           : new StreamableHTTPClientTransport(new URL(entry.data.url), {
+              ...(this.request ? { fetch: this.request } : {}),
               requestInit: {
                 headers: Object.fromEntries(
-                  Object.entries(entry.data.headers).map(([key, ref]) => [key, requiredEnv(ref)]),
+                  Object.entries(entry.data.headers).map(([key, ref]) => [
+                    key,
+                    ref === githubTokenReference && key.toLowerCase() === 'authorization'
+                      ? githubAuthorization(entry)
+                      : requiredEnv(ref),
+                  ]),
                 ),
               },
             });
@@ -177,7 +189,7 @@ export class IntegrationGateway {
   }
   entry(id: string, agentId: string): RecordEntry<'connector'> {
     const entry = this.records.require('connector', id);
-    if (!entry.data.enabled || entry.agentId !== agentId)
+    if (!connectorAvailable(entry, agentId))
       throw new Error('Connector is not enabled for this agent');
     return entry;
   }

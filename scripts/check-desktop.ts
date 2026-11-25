@@ -1,5 +1,13 @@
 import { _electron as electron } from 'playwright-core';
-import { mkdtempSync, mkdirSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
+import {
+  mkdtempSync,
+  mkdirSync,
+  realpathSync,
+  rmSync,
+  writeFileSync,
+  readFileSync,
+  readdirSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { Database } from 'bun:sqlite';
@@ -9,8 +17,8 @@ mkdirSync(artifacts, { recursive: true });
 const executable =
   process.env.KRU_DESKTOP_EXECUTABLE ||
   resolve('dist/desktop/KRU-darwin-arm64/KRU.app/Contents/MacOS/KRU');
-const launch = () =>
-  electron.launch({
+const launch = async () => {
+  const instance = await electron.launch({
     executablePath: executable,
     colorScheme: null,
     env: {
@@ -20,6 +28,16 @@ const launch = () =>
     },
     timeout: 60000,
   });
+  // Workspace behavior uses a renderer-only authenticated fixture. The production
+  // app has no environment flag or IPC endpoint that bypasses Clerk sign-in.
+  await instance.context().route('**/account.js', (route) =>
+    route.fulfill({
+      contentType: 'text/javascript',
+      body: "document.documentElement.classList.remove('account-required');document.getElementById('auth-gate').hidden=true;window.dispatchEvent(new Event('kru:signed-in'));",
+    }),
+  );
+  return instance;
+};
 let application = await launch();
 const checks: string[] = [],
   errors: string[] = [];
@@ -86,6 +104,23 @@ try {
   );
   await page.getByRole('button', { name: 'Connector', exact: true }).click();
   await page.locator('.brain-card').getByText('Ready', { exact: true }).waitFor();
+  await page.locator('.github-card').getByText('Not connected', { exact: true }).waitFor();
+  const githubFixtureToken = 'github_pat_' + 'desktopfixtureonly'.repeat(3);
+  const githubSaved = await page.evaluate(
+    async (token) => await (globalThis as any).kruGitHub.saveToken(token),
+    githubFixtureToken,
+  );
+  if (!githubSaved.saved || JSON.stringify(githubSaved).includes(githubFixtureToken))
+    throw new Error('GitHub credential bridge leaked or failed to save its fixture token');
+  const credentialDirectory = join(directory, 'profile', 'credentials');
+  const encryptedCredential = readFileSync(
+    join(credentialDirectory, readdirSync(credentialDirectory)[0]!),
+  );
+  if (encryptedCredential.includes(githubFixtureToken))
+    throw new Error('GitHub token was stored as plaintext');
+  checks.push(
+    'Desktop saves a GitHub token with OS encryption and acknowledges the engine update without exposing the credential',
+  );
   const vaultPath = realpathSync(join(directory, 'profile', 'KRU Brain'));
   const brain = await page.evaluate(async () => {
     const token = (globalThis as any).document.querySelector('meta[name="kru-token"]').content;
@@ -182,7 +217,7 @@ try {
     count,
   );
   checks.push('Threads can be removed in the desktop app');
-  await page.getByRole('button', { name: 'Browser', exact: true }).click();
+  await page.locator('.conversation-browser').click();
   await page.getByRole('complementary', { name: 'Browser panel' }).waitFor();
   await page
     .getByLabel('Browser address', { exact: true })
@@ -205,7 +240,8 @@ try {
   await nativePage.getByRole('heading', { name: 'Chromium is ready' }).waitFor();
   if (await page.locator('#browser-live-frame, #browser-keyboard').count())
     throw new Error('Old screenshot bridge remains');
-  await page.getByRole('button', { name: 'Expand browser', exact: true }).click();
+  if (await page.locator('.browser-panel-heading').count())
+    throw new Error('Obsolete browser header remains');
   await page.waitForTimeout(100);
   await nativePage.locator('#name').click();
   await nativePage.keyboard.type('Replace me');
@@ -224,6 +260,9 @@ try {
     bridge: typeof (globalThis as any).kruBrowser,
     theme: typeof (globalThis as any).kruTheme,
     brain: typeof (globalThis as any).kruBrain,
+    github: typeof (globalThis as any).kruGitHub,
+    account: typeof (globalThis as any).kruAccount,
+    clerk: typeof (globalThis as any).__clerk_internal_electron,
     dark: (globalThis as any).matchMedia('(prefers-color-scheme: dark)').matches,
     webdriver: (globalThis as any).navigator.webdriver,
   }));
@@ -232,12 +271,48 @@ try {
     boundary.bridge !== 'undefined' ||
     boundary.theme !== 'undefined' ||
     boundary.brain !== 'undefined' ||
+    boundary.github !== 'undefined' ||
+    boundary.account !== 'undefined' ||
+    boundary.clerk !== 'undefined' ||
     !boundary.dark
   )
     throw new Error(
       'Native browser isolation or dark preference is missing: ' + JSON.stringify(boundary),
     );
   checks.push('Website has no Node or application bridge and uses the dark preference');
+  const userAgent = await nativePage.evaluate(() => (globalThis as any).navigator.userAgent);
+  const chromiumVersion = await application.evaluate(
+    () => (globalThis as any).process.versions.chrome,
+  );
+  if (
+    /\b(?:Electron|Kru)\//i.test(userAgent) ||
+    !userAgent.includes('Chrome/' + chromiumVersion.split('.')[0] + '.')
+  )
+    throw new Error('Browser identity mismatch: ' + JSON.stringify({ userAgent, chromiumVersion }));
+  checks.push(
+    'Website user-agent keeps the real Chromium version without mixed-case Kru app tokens',
+  );
+  await application.evaluate(({ shell }) => {
+    const global = globalThis as any;
+    global.__browserOriginalExternal = shell.openExternal;
+    global.__browserExternalCalls = [];
+    shell.openExternal = async (url) => {
+      global.__browserExternalCalls.push(url);
+    };
+  });
+  await page.evaluate(() =>
+    (globalThis as any).document.querySelector('[data-browser-action="external"]').click(),
+  );
+  const externalCalls = await application.evaluate(({ shell }) => {
+    const global = globalThis as any;
+    shell.openExternal = global.__browserOriginalExternal;
+    return global.__browserExternalCalls;
+  });
+  if (JSON.stringify(externalCalls) !== JSON.stringify([fixture.url.href]))
+    throw new Error('Open in browser did not open the active page in the installed browser');
+  checks.push(
+    'Unsupported embedded pages can be explicitly opened in the installed default browser',
+  );
   await page.locator('#theme-trigger').click();
   const covered = await application.evaluate(
     ({ BrowserWindow }) => BrowserWindow.getAllWindows()[0]!.contentView.children.length,
@@ -260,6 +335,16 @@ try {
     () => (globalThis as any).matchMedia('(prefers-color-scheme: dark)').matches,
   );
   checks.push('Theme menu stays above native pages and live appearance changes reach the browser');
+  await page.locator('.usage-limits-trigger').click();
+  await page.locator('#usage-limits-menu').waitFor({ state: 'visible' });
+  const usageCovered = await application.evaluate(
+    ({ BrowserWindow }) => BrowserWindow.getAllWindows()[0]!.contentView.children.length,
+  );
+  if (usageCovered !== 1) throw new Error('Native browser covered the usage limits popover');
+  await page.keyboard.press('Escape');
+  await page.locator('#usage-limits-menu').waitFor({ state: 'hidden' });
+  checks.push('Usage limits popover stays above the native browser and dismisses with Escape');
+
   const state: any = await page.evaluate(async () => {
     const token = (globalThis as any).document.querySelector('meta[name="kru-token"]').content;
     return (await fetch('/api/state', { headers: { 'x-kru-token': token } })).json();
@@ -466,11 +551,18 @@ try {
       opener: !!(globalThis as any).window.opener,
       node: typeof (globalThis as any).require,
       bridge: typeof (globalThis as any).kruBrowser,
+      account: typeof (globalThis as any).kruAccount,
+      clerk: typeof (globalThis as any).__clerk_internal_electron,
       cookies: (globalThis as any).document.cookie,
     }));
     if (item.opener !== null && boundary.opener !== item.opener)
       throw new Error(item.name + ' changed the opener');
-    if (boundary.node !== 'undefined' || boundary.bridge !== 'undefined')
+    if (
+      boundary.node !== 'undefined' ||
+      boundary.bridge !== 'undefined' ||
+      boundary.account !== 'undefined' ||
+      boundary.clerk !== 'undefined'
+    )
       throw new Error(item.name + ' exposed privileged APIs');
     if (item.url.startsWith('http:') && !boundary.cookies.includes('imported_cookie=fixture-token'))
       throw new Error(item.name + ' lost the browser session');
@@ -488,7 +580,6 @@ try {
   )
     throw new Error('Popup adoption failed: ' + JSON.stringify(popupState));
   await nativePage.screenshot({ path: join(artifacts, 'native-browser-page.png') });
-  await page.getByRole('button', { name: 'Restore browser panel', exact: true }).click();
   await application.evaluate(({ BrowserWindow }) => {
     const window = BrowserWindow.getAllWindows()[0]!;
     window.webContents.setZoomFactor(1.15);
@@ -518,8 +609,13 @@ try {
   });
   await page.waitForTimeout(100);
   await page.screenshot({ path: join(artifacts, 'browser-panel.png') });
-  await page.getByRole('button', { name: 'Close browser panel', exact: true }).click();
-  checks.push('Native browser can expand, restore and close alongside chat');
+  await page.locator('.conversation-browser').click();
+  if (await page.locator('#browser-panel').isVisible())
+    throw new Error('Globe did not close the browser sidebar');
+  await page.locator('.conversation-browser').click();
+  await page.locator('#browser-panel').waitFor({ state: 'visible' });
+  await page.locator('.conversation-browser').click();
+  checks.push('Globe toggles the native browser sidebar without a separate header');
   const isolated = await page.evaluate(
     () =>
       typeof (globalThis as any).require === 'undefined' &&
@@ -540,7 +636,13 @@ try {
   )
     throw new Error('Desktop appearance did not persist across restart');
   checks.push('Saved desktop appearance restores before the renderer opens after restart');
-  await restoredWindow.getByRole('button', { name: 'Browser', exact: true }).click();
+  const restoredGitHub = await restoredWindow.evaluate(
+    async () => await (globalThis as any).kruGitHub.status(),
+  );
+  if (!restoredGitHub.saved || JSON.stringify(restoredGitHub).includes(githubFixtureToken))
+    throw new Error('Encrypted GitHub credentials did not persist after restart');
+  checks.push('GitHub credentials remain encrypted and available after desktop restart');
+  await restoredWindow.locator('.conversation-browser').click();
   await restoredWindow
     .getByLabel('Browser address', { exact: true })
     .fill('http://127.0.0.1:' + fixture.port);

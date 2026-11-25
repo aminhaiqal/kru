@@ -1,3 +1,4 @@
+import { connectorNeedsApproval } from '../shared/github';
 import { z } from 'zod';
 import type { Store } from '../store';
 import { AgentRegistry } from '../agents';
@@ -655,7 +656,7 @@ export class WorkflowService {
             binding_json: JSON.stringify(binding.data),
           };
           this.store.atomic(() => {
-            if (binding.data.permission === 'ask') {
+            if (connectorNeedsApproval(binding)) {
               const approval = this.records.put('approval', run.agent_id, {
                 executionId: prepared.id,
                 threadId: 'workflow:' + run.id,

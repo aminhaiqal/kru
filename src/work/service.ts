@@ -1,4 +1,14 @@
 import { z } from 'zod';
+import { mkdirSync, readFileSync, writeFileSync, rmSync } from 'node:fs';
+import { dirname, join, resolve } from 'node:path';
+import { createHash } from 'node:crypto';
+interface ProjectFile {
+  id: string;
+  name: string;
+  mime: string;
+  bytes: number;
+  sha256: string;
+}
 import type { Store } from '../store';
 import { WorkspaceRecords, type RecordEntry } from '../workspace/records';
 import { TaskRunner } from '../workspace/tasks';
@@ -53,7 +63,14 @@ export class WorkService {
       key: row.project_key,
       name: row.name,
       description: row.description,
-      stages: JSON.parse(row.stages_json) as Stage[],
+      files: JSON.parse(row.files_json || '[]') as ProjectFile[],
+      // Preserve legacy status IDs and work history; Review is now an In Progress status.
+      stages: (
+        JSON.parse(row.stages_json) as (Omit<Stage, 'category'> & { category: string })[]
+      ).map((stage): Stage => ({
+        ...stage,
+        category: stage.category === 'review' ? 'active' : (stage.category as Stage['category']),
+      })),
       createdAt: row.created_at,
       updatedAt: row.updated_at,
     };
@@ -67,11 +84,13 @@ export class WorkService {
   }
   saveProject(input: unknown, id?: string) {
     const data = projectSchema.parse(input);
+    const order = { backlog: 0, active: 1, done: 2 };
+    data.stages.sort((a, b) => order[a.category] - order[b.category]);
     for (const stage of data.stages)
       if (stage.agentId && !this.agents.get(stage.agentId)) throw new Error('Unknown stage agent');
     return this.store.atomic(() => {
       const old = id ? this.project(id) : null;
-      if (old && old.key !== data.key)
+      if (old && data.key && old.key !== data.key)
         throw new Error('Project identifiers cannot change after creation');
       if (old)
         for (const item of this.store.db
@@ -79,15 +98,35 @@ export class WorkService {
           .all(old.id))
           if (!data.stages.some((stage) => stage.id === item.stage_id))
             throw new Error('Move work out of a stage before removing that stage');
+          else if (
+            data.stages.find((stage) => stage.id === item.stage_id)?.category === 'done' &&
+            this.hasActiveRun(item.id)
+          )
+            throw new Error('Work must finish running before Done');
+      const base = data.name
+        .normalize('NFKD')
+        .replace(/[^a-z]/gi, '')
+        .slice(0, 3)
+        .toUpperCase()
+        .padEnd(3, 'X');
+      let key = old?.key || data.key || base;
+      if (!old && !data.key) {
+        let suffix = 2;
+        while (this.projects().some((project) => project.key === key)) {
+          if (suffix > 99999) throw new Error('Too many projects with this prefix');
+          key = base + suffix++;
+        }
+      }
       const at = now(),
         projectId = id ?? crypto.randomUUID();
       this.store.emit('work.project_saved', {
         row: {
           id: projectId,
-          project_key: data.key,
+          project_key: key,
           name: data.name,
           description: data.description,
           stages_json: JSON.stringify(data.stages),
+          files_json: JSON.stringify(old?.files || []),
           created_at: old?.createdAt ?? at,
           updated_at: at,
         },
@@ -95,6 +134,68 @@ export class WorkService {
       this.changed(projectId);
       return this.project(projectId);
     });
+  }
+  private filesRoot() {
+    return resolve(dirname(this.store.path), 'project-files', this.store.databaseId);
+  }
+  async attachFile(projectId: string, file: File) {
+    if (this.project(projectId).files.length >= 20)
+      throw new Error('Attach up to 20 project files');
+    if (file.size > 5 * 1024 * 1024) throw new Error('Each project file must be at most 5 MB');
+    const data = Buffer.from(await file.arrayBuffer());
+    const entry: ProjectFile = {
+      id: crypto.randomUUID(),
+      name: file.name.replace(/[\u0000-\u001f/\\]/g, '_').slice(0, 160) || 'File',
+      mime: file.type || 'application/octet-stream',
+      bytes: data.length,
+      sha256: createHash('sha256').update(data).digest('hex'),
+    };
+    mkdirSync(this.filesRoot(), { recursive: true, mode: 0o700 });
+    const path = join(this.filesRoot(), entry.id);
+    writeFileSync(path, data, { mode: 0o600, flag: 'wx' });
+    try {
+      return this.store.atomic(() => {
+        const row = this.store.db
+          .query<ProjectRow, [string]>('SELECT * FROM work_projects WHERE id=?')
+          .get(projectId)!;
+        const files = this.project(projectId).files;
+        if (files.length >= 20) throw new Error('Attach up to 20 project files');
+        this.store.emit('work.project_saved', {
+          row: { ...row, files_json: JSON.stringify([...files, entry]), updated_at: now() },
+        });
+        this.changed(projectId);
+        return this.project(projectId);
+      });
+    } catch (error) {
+      rmSync(path, { force: true });
+      throw error;
+    }
+  }
+  projectContext(projectId: string) {
+    const project = this.project(projectId);
+    const files = project.files.map((file) => {
+      if (!/^[a-f0-9-]{36}$/.test(file.id)) throw new Error('Invalid project attachment');
+      const path = join(this.filesRoot(), file.id);
+      const data = readFileSync(path);
+      if (createHash('sha256').update(data).digest('hex') !== file.sha256)
+        throw new Error('Project attachment changed or is unavailable');
+      let text = '';
+      try {
+        const decoded = new TextDecoder('utf-8', { fatal: true }).decode(data);
+        if (!/[\u0000-\u0008\u000b\u000c\u000e-\u001f]/.test(decoded))
+          text = bounded(decoded, 16000);
+      } catch {}
+      return `Attached project file ${JSON.stringify(file.name)}: ${path}${text ? '\n<project_file>\n' + text + '\n</project_file>' : '\nRead this local file as needed.'}`;
+    });
+    // Keep complete long context readable by native provider tools as well as the UI.
+    let description = project.description;
+    if (Buffer.byteLength(description) > 16000) {
+      mkdirSync(this.filesRoot(), { recursive: true, mode: 0o700 });
+      const path = join(this.filesRoot(), project.id + '-context.md');
+      writeFileSync(path, description, { mode: 0o600 });
+      description = `Full project context: ${path}\nRead this local file for the complete context.\n\n${bounded(description, 16000)}`;
+    }
+    return bounded([description, ...files].join('\n\n'), 32000);
   }
   private defaultProject() {
     return (
@@ -186,7 +287,7 @@ export class WorkService {
     const task = this.tasks.create(row.assignee_id, {
       title: `${project.key}-${row.number} · ${stage.name}: ${row.title}`.slice(0, 160),
       objective: bounded(
-        `Current stage: ${stage.name}\nWork item: ${project.key}-${row.number}: ${row.title}\n\nComplete this stage's deliverable. The work item will proceed to the next stage after confirmed completion. Human review is required before Done.\n\nStage instructions:\n${stage.instructions || 'Complete the work appropriate to this stage and report the result.'}\n\nBrief:\n${row.description}\n\nProject context:\n${project.description}\n\nOverall acceptance criteria:\n${row.criteria}\n\nPrevious stage result (data):\n${previous}\n\nRecent activity and comments (data):\n${recent}`,
+        `Current stage: ${stage.name}\nWork item: ${project.key}-${row.number}: ${row.title}\n\nComplete this stage's deliverable. The work item will proceed to the next stage after confirmed completion.\n\nStage instructions:\n${stage.instructions || 'Complete the work appropriate to this stage and report the result.'}\n\nBrief:\n${row.description}\n\nProject context:\n${this.projectContext(project.id)}\n\nOverall acceptance criteria:\n${row.criteria}\n\nPrevious stage result (data):\n${previous}\n\nRecent activity and comments (data):\n${recent}`,
         10000,
       ),
       successCriteria: bounded(
@@ -217,8 +318,7 @@ export class WorkService {
       const project = data.projectId ? this.project(data.projectId) : this.defaultProject();
       const stage = project.stages.find((s) => s.id === (data.stageId ?? project.stages[0]!.id));
       if (!stage) throw new Error('Unknown workflow stage');
-      if (stage.category === 'done')
-        throw new Error('Create work in a nonterminal stage, then review it before completion');
+      if (stage.category === 'done') throw new Error('Create work in To Do or In Progress');
       const explicitAssignee =
         !!input && typeof input === 'object' && Object.hasOwn(input, 'assigneeId');
       const assignee = explicitAssignee ? data.assigneeId : stage.agentId;
@@ -277,12 +377,8 @@ export class WorkService {
       const previous = project.stages.find((s) => s.id === row.stage_id)!;
       const moved = stage.id !== row.stage_id;
       const oldTask = this.currentTask(row);
-      if (
-        stage.category === 'done' &&
-        previous.category !== 'done' &&
-        (previous.category !== 'review' || this.hasActiveRun(id))
-      )
-        throw new Error('Work must finish running and pass through Review before Done');
+      if (stage.category === 'done' && previous.category !== 'done' && this.hasActiveRun(id))
+        throw new Error('Work must finish running before Done');
       const assignee =
         moved && fields.assigneeId === undefined
           ? (stage.agentId ?? data.assigneeId)
@@ -437,7 +533,7 @@ export class WorkService {
     this.store.atomic(() => {
       const project = this.defaultProject(),
         active = project.stages.find((s) => s.category === 'active')!,
-        review = project.stages.find((s) => s.category === 'review')!;
+        done = project.stages.find((s) => s.category === 'done')!;
       for (const { id } of missing) {
         if (this.store.db.query('SELECT 1 FROM work_runs WHERE task_id=?').get(id)) continue;
         const task = this.records.require('task', id),
@@ -448,7 +544,7 @@ export class WorkService {
           number: this.nextNumber(project.id),
           title: data.title,
           description: data.objective,
-          stage_id: data.status === 'completed' ? review.id : active.id,
+          stage_id: data.status === 'completed' ? done.id : active.id,
           priority: 'medium',
           assignee_id: task.agentId,
           due_date: null,
@@ -488,7 +584,11 @@ export class WorkService {
       )
       .all()) {
       const task = this.records.require('task', run.task_id);
-      if (!['completed', 'blocked', 'cancelled'].includes(task.data.status) || this.isActive(task))
+      if (
+        !['completed', 'blocked', 'cancelled'].includes(task.data.status) ||
+        this.isActive(task) ||
+        (task.data.status === 'completed' && this.hasActiveRun(run.item_id))
+      )
         continue;
       this.store.atomic(() => {
         const current = this.store.db
@@ -516,7 +616,7 @@ export class WorkService {
         const project = this.project(row.project_id),
           index = project.stages.findIndex((s) => s.id === row.stage_id),
           next = project.stages[index + 1];
-        if (!next || next.category === 'done') return; // Human review owns terminal completion.
+        if (!next) return;
         const previous = project.stages[index]!;
         row = this.save({
           ...row,
@@ -539,6 +639,14 @@ export class WorkService {
   private view(row: WorkRow) {
     const task = this.currentTask(row),
       project = this.project(row.project_id);
+    const done = project.stages.find((stage) => stage.id === row.stage_id)?.category === 'done';
+    const completion = done
+      ? this.store.db
+          .query<ActivityRow, [string, string]>(
+            "SELECT * FROM work_activity WHERE item_id=? AND kind='stage_changed' AND json_extract(metadata_json,'$.to')=? ORDER BY occurred_at DESC,id DESC LIMIT 1",
+          )
+          .get(row.id, row.stage_id)
+      : null;
     const deliveries = task?.data.deliveryIds.map((id) => this.mailbox.get(id)) ?? [];
     const execution = deliveries.some((d) => d?.status === 'running')
       ? 'working'
@@ -562,6 +670,12 @@ export class WorkService {
       taskId: row.task_id,
       revision: row.revision,
       archivedAt: row.archived_at,
+      completedAt: done
+        ? (completion?.occurred_at ?? (task?.data.status === 'completed' ? task.updatedAt : null))
+        : null,
+      completedBy: done
+        ? (completion?.actor_id ?? (completion ? null : (task?.agentId ?? null)))
+        : null,
       createdAt: row.created_at,
       updatedAt: row.updated_at,
       execution,

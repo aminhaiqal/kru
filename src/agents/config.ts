@@ -35,7 +35,7 @@ export function threadParams(config: Record<string, unknown>): ThreadParams {
 }
 export function validateAgentConfig(config: Record<string, unknown>): void {
   if (config.browser !== undefined)
-    z.object({ enabled: z.boolean(), permission: z.enum(['ask', 'allow']).default('ask') })
+    z.object({ enabled: z.boolean(), permission: z.enum(['ask', 'allow']).optional() })
       .strict()
       .parse(config.browser);
   if (config.paused !== undefined && typeof config.paused !== 'boolean')

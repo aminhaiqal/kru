@@ -14,7 +14,7 @@ export const columns = {
     'id,workflow_id,agent_id,name,graph_json,input_json,status,error,started_at,ended_at',
   workflow_node_runs:
     'id,run_id,node_id,status,input_json,output_json,binding_json,error,task_id,approval_id,started_at,ended_at',
-  work_projects: 'id,project_key,name,description,stages_json,created_at,updated_at',
+  work_projects: 'id,project_key,name,description,stages_json,created_at,updated_at,files_json',
   work_items:
     'id,project_id,number,title,description,stage_id,priority,assignee_id,due_date,labels_json,criteria,max_turns,task_id,revision,archived_at,created_at,updated_at',
   work_runs: 'task_id,item_id,stage_id,settled_at,created_at',
@@ -146,7 +146,10 @@ export function project(db: Database, event: DomainEvent): void {
       put(db, 'workflow_node_runs', event.payload.row);
       break;
     case 'work.project_saved':
-      put(db, 'work_projects', event.payload.row);
+      put(db, 'work_projects', {
+        ...event.payload.row,
+        files_json: event.payload.row.files_json ?? '[]',
+      });
       break;
     case 'work.item_saved':
       put(db, 'work_items', event.payload.row);

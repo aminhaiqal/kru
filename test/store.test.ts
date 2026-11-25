@@ -49,6 +49,7 @@ test('12. fresh and frozen version-1 databases migrate to the same schema withou
       { version: 12 },
       { version: 13 },
       { version: 14 },
+      { version: 15 },
     ]);
   } finally {
     fresh.close();
@@ -218,6 +219,7 @@ test('version-2 migration failure rolls back DDL and its receipt while retaining
         { version: 12 },
         { version: 13 },
         { version: 14 },
+        { version: 15 },
       ]);
     } finally {
       retried.close();
@@ -321,7 +323,7 @@ test('frozen version-4 schema retains its event history and matches a fresh sche
     expect(schema(migrated.db)).toEqual(schema(fresh.db));
     expect(
       migrated.db.query('SELECT max(version) AS version FROM schema_migrations').get(),
-    ).toEqual({ version: 14 });
+    ).toEqual({ version: 15 });
     expect(migrated.db.query('PRAGMA foreign_key_check').all()).toEqual([]);
     expect(migrated.db.query('SELECT cost_usd FROM usage_records').get()).toEqual({
       cost_usd: 0.000024,

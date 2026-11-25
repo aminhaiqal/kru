@@ -38,7 +38,7 @@ Migration 11 adds four event-backed projections:
 All changes use Store transactions and versioned events. Replay rebuilds these
 alongside the existing projections, for 27 tables in total.
 
-1. A work item starts in Brief. It may remain unassigned and need no model call.
+1. A work item starts in To Do. It may remain unassigned and need no model call.
 2. Stage entry resolves the stage agent, unless the operator explicitly supplied
    an assignee. Without a stage agent, the current assignee remains in place.
 3. An assigned active stage creates a TaskRunner record and its `task:<id>`
@@ -50,8 +50,8 @@ alongside the existing projections, for 27 tables in total.
 6. If that run still belongs to the item's current stage, Work advances to the
    next stage and starts its agent. The bounded prompt includes stage instructions,
    the original brief, project context, previous result and recent comments.
-7. Review stops automatic execution. The operator approves Done or requests
-   changes. No agent stage automatically marks the work item Done.
+7. Successful completion advances to Done after native execution settles.
+   Custom statuses map to To Do, In Progress, or Done; there is no review gate.
 
 ## Consistency and recovery
 
@@ -67,7 +67,7 @@ with their original task IDs, lanes, progress and results.
 
 The UI derives Working and Queued from mailbox state. A disconnected provider or
 paused teammate is shown as such. Completion is an agent assertion with evidence;
-the human review gate owns the final decision.
+users can update the status directly once execution has stopped.
 
 ## Code map
 
@@ -76,6 +76,6 @@ the human review gate owns the final decision.
 - `src/workspace/runtime.ts`: service integration and lifecycle ticks.
 - `src/web/server.ts`: authenticated Work routes.
 - `src/web/client/work.js` and `src/web/styles/work.css`: board, list, editors and detail panel.
-- `test/work.test.ts`: handoffs, stale executions, review, replay and API checks.
+- `test/work.test.ts`: handoffs, fixed categories, legacy status compatibility, replay and API checks.
 - `scripts/check-workspace-ui.ts`: real Chromium interaction checks using
   scripted providers in an isolated database.

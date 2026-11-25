@@ -4,7 +4,7 @@ const stageSchema = z
   .object({
     id: z.string().regex(/^[a-z][a-z0-9_-]{0,39}$/),
     name: z.string().trim().min(1).max(50),
-    category: z.enum(['backlog', 'active', 'review', 'done']),
+    category: z.enum(['backlog', 'active', 'done']),
     agentId: z.string().nullable().default(null),
     instructions: z.string().max(3000).default(''),
   })
@@ -15,24 +15,23 @@ export const projectSchema = z
     key: z
       .string()
       .trim()
-      .regex(/^[A-Z][A-Z0-9]{1,7}$/),
-    description: z.string().max(4000).default(''),
-    stages: z.array(stageSchema).min(4).max(10),
+      .regex(/^[A-Z][A-Z0-9]{1,7}$/)
+      .optional(),
+    description: z.string().default(''),
+    stages: z.array(stageSchema).min(3).max(10),
   })
   .strict()
   .superRefine((value, ctx) => {
     if (new Set(value.stages.map((s) => s.id)).size !== value.stages.length)
       ctx.addIssue({ code: 'custom', message: 'Stage ids must be unique' });
     if (
-      value.stages[0]?.category !== 'backlog' ||
-      value.stages.at(-1)?.category !== 'done' ||
-      value.stages.at(-2)?.category !== 'review' ||
-      value.stages.slice(1, -2).some((s) => s.category !== 'active')
+      ['backlog', 'active', 'done'].some(
+        (category) => !value.stages.some((stage) => stage.category === category),
+      )
     )
       ctx.addIssue({
         code: 'custom',
-        message:
-          'A workflow needs Brief, one or more active stages, Review, and Done in that order',
+        message: 'Include at least one status in To Do, In Progress, and Done',
       });
   });
 export const workInputSchema = z
@@ -64,6 +63,7 @@ export interface ProjectRow {
   name: string;
   description: string;
   stages_json: string;
+  files_json?: string;
   created_at: string;
   updated_at: string;
 }
@@ -103,8 +103,7 @@ export interface ActivityRow {
   occurred_at: string;
 }
 export const standardStages = (): Stage[] => [
-  { id: 'brief', name: 'Brief', category: 'backlog', agentId: null, instructions: '' },
-  { id: 'in_progress', name: 'In progress', category: 'active', agentId: null, instructions: '' },
-  { id: 'review', name: 'Review', category: 'review', agentId: null, instructions: '' },
+  { id: 'brief', name: 'To Do', category: 'backlog', agentId: null, instructions: '' },
+  { id: 'in_progress', name: 'In Progress', category: 'active', agentId: null, instructions: '' },
   { id: 'done', name: 'Done', category: 'done', agentId: null, instructions: '' },
 ];

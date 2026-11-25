@@ -1,4 +1,5 @@
 import { join } from 'node:path';
+import { isGitHubConnector } from '../shared/github';
 import { ConversationMedia } from '../threads/media';
 import { Conversations, conversationPatch } from '../threads/conversations';
 import { randomBytes, timingSafeEqual } from 'node:crypto';
@@ -40,7 +41,7 @@ const configSchema = z
       .strict()
       .optional(),
     browser: z
-      .object({ enabled: z.boolean(), permission: z.enum(['ask', 'allow']) })
+      .object({ enabled: z.boolean(), permission: z.enum(['ask', 'allow']).optional() })
       .strict()
       .optional(),
   })
@@ -75,6 +76,7 @@ export function createWebServer(options: {
   const assets = new Map([
     ['/theme.js', { body: readPublic('theme.js'), type: 'text/javascript; charset=utf-8' }],
     ['/app.js', { body: readPublic('app.js'), type: 'text/javascript; charset=utf-8' }],
+    ['/account.js', { body: readPublic('account.js'), type: 'text/javascript; charset=utf-8' }],
     ['/style.css', { body: readPublic('style.css'), type: 'text/css; charset=utf-8' }],
   ]);
   const html = readPublic('index.html')
@@ -135,11 +137,11 @@ export function createWebServer(options: {
   const heartbeat = setInterval(() => broadcast('change', {}), 5000);
   heartbeat.unref();
 
-  async function body(request: Request): Promise<Record<string, unknown>> {
+  async function body(request: Request, limit = 64 * 1024): Promise<Record<string, unknown>> {
     if (!request.headers.get('content-type')?.startsWith('application/json'))
       throw new HttpError(415, 'Expected application/json');
     const bytes = await request.arrayBuffer();
-    if (bytes.byteLength > 64 * 1024) throw new HttpError(413, 'Request is too large');
+    if (bytes.byteLength > limit) throw new HttpError(413, 'Request is too large');
     try {
       return z.record(z.string(), z.unknown()).parse(JSON.parse(new TextDecoder().decode(bytes)));
     } catch {
@@ -147,7 +149,8 @@ export function createWebServer(options: {
     }
   }
   const server = Bun.serve({
-    maxRequestBodySize: 24 * 1024 * 1024,
+    // Project context is stored in full; individual endpoints retain their own limits.
+    maxRequestBodySize: Infinity,
     hostname: '127.0.0.1',
     port: options.port ?? 4310,
     idleTimeout: 60,
@@ -333,10 +336,16 @@ export function createWebServer(options: {
           if (request.method === 'GET' && path.length === 2)
             return json({ projects: work.projects(), items: work.list() });
           if (path[2] === 'projects') {
+            if (request.method === 'POST' && path.length === 5 && path[4] === 'files') {
+              const form = await request.formData();
+              const file = form.get('file');
+              if (!(file instanceof File)) throw new HttpError(400, 'Choose a context file');
+              return json(await work.attachFile(path[3]!, file), 201);
+            }
             if (request.method === 'POST' && path.length === 3)
-              return json(work.saveProject(await body(request)), 201);
+              return json(work.saveProject(await body(request, Infinity)), 201);
             if (request.method === 'PATCH' && path.length === 4)
-              return json(work.saveProject(await body(request), path[3]!));
+              return json(work.saveProject(await body(request, Infinity), path[3]!));
           }
           if (path[2] === 'items') {
             if (request.method === 'POST' && path.length === 3)
@@ -377,6 +386,8 @@ export function createWebServer(options: {
           if (request.method === 'GET' && path.length === 2)
             return json({ providers: daemon.connections.snapshot() });
           const id = z.enum(['codex', 'claude']).parse(path[2]);
+          if (request.method === 'GET' && path.length === 4 && path[3] === 'limits')
+            return json(await daemon.limits.read(id));
           if (request.method === 'POST' && path.length === 4) {
             if (path[3] === 'refresh') return json(await daemon.connections.refresh(id));
             if (path[3] === 'install' || path[3] === 'login')
@@ -655,16 +666,25 @@ export function createWebServer(options: {
             if (kind === 'approval')
               throw new HttpError(405, 'Approvals originate from an active execution');
             const input = z
-              .object({ agentId: z.string(), data: z.unknown() })
+              .object({ agentId: z.string().nullable(), data: z.unknown() })
               .strict()
               .parse(await body(request));
-            const agent = requireAgent(input.agentId);
+            const sharedGitHub =
+              kind === 'connector' &&
+              isGitHubConnector({ data: schemas.connector.parse(input.data) });
+            const agent = sharedGitHub ? { id: '' } : requireAgent(input.agentId ?? '');
             if (kind === 'task') return json(workspace.tasks.create(agent.id, input.data), 201);
             if (kind === 'routine') return json(workspace.routines.save(agent.id, input.data), 201);
             if (kind === 'memory')
               return json(workspace.memory.remember(agent.id, input.data), 201);
             return json(
-              workspace.records.put(kind, agent.id, schemas[kind].parse(input.data)),
+              workspace.records.put(
+                kind,
+                sharedGitHub ? null : agent.id,
+                sharedGitHub
+                  ? { ...schemas.connector.parse(input.data), permission: 'allow' }
+                  : schemas[kind].parse(input.data),
+              ),
               201,
             );
           }
@@ -698,7 +718,14 @@ export function createWebServer(options: {
                 }),
               );
             }
-            const saved = workspace.records.put(kind, record.agentId, data, record.id);
+            const sharedGitHub =
+              kind === 'connector' && isGitHubConnector({ data: schemas.connector.parse(data) });
+            const saved = workspace.records.put(
+              kind,
+              record.agentId,
+              sharedGitHub ? { ...schemas.connector.parse(data), permission: 'allow' } : data,
+              record.id,
+            );
             if (kind === 'connector') await workspace.integrations.invalidate(record.id);
             return json(saved);
           }

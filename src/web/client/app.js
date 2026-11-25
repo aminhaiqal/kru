@@ -2,14 +2,23 @@ import { api, post, patch } from './api.js';
 import { toast } from './dom.js';
 import { renderActivity, scopeFilter } from './activity.js';
 import { enableRequestNotifications, renderAttentionReminder } from './approvals.js';
-import { browserPanelInit, browserPanelLayout, browserPanelOpen } from './browser-panel.js';
+import { browserPanelInit, browserPanelLayout, browserPanelToggle } from './browser-panel.js';
 import {
   checkConnector,
   openConnector,
+  openGitHub,
   renderConnectors,
   updateConnectorFields,
 } from './connectors.js';
-import { C, chatKey, chatLoadMedia, chatMerge, renderConversations } from './conversations.js';
+import { renderUsageLimits } from './usage-limits.js';
+import {
+  C,
+  chatKey,
+  chatLoadMedia,
+  chatMerge,
+  chatSelection,
+  renderConversations,
+} from './conversations.js';
 import { $, escape } from './dom.js';
 import { closeDialog, field, openAgent, openForm, showInfo } from './forms.js';
 import { S, connection, pendingApprovals, records, token } from './state.js';
@@ -182,6 +191,7 @@ function draw() {
     : '<div class="small-empty">Create your first teammate.</div>';
   if (S.view === 'chat') renderConversations();
   else renderPage();
+  renderUsageLimits(chatSelection().provider);
   browserPanelLayout();
   for (const el of document.querySelectorAll('details[data-detail]'))
     if (openDetails.has(el.dataset.detail)) el.open = true;
@@ -295,7 +305,11 @@ document.addEventListener('click', async (event) => {
       return;
     }
     if (action === 'browser-controls') {
-      await browserPanelOpen(id);
+      await browserPanelToggle(id);
+      return;
+    }
+    if (action === 'github-setup') {
+      await openGitHub(id);
       return;
     }
     if (action === 'new-connector' || action === 'edit-connector') {

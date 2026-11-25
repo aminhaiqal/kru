@@ -16,45 +16,27 @@ const W = {
   search: '',
   agent: '',
   priority: '',
+  completedAfter: '',
   draft: '',
   dragging: false,
   busy: false,
   entered: null,
-  stages: [],
 };
 const workProject = (id) => S.state.projects.find((p) => p.id === id);
 const workItem = (id) => W.data.items.find((item) => item.id === id);
-const stageDefaults = (preset) => [
-  { id: 'brief', name: 'Brief', category: 'backlog', agentId: null, instructions: '' },
-  ...(preset === 'content'
-    ? [
-        {
-          id: 'research',
-          name: 'Research',
-          category: 'active',
-          agentId: null,
-          instructions: 'Research the brief, collect evidence and record findings for the writer.',
-        },
-        {
-          id: 'writing',
-          name: 'Writing',
-          category: 'active',
-          agentId: null,
-          instructions: 'Use the research and brief to produce the requested draft.',
-        },
-      ]
-    : [
-        {
-          id: 'in_progress',
-          name: 'In progress',
-          category: 'active',
-          agentId: null,
-          instructions: '',
-        },
-      ]),
-  { id: 'review', name: 'Review', category: 'review', agentId: null, instructions: '' },
-  { id: 'done', name: 'Done', category: 'done', agentId: null, instructions: '' },
+const categories = [
+  ['backlog', 'To Do'],
+  ['active', 'In Progress'],
+  ['done', 'Done'],
 ];
+const stageDefaults = () =>
+  categories.map(([category, name]) => ({
+    id: category === 'backlog' ? 'brief' : category === 'active' ? 'in_progress' : 'done',
+    name,
+    category,
+    agentId: null,
+    instructions: '',
+  }));
 function workRunLabel(item) {
   if (item.archivedAt) return 'Archived';
   if (item.execution === 'working') return 'Working';
@@ -113,14 +95,19 @@ function visibleWork() {
   const query = W.search.trim().toLowerCase();
   return W.data.items.filter((item) => {
     if (W.project && item.projectId !== W.project) return false;
-    if (W.filter === 'archived' ? !item.archivedAt : item.archivedAt) return false;
-    if (W.filter === 'agent' && !item.assigneeId) return false;
+    if (item.archivedAt) return false;
     if (
-      W.filter === 'review' &&
-      workProject(item.projectId)?.stages.find((s) => s.id === item.stageId)?.category !== 'review'
+      W.filter === 'completed' &&
+      workProject(item.projectId)?.stages.find((stage) => stage.id === item.stageId)?.category !==
+        'done'
     )
       return false;
-    if (W.filter === 'blocked' && item.execution !== 'blocked') return false;
+    if (
+      W.completedAfter &&
+      (!item.completedAt ||
+        new Date(item.completedAt).toLocaleDateString('en-CA') < W.completedAfter)
+    )
+      return false;
     if (W.agent && item.assigneeId !== W.agent) return false;
     if (W.priority && item.priority !== W.priority) return false;
     return (
@@ -135,26 +122,36 @@ function visibleWork() {
 function workColumns() {
   return (
     workProject(W.project)?.stages ||
-    stageDefaults('standard').map((stage) => ({ ...stage, id: stage.category }))
+    stageDefaults().map((stage) => ({ ...stage, id: stage.category }))
   );
 }
 function workCard(item) {
   const stage = workProject(item.projectId)?.stages.find((s) => s.id === item.stageId),
     label = workRunLabel(item);
-  return `<button class="work-card ${W.selected === item.id ? 'selected' : ''}" data-work-id="${item.id}" data-revision="${item.revision}" draggable="${!item.archivedAt}" aria-label="Open ${escape(item.identifier)} ${escape(item.title)}"><span class="work-card-meta">${priorityIcon(item.priority)}<span>${escape(item.identifier)}</span>${label ? `<span class="work-card-run ${label === 'Working' ? 'working' : label === 'Blocked' ? 'blocked' : ''}">${label === 'Working' ? '<span class="work-spinner"></span>' : ''}${escape(label)}</span>` : ''}</span><strong>${escape(item.title)}</strong>${!W.project ? `<span class="work-card-project">${escape(workProject(item.projectId)?.name)} · ${escape(stage?.name)}</span>` : ''}${item.labels.length ? `<span class="work-card-labels">${item.labels.map((l) => `<span>${escape(l)}</span>`).join('')}</span>` : ''}<span class="work-card-footer"><span>${agentAvatar(item.assigneeId)}${escape(item.assigneeId ? name(item.assigneeId) : 'Unassigned')}</span><time title="${escape(stamp(item.updatedAt))}">${relativeTime(item.updatedAt)}</time></span>${item.dueDate ? `<span class="work-card-due ${item.dueDate < new Date().toLocaleDateString('en-CA') && stage?.category !== 'done' ? 'overdue' : ''}">Due ${escape(item.dueDate)}</span>` : ''}</button>`;
+  return `<button class="work-card ${W.selected === item.id ? 'selected' : ''}" data-work-id="${item.id}" data-revision="${item.revision}" draggable="${!item.archivedAt}" aria-label="Open ${escape(item.identifier)} ${escape(item.title)}"><span class="work-card-meta">${priorityIcon(item.priority)}<span>${escape(item.identifier)}</span>${label ? `<span class="work-card-run ${label === 'Working' ? 'working' : label === 'Blocked' ? 'blocked' : ''}">${label === 'Working' ? '<span class="work-spinner"></span>' : ''}${escape(label)}</span>` : ''}</span><strong>${escape(item.title)}</strong>${!W.project ? `<span class="work-card-project">${escape(workProject(item.projectId)?.name)} · ${escape(stage?.name)}</span>` : ''}${item.labels.length ? `<span class="work-card-labels">${item.labels.map((l) => `<span>${escape(l)}</span>`).join('')}</span>` : ''}<span class="work-card-footer"><span>${agentAvatar(item.assigneeId)}${escape(item.assigneeId ? name(item.assigneeId) : 'Unassigned')}</span><time title="${escape(stamp(item.updatedAt))}">${relativeTime(item.updatedAt)}</time></span>${item.completedAt ? `<span class="work-card-completed">Completed ${escape(stamp(item.completedAt))} · ${escape(item.completedBy ? name(item.completedBy) : 'You')}</span>` : ''}${item.dueDate ? `<span class="work-card-due ${item.dueDate < new Date().toLocaleDateString('en-CA') && stage?.category !== 'done' ? 'overdue' : ''}">Due ${escape(item.dueDate)}</span>` : ''}</button>`;
 }
 function renderWork() {
   const project = workProject(W.project),
     items = visibleWork(),
-    columns = workColumns();
-  const counts = (projectId) =>
-    W.data.items.filter((i) => !i.archivedAt && i.projectId === projectId).length;
+    columns = workColumns().filter(
+      (stage) => W.filter !== 'completed' || stage.category === 'done',
+    );
+  const projectItems = (id) =>
+    W.data.items.filter((item) => !item.archivedAt && (!id || item.projectId === id));
+  const category = (item) =>
+    workProject(item.projectId)?.stages.find((stage) => stage.id === item.stageId)?.category;
+  const counts = (id) => {
+    const all = projectItems(id);
+    return `${all.filter((item) => category(item) === 'done').length}/${all.length}`;
+  };
+  const all = projectItems(W.project);
+  const total = all.length;
+  const done = all.filter((item) => category(item) === 'done').length;
+  const percent = total ? Math.round((done / total) * 100) : 0;
+  const summary = `<section class="work-progress" aria-label="${project ? 'Project' : 'Workspace'} progress"><div><strong>${done} of ${total} completed · ${percent}%</strong><progress max="100" value="${percent}" aria-label="Completion percentage">${percent}%</progress></div><div class="work-progress-counts">${categories.map(([key, label]) => `<span>${stageIcon({ category: key })}${label} <strong>${all.filter((item) => category(item) === key).length}</strong></span>`).join('')}</div></section>`;
   const filters = [
     ['all', 'All work'],
-    ['agent', 'Agent work'],
-    ['review', 'Needs review'],
-    ['blocked', 'Needs attention'],
-    ['archived', 'Archived'],
+    ['completed', 'Completed'],
   ];
   const board =
     W.display === 'board'
@@ -166,16 +163,16 @@ function renderWork() {
                 : workProject(item.projectId)?.stages.find((s) => s.id === item.stageId)
                     ?.category === stage.category,
             );
-            return `<section class="work-column" data-drop-stage="${escape(stage.id)}" data-category="${stage.category}" aria-label="${escape(stage.name)} column"><header>${stageIcon(stage)}<h2>${escape(stage.name)}</h2><span>${cards.length}</span>${stage.agentId ? `<button class="work-stage-agent" data-action="work-stage-agent" data-id="${escape(stage.id)}" title="Change stage agent">${agentAvatar(stage.agentId)}${escape(name(stage.agentId))}</button>` : ''}${stage.category !== 'done' && W.filter !== 'archived' ? `<button class="icon-button" data-action="work-new-in-stage" data-id="${escape(stage.id)}" aria-label="Add work to ${escape(stage.name)}">+</button>` : ''}</header><div class="work-column-body" data-column-scroll="${escape(stage.id)}">${cards.map(workCard).join('')}${!cards.length ? `<div class="work-column-empty">${W.filter === 'archived' ? 'No archived work' : 'No work here yet'}</div>` : ''}</div></section>`;
+            return `<section class="work-column" data-drop-stage="${escape(stage.id)}" data-category="${stage.category}" aria-label="${escape(stage.name)} column"><header>${stageIcon(stage)}<h2>${escape(stage.name)}</h2><span>${cards.length}</span>${stage.category !== 'done' ? `<button class="icon-button" data-action="work-new-in-stage" data-id="${escape(stage.id)}" aria-label="Add work to ${escape(stage.name)}">+</button>` : ''}</header><div class="work-column-body" data-column-scroll="${escape(stage.id)}">${cards.map(workCard).join('')}${!cards.length ? `<div class="work-column-empty">No work here yet</div>` : ''}</div></section>`;
           })
           .join('')}</div>`
-      : `<div class="work-table table-wrap"><table><thead><tr><th>Work item</th><th>Stage</th><th>Assignee</th><th>Priority</th><th>Due</th></tr></thead><tbody>${items.map((item) => `<tr><td><button class="work-list-title" data-work-id="${item.id}"><span>${escape(item.identifier)}</span>${escape(item.title)}</button></td><td>${escape(workProject(item.projectId)?.stages.find((s) => s.id === item.stageId)?.name)}</td><td>${escape(item.assigneeId ? name(item.assigneeId) : 'Unassigned')}</td><td>${priorityIcon(item.priority)} ${priorityLabel(item.priority)}</td><td>${escape(item.dueDate || '—')}</td></tr>`).join('') || '<tr><td colspan="5">No work matches these filters.</td></tr>'}</tbody></table></div>`;
+      : `<div class="work-table table-wrap"><table><thead><tr><th>Work item</th><th>Stage</th><th>Assignee</th><th>Priority</th><th>Due</th><th>Completed</th></tr></thead><tbody>${items.map((item) => `<tr><td><button class="work-list-title" data-work-id="${item.id}"><span>${escape(item.identifier)}</span>${escape(item.title)}</button></td><td>${escape(workProject(item.projectId)?.stages.find((s) => s.id === item.stageId)?.name)}</td><td>${escape(item.assigneeId ? name(item.assigneeId) : 'Unassigned')}</td><td>${priorityIcon(item.priority)} ${priorityLabel(item.priority)}</td><td>${escape(item.dueDate || '—')}</td><td>${item.completedAt ? escape(stamp(item.completedAt)) : '—'}</td></tr>`).join('') || '<tr><td colspan="6">No work matches these filters.</td></tr>'}</tbody></table></div>`;
   $('#content').innerHTML =
-    `<div class="work-layout"><aside class="work-sidebar" aria-label="Work projects and views"><div class="work-sidebar-heading"><h1>Work</h1><button class="icon-button" data-action="work-new" aria-label="New work item">+</button></div><div class="work-sidebar-section"><span>Views</span></div><nav aria-label="Work views">${filters.map(([key, label]) => `<button class="work-nav ${W.filter === key && !W.project ? 'active' : ''}" data-work-filter="${key}">${key === 'all' ? '☷' : key === 'agent' ? '♙' : key === 'review' ? '◉' : key === 'blocked' ? '◷' : '▱'}<span>${label}</span></button>`).join('')}</nav><div class="work-sidebar-section"><span>Projects</span><button class="icon-button" data-action="work-project-new" aria-label="New project">+</button></div><div class="work-projects">${
+    `<div class="work-layout"><aside class="work-sidebar" aria-label="Work projects and views"><div class="work-sidebar-heading"><h1>Work</h1><button class="icon-button" data-action="work-new" aria-label="New work item">+</button></div><div class="work-sidebar-section"><span>Views</span></div><nav aria-label="Work views">${filters.map(([key, label]) => `<button class="work-nav ${W.filter === key && !W.project ? 'active' : ''}" data-work-filter="${key}">${key === 'all' ? '☷' : '✓'}<span>${label}</span></button>`).join('')}</nav><div class="work-sidebar-section"><span>Projects</span><button class="icon-button" data-action="work-project-new" aria-label="New project">+</button></div><div class="work-projects">${
       S.state.projects
         .map(
           (p) =>
-            `<button class="work-project ${p.id === W.project ? 'active' : ''}" data-work-project="${p.id}"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 6h6l2 2h10v12H3z"/></svg><span>${escape(p.name)}</span><small>${counts(p.id)}</small></button>${
+            `<button class="work-project ${p.id === W.project ? 'active' : ''}" data-work-project="${p.id}"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 6h6l2 2h10v12H3z"/></svg><span>${escape(p.name)}</span><small title="Completed / total">${counts(p.id)}</small></button>${
               p.id === W.project
                 ? `<div class="work-project-children">${W.data.items
                     .filter((i) => i.projectId === p.id && !i.archivedAt)
@@ -189,7 +186,7 @@ function renderWork() {
             }`,
         )
         .join('') || '<p class="work-sidebar-empty">Group your work in a project.</p>'
-    }</div><button class="work-add-project" data-action="work-project-new">+ Create project</button><div class="work-sidebar-foot">${W.data.items.filter((i) => !i.archivedAt).length} work items · ${S.state.activeTurns} running</div></aside><section class="work-main" aria-label="Work board"><header class="work-toolbar"><div class="work-project-title"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 6h6l2 2h10v12H3z"/></svg><h2>${escape(project?.name || filters.find((f) => f[0] === W.filter)?.[1] || 'All work')}</h2>${project ? `<button class="icon-button" data-action="work-project-edit" data-id="${project.id}" aria-label="Project settings">⋯</button>` : ''}</div><div class="work-toolbar-actions"><div class="work-display" aria-label="Work display"><button data-work-display="board" aria-pressed="${W.display === 'board'}">Board</button><button data-work-display="list" aria-pressed="${W.display === 'list'}">List</button></div><button class="primary" data-action="work-new">New work</button></div></header><div class="work-filters"><input id="work-search" type="search" aria-label="Search work" placeholder="Search work…" value="${escape(W.search)}"><select id="work-project-select" class="work-mobile-project" aria-label="Work project"><option value="">All projects</option>${S.state.projects.map((p) => `<option value="${p.id}" ${p.id === W.project ? 'selected' : ''}>${escape(p.name)}</option>`).join('')}</select><select id="work-agent-filter" aria-label="Filter work by assignee"><option value="">All assignees</option>${S.state.agents.map((a) => `<option value="${a.id}" ${a.id === W.agent ? 'selected' : ''}>${escape(a.name)}</option>`).join('')}</select><select id="work-priority-filter" aria-label="Filter work by priority"><option value="">All priorities</option>${['urgent', 'high', 'medium', 'low', 'none'].map((p) => `<option value="${p}" ${p === W.priority ? 'selected' : ''}>${priorityLabel(p)}</option>`).join('')}</select><span>${items.length} ${items.length === 1 ? 'item' : 'items'}</span></div>${!S.state.projects.length && !W.data.items.length ? `<div class="work-welcome"><span class="work-welcome-icon">☷</span><h2>A place for the work ahead.</h2><p>Create a project, write a brief, and hand work to a teammate when it is ready.</p><button class="primary" data-action="work-project-new">Create your first project</button><button class="quiet" data-action="work-new">Create a work item</button></div>` : board}${W.selected ? renderWorkDetail() : ''}</section></div>`;
+    }</div><button class="work-add-project" data-action="work-project-new">+ Create project</button><div class="work-sidebar-foot">${W.data.items.filter((i) => !i.archivedAt).length} work items · ${S.state.activeTurns} running</div></aside><section class="work-main" aria-label="Work board"><header class="work-toolbar"><div class="work-project-title"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 6h6l2 2h10v12H3z"/></svg><h2>${escape(project?.name || filters.find((f) => f[0] === W.filter)?.[1] || 'All work')}</h2>${project ? `<button class="icon-button" data-action="work-project-edit" data-id="${project.id}" aria-label="Project settings">⋯</button>` : ''}</div><div class="work-toolbar-actions"><div class="work-display" aria-label="Work display"><button data-work-display="board" aria-pressed="${W.display === 'board'}">Board</button><button data-work-display="list" aria-pressed="${W.display === 'list'}">List</button></div><button class="primary" data-action="work-new">New work</button></div></header>${summary}<div class="work-filters"><select id="work-completion-filter" aria-label="Work completion"><option value="all" ${W.filter === 'all' ? 'selected' : ''}>All work</option><option value="completed" ${W.filter === 'completed' ? 'selected' : ''}>Completed</option></select>${W.filter === 'completed' ? `<label class="work-completed-date">Completed since<input type="date" id="work-completed-after" aria-label="Completed since" value="${escape(W.completedAfter)}"></label>` : ''}<input id="work-search" type="search" aria-label="Search work" placeholder="Search work…" value="${escape(W.search)}"><select id="work-project-select" class="work-mobile-project" aria-label="Work project"><option value="">All projects</option>${S.state.projects.map((p) => `<option value="${p.id}" ${p.id === W.project ? 'selected' : ''}>${escape(p.name)}</option>`).join('')}</select><select id="work-agent-filter" aria-label="Filter work by assignee"><option value="">All assignees</option>${S.state.agents.map((a) => `<option value="${a.id}" ${a.id === W.agent ? 'selected' : ''}>${escape(a.name)}</option>`).join('')}</select><select id="work-priority-filter" aria-label="Filter work by priority"><option value="">All priorities</option>${['urgent', 'high', 'medium', 'low', 'none'].map((p) => `<option value="${p}" ${p === W.priority ? 'selected' : ''}>${priorityLabel(p)}</option>`).join('')}</select><span>${items.length} ${items.length === 1 ? 'item' : 'items'}</span></div>${!S.state.projects.length && !W.data.items.length ? `<div class="work-welcome"><span class="work-welcome-icon">☷</span><h2>A place for the work ahead.</h2><p>Create a project, write a brief, and hand work to a teammate when it is ready.</p><button class="primary" data-action="work-project-new">Create your first project</button><button class="quiet" data-action="work-new">Create a work item</button></div>` : board}${W.selected ? renderWorkDetail() : ''}</section></div>`;
 }
 function renderWorkDetail() {
   if (!W.detail || W.detail.item.id !== W.selected)
@@ -204,7 +201,7 @@ function renderWorkDetail() {
       ['blocked', 'cancelled'].includes(item.execution);
   const entering = W.entered !== item.id;
   W.entered = item.id;
-  return `<aside class="work-detail ${entering ? 'enter' : ''}" aria-label="Work details"><header class="work-detail-top"><span>${escape(project.name)}</span><span class="work-breadcrumb-divider">/</span><strong>${escape(item.identifier)}</strong>${label ? `<span class="work-detail-working ${label === 'Working' ? 'working' : ''}">${agentAvatar(item.assigneeId)}${escape(item.assigneeId ? name(item.assigneeId) + ' · ' + label.toLowerCase() : label)}</span>` : ''}<button class="icon-button" data-action="work-edit" data-id="${item.id}" aria-label="Edit work item">⋯</button><button class="icon-button" data-action="work-close" aria-label="Close work details">×</button></header><div class="work-detail-scroll"><h1>${escape(item.title)}</h1><div class="work-properties"><label class="work-property"><span class="sr-only">Stage</span>${stageIcon(stage)}<select id="work-item-stage" aria-label="Work stage" ${W.busy || item.archivedAt ? 'disabled' : ''}>${project.stages.map((s) => `<option value="${s.id}" ${s.id === item.stageId ? 'selected' : ''}>${escape(s.name)}</option>`).join('')}</select></label><label class="work-property">${priorityIcon(item.priority)}<select id="work-item-priority" aria-label="Work priority" ${W.busy || item.archivedAt ? 'disabled' : ''}>${['urgent', 'high', 'medium', 'low', 'none'].map((p) => `<option value="${p}" ${p === item.priority ? 'selected' : ''}>${priorityLabel(p)}</option>`).join('')}</select></label><label class="work-property">${agentAvatar(item.assigneeId)}<select id="work-item-assignee" aria-label="Work assignee" ${W.busy || item.archivedAt ? 'disabled' : ''}><option value="">Unassigned</option>${S.state.agents.map((a) => `<option value="${a.id}" ${a.id === item.assigneeId ? 'selected' : ''}>${escape(a.name)}</option>`).join('')}</select></label><span class="work-property work-project-chip">▱ ${escape(project.name)}</span>${item.dueDate ? `<span class="work-property">▦ ${escape(item.dueDate)}</span>` : ''}${item.labels.map((l) => `<span class="work-property work-label"><i></i>${escape(l)}</span>`).join('')}</div><div class="work-brief">${escape(item.description || 'No description yet. Use Edit to add a brief.')}</div>${item.criteria ? `<div class="work-criteria"><h3>Acceptance criteria</h3><p>${escape(item.criteria)}</p></div>` : ''}${latest?.steps?.length ? renderSteps(latest.steps) : ''}${latest?.error ? `<p class="record-error">${escape(latest.error)}</p>` : ''}<div class="work-detail-controls">${item.archivedAt ? actions('work-restore', 'Restore work', item.id) : `${stage?.category === 'review' ? actions('work-approve', 'Approve & complete', item.id, 'primary') + actions('work-request-changes', 'Request changes', item.id) : ''}${waiting ? actions('work-resume', 'Resume agent', item.id, 'primary') : ''}${item.assigneeId && item.taskId ? actions('work-chat', 'Agent conversation', item.id, 'quiet') : ''}`}</div><section class="work-activity"><h2>Activity</h2>${activity
+  return `<aside class="work-detail ${entering ? 'enter' : ''}" aria-label="Work details"><header class="work-detail-top"><span>${escape(project.name)}</span><span class="work-breadcrumb-divider">/</span><strong>${escape(item.identifier)}</strong>${label ? `<span class="work-detail-working ${label === 'Working' ? 'working' : ''}">${agentAvatar(item.assigneeId)}${escape(item.assigneeId ? name(item.assigneeId) + ' · ' + label.toLowerCase() : label)}</span>` : ''}<button class="icon-button" data-action="work-edit" data-id="${item.id}" aria-label="Edit work item">⋯</button><button class="icon-button" data-action="work-close" aria-label="Close work details">×</button></header><div class="work-detail-scroll"><h1>${escape(item.title)}</h1><div class="work-properties"><label class="work-property"><span class="sr-only">Stage</span>${stageIcon(stage)}<select id="work-item-stage" aria-label="Work stage" ${W.busy || item.archivedAt ? 'disabled' : ''}>${project.stages.map((s) => `<option value="${s.id}" ${s.id === item.stageId ? 'selected' : ''}>${escape(s.name)}</option>`).join('')}</select></label><label class="work-property">${priorityIcon(item.priority)}<select id="work-item-priority" aria-label="Work priority" ${W.busy || item.archivedAt ? 'disabled' : ''}>${['urgent', 'high', 'medium', 'low', 'none'].map((p) => `<option value="${p}" ${p === item.priority ? 'selected' : ''}>${priorityLabel(p)}</option>`).join('')}</select></label><label class="work-property">${agentAvatar(item.assigneeId)}<select id="work-item-assignee" aria-label="Work assignee" ${W.busy || item.archivedAt ? 'disabled' : ''}><option value="">Unassigned</option>${S.state.agents.map((a) => `<option value="${a.id}" ${a.id === item.assigneeId ? 'selected' : ''}>${escape(a.name)}</option>`).join('')}</select></label><span class="work-property work-project-chip">▱ ${escape(project.name)}</span>${item.dueDate ? `<span class="work-property">▦ ${escape(item.dueDate)}</span>` : ''}${item.labels.map((l) => `<span class="work-property work-label"><i></i>${escape(l)}</span>`).join('')}</div><div class="work-brief">${escape(item.description || 'No description yet. Use Edit to add a brief.')}</div>${item.criteria ? `<div class="work-criteria"><h3>Acceptance criteria</h3><p>${escape(item.criteria)}</p></div>` : ''}${latest?.steps?.length ? renderSteps(latest.steps) : ''}${latest?.error ? `<p class="record-error">${escape(latest.error)}</p>` : ''}<div class="work-detail-controls">${item.archivedAt ? actions('work-restore', 'Restore work', item.id) : `${waiting ? actions('work-resume', 'Resume agent', item.id, 'primary') : ''}${item.assigneeId && item.taskId ? actions('work-chat', 'Agent conversation', item.id, 'quiet') : ''}`}</div><section class="work-activity"><h2>Activity</h2>${activity
     .map((a) => {
       const isComment = a.kind === 'comment' || a.kind === 'agent_result';
       if (isComment)
@@ -222,7 +219,7 @@ function renderWorkDetail() {
           )
           .join('')}</details>`
       : ''
-  }<div class="work-detail-bottom">Created ${stamp(item.createdAt)}${!item.archivedAt ? actions('work-archive', 'Archive work', item.id, 'quiet danger') : ''}</div></div><form id="work-comment-form" class="work-comment-composer"><textarea id="work-comment" aria-label="Comment on work" placeholder="Leave a comment…" rows="2">${escape(W.draft)}</textarea><div><span>Shared with the next agent run.</span><button class="small primary" type="submit">Post comment</button></div></form></aside>`;
+  }<div class="work-detail-bottom">${item.completedAt ? `Completed ${escape(stamp(item.completedAt))} · ${escape(item.completedBy ? name(item.completedBy) : 'You')}<br>` : ''}Created ${stamp(item.createdAt)}${!item.archivedAt ? actions('work-archive', 'Archive work', item.id, 'quiet danger') : ''}</div></div><form id="work-comment-form" class="work-comment-composer"><textarea id="work-comment" aria-label="Comment on work" placeholder="Leave a comment…" rows="2">${escape(W.draft)}</textarea><div><span>Shared with the next agent run.</span><button class="small primary" type="submit">Post comment</button></div></form></aside>`;
 }
 async function updateWork(fields, item = W.detail?.item) {
   if (!item) return;
@@ -237,9 +234,9 @@ async function updateWork(fields, item = W.detail?.item) {
 function openWorkEditor(seed = {}, item) {
   const projects = S.state.projects,
     projectId = item?.projectId || seed.projectId || W.project || projects[0]?.id || '';
-  const stages = workProject(projectId)?.stages || stageDefaults('standard');
+  const stages = workProject(projectId)?.stages || stageDefaults();
   const selectedStage = item?.stageId || seed.stageId || stages[0].id;
-  const owner = item ? item.assigneeId || '' : '__stage__';
+  const owner = item?.assigneeId || '';
   openForm(
     item ? 'Edit work item' : 'New work item',
     field('Title', 'title', item?.title || '', { required: true }) +
@@ -259,11 +256,7 @@ function openWorkEditor(seed = {}, item) {
       }) +
       '</div><div class="field-grid">' +
       field('Assignee', 'assigneeId', owner, {
-        options: [
-          ...(item ? [] : [['__stage__', 'Use stage agent']]),
-          ['', 'Unassigned'],
-          ...S.state.agents.map((a) => [a.id, a.name]),
-        ],
+        options: [['', 'Unassigned'], ...S.state.agents.map((a) => [a.id, a.name])],
       }) +
       field('Priority', 'priority', item?.priority || 'medium', {
         options: ['urgent', 'high', 'medium', 'low', 'none'].map((p) => [p, priorityLabel(p)]),
@@ -281,7 +274,7 @@ function openWorkEditor(seed = {}, item) {
         max: 50,
         required: true,
       }) +
-      '</details><p class="help">Entering an active stage starts its assigned agent. Work stops at Review for your approval.</p>',
+      '</details><p class="help">Assigned agents start when work enters In Progress.</p>',
     async (form) => {
       const data = {
         title: form.get('title'),
@@ -298,7 +291,6 @@ function openWorkEditor(seed = {}, item) {
         criteria: form.get('criteria'),
         maxTurns: Number(form.get('maxTurns')),
       };
-      if (form.get('assigneeId') === '__stage__') delete data.assigneeId;
       if (form.get('projectId')) data.projectId = form.get('projectId');
       const saved = item
         ? await patch('/work/items/' + item.id, { ...data, revision: item.revision })
@@ -318,58 +310,41 @@ function openWorkEditor(seed = {}, item) {
   );
   if (item) $('#f-projectId').disabled = true;
 }
-function stageEditorRows() {
-  return W.stages
-    .map(
-      (s, i) =>
-        `<div class="work-stage-editor" data-stage-editor="${i}"><div class="field-grid">${field('Stage name', 'stage-name-' + i, s.name, { required: true })}${s.category === 'active' ? field('Agent', 'stage-agent-' + i, s.agentId || '', { options: [['', 'Keep work item assignee'], ...S.state.agents.map((a) => [a.id, a.name])] }) : `<p class="help">${s.category === 'review' ? 'Human review gate' : s.category === 'done' ? 'Completed work' : 'Work starts here'}</p>`}</div>${s.category === 'active' ? field('Stage instructions', 'stage-instructions-' + i, s.instructions || '', { area: true, rows: 2 }) + `<button class="quiet small danger" type="button" data-action="work-stage-remove" data-id="${i}">Remove stage</button>` : ''}</div>`,
-    )
-    .join('');
-}
-function collectStageEditors() {
-  const form = $('#editor-form');
-  if (!form) return;
-  const data = new FormData(form);
-  W.stages = W.stages.map((s, i) => ({
-    ...s,
-    name: data.get('stage-name-' + i) || s.name,
-    agentId: s.category === 'active' ? data.get('stage-agent-' + i) || null : null,
-    instructions: data.get('stage-instructions-' + i) || '',
-  }));
-}
 function openProjectEditor(id, onSaved) {
   const project = workProject(id);
-  W.stages = structuredClone(project?.stages || stageDefaults('standard'));
+  let persisted = project;
+  const uploaded = new Set();
   openForm(
     project ? 'Project settings' : 'New project',
     field('Project name', 'name', project?.name || '', { required: true }) +
-      field('Identifier prefix', 'key', project?.key || '', {
-        required: true,
-        help: '2–8 uppercase letters or digits, for example WEB.',
-      }) +
       field('Project context', 'description', project?.description || '', { area: true, rows: 2 }) +
-      (!project
-        ? field('Workflow template', 'workflow', 'standard', {
-            options: [
-              ['standard', 'Brief / In progress / Review / Done'],
-              ['content', 'Brief / Research / Writing / Review / Done'],
-            ],
-          })
-        : '') +
-      '<div class="work-workflow-heading"><strong>Workflow stages</strong><button class="small" type="button" data-action="work-stage-add">Add stage</button></div><div id="work-stage-editors">' +
-      stageEditorRows() +
-      '</div><p class="help">Stage agents handle work when it enters their stage. Each completed stage hands its result to the next. Review requires a person.</p>',
+      '<div class="field"><label for="project-files">Context files</label><input id="project-files" type="file" multiple><p class="help">Up to 20 files, 5 MB each.</p></div>' +
+      (project?.files || []).map((file) => `<p class="help">${escape(file.name)}</p>`).join(''),
     async (form) => {
-      collectStageEditors();
+      const files = [...$('#project-files').files].filter((file) => !uploaded.has(file));
+      if ((persisted?.files?.length || 0) + files.length > 20)
+        throw new Error('Attach up to 20 project files');
+      if (files.some((file) => file.size > 5 * 1024 * 1024))
+        throw new Error('Each project file must be at most 5 MB');
       const data = {
         name: form.get('name'),
-        key: form.get('key').trim().toUpperCase(),
         description: form.get('description'),
-        stages: W.stages,
+        stages: project?.stages || stageDefaults(),
       };
-      const saved = project
-        ? await patch('/work/projects/' + project.id, data)
+      let saved = persisted
+        ? await patch('/work/projects/' + persisted.id, data)
         : await post('/work/projects', data);
+      persisted = saved;
+      for (const file of files) {
+        const upload = new FormData();
+        upload.append('file', file);
+        saved = await api('/work/projects/' + saved.id + '/files', {
+          method: 'POST',
+          body: upload,
+        });
+        persisted = saved;
+        uploaded.add(file);
+      }
       W.generation++;
       S.state.projects = [...S.state.projects.filter((p) => p.id !== saved.id), saved];
       W.project = saved.id;
@@ -384,7 +359,6 @@ function openProjectEditor(id, onSaved) {
     },
     project ? 'Save project' : 'Create project',
   );
-  if (project) $('#f-key').readOnly = true;
 }
 async function workAction(action, id) {
   if (action === 'work-new') {
@@ -399,56 +373,6 @@ async function workAction(action, id) {
   }
   if (action === 'work-project-new' || action === 'work-project-edit') {
     openProjectEditor(id);
-    return;
-  }
-  if (action === 'work-stage-agent') {
-    const project = workProject(W.project),
-      stage = project?.stages.find((s) => s.id === id);
-    if (!stage) return;
-    openForm(
-      stage.name + ' agent',
-      field('Stage agent', 'agentId', stage.agentId || '', {
-        options: [['', 'Keep work item assignee'], ...S.state.agents.map((a) => [a.id, a.name])],
-      }) +
-        field('Stage instructions', 'instructions', stage.instructions || '', { area: true }) +
-        '<p class="help">Applies when work next enters this stage.</p>',
-      async (form) => {
-        await patch('/work/projects/' + project.id, {
-          name: project.name,
-          key: project.key,
-          description: project.description,
-          stages: project.stages.map((s) =>
-            s.id === id
-              ? {
-                  ...s,
-                  agentId: form.get('agentId') || null,
-                  instructions: form.get('instructions'),
-                }
-              : s,
-          ),
-        });
-      },
-    );
-    return;
-  }
-  if (action === 'work-stage-add' || action === 'work-stage-remove') {
-    collectStageEditors();
-    if (action === 'work-stage-add') {
-      if (W.stages.length >= 10) throw new Error('A workflow supports at most ten stages.');
-      W.stages.splice(W.stages.length - 2, 0, {
-        id: 'stage_' + Date.now().toString(36),
-        name: 'New stage',
-        category: 'active',
-        agentId: null,
-        instructions: '',
-      });
-    } else if (
-      W.stages[Number(id)]?.category === 'active' &&
-      W.stages.filter((s) => s.category === 'active').length > 1
-    )
-      W.stages.splice(Number(id), 1);
-    else throw new Error('Keep at least one active stage.');
-    $('#work-stage-editors').innerHTML = stageEditorRows();
     return;
   }
   if (action === 'work-close') {
@@ -468,20 +392,6 @@ async function workAction(action, id) {
   }
   if (action === 'work-chat') {
     selectAgent(item.assigneeId, 'task:' + item.taskId);
-    return;
-  }
-  if (action === 'work-approve') {
-    await updateWork(
-      { stageId: workProject(item.projectId).stages.find((s) => s.category === 'done').id },
-      item,
-    );
-    return;
-  }
-  if (action === 'work-request-changes') {
-    const stage = workProject(item.projectId)
-      .stages.filter((s) => s.category === 'active')
-      .at(-1);
-    await updateWork({ stageId: stage.id }, item);
     return;
   }
   if (['work-resume', 'work-archive', 'work-restore'].includes(action)) {
@@ -505,12 +415,14 @@ document.addEventListener('click', async (event) => {
   const project = event.target.closest('[data-work-project]');
   if (project) {
     W.filter = 'all';
+    W.completedAfter = '';
     workSelectProject(project.dataset.workProject);
     return;
   }
   const filter = event.target.closest('[data-work-filter]');
   if (filter) {
     W.filter = filter.dataset.workFilter;
+    W.completedAfter = '';
     workSelectProject('');
     return;
   }
@@ -541,19 +453,24 @@ document.addEventListener('change', async (event) => {
       W.priority = value;
       draw();
     }
+    if (id === 'work-completion-filter') {
+      W.filter = value;
+      W.completedAfter = '';
+      draw();
+    }
+    if (id === 'work-completed-after') {
+      W.completedAfter = value;
+      draw();
+    }
     if (id === 'work-item-stage') await updateWork({ stageId: value });
     if (id === 'work-item-priority') await updateWork({ priority: value });
     if (id === 'work-item-assignee') await updateWork({ assigneeId: value || null });
     if (id === 'f-projectId' && !event.target.disabled) {
       const project = workProject(value);
-      $('#f-stageId').innerHTML = (project?.stages || stageDefaults('standard'))
+      $('#f-stageId').innerHTML = (project?.stages || stageDefaults())
         .filter((s) => s.category !== 'done')
         .map((s) => `<option value="${s.id}">${escape(s.name)}</option>`)
         .join('');
-    }
-    if (id === 'f-workflow') {
-      W.stages = stageDefaults(value);
-      $('#work-stage-editors').innerHTML = stageEditorRows();
     }
   } catch (error) {
     toast(error.message);
@@ -566,17 +483,6 @@ document.addEventListener('input', (event) => {
     draw();
   }
   if (event.target.id === 'work-comment') W.draft = event.target.value;
-  if (event.target.id === 'f-name' && $('#f-key') && !$('#f-key').value) {
-    const words = event.target.value.toUpperCase().match(/[A-Z0-9]+/g) || [];
-    const key =
-      words.length > 1
-        ? words
-            .map((w) => w[0])
-            .join('')
-            .slice(0, 8)
-        : (words[0] || '').slice(0, 3);
-    if (/^[A-Z][A-Z0-9]{1,7}$/.test(key)) $('#f-key').value = key;
-  }
 });
 document.addEventListener('submit', async (event) => {
   if (event.target.id !== 'work-comment-form') return;

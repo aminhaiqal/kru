@@ -50,7 +50,7 @@ export class Conversations {
               promptProfile: 'minimal',
               instructions:
                 'You are KRU, a personal AI assistant speaking directly with the user. Answer naturally and use the shared conversation context. You are not a teammate or delegated bot.',
-              browser: { enabled: true, permission: 'ask' },
+              browser: { enabled: true },
             },
           });
     });

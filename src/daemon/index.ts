@@ -1,4 +1,6 @@
+import type { FetchLike } from '@modelcontextprotocol/sdk/shared/transport.js';
 import { ConversationMedia } from '../threads/media';
+import { UsageLimits, type LimitWindow } from '../providers/limits';
 import { ModelCatalog, type ModelOption } from '../providers/models';
 import { CodexProvider } from '../providers/codex/adapter';
 import { ClaudeProvider } from '../providers/claude/adapter';
@@ -29,6 +31,8 @@ export interface DaemonOptions extends SchedulerOptions {
   shutdownGraceMs?: number;
   recovery?: RecoveryOptions;
   connections?: ConnectionOptions;
+  integrationFetch?: FetchLike;
+  providerLimits?: (provider: 'codex' | 'claude') => Promise<LimitWindow[]>;
   modelCatalog?: (provider: 'codex' | 'claude') => Promise<ModelOption[]>;
 }
 export class Daemon {
@@ -36,6 +40,7 @@ export class Daemon {
   readonly workspace: WorkspaceRuntime;
   readonly connections: ProviderConnections;
   readonly models: ModelCatalog;
+  readonly limits: UsageLimits;
   readonly connectionsEnabled: boolean;
   private unsubscribeConnections: (() => void) | undefined;
   private nextWorkspaceTick = 0;
@@ -105,6 +110,7 @@ export class Daemon {
       () => this.processScope(),
       options.maxHops,
       (agentId, laneId) => this.scheduler.cancelLane(agentId, laneId),
+      options.integrationFetch,
     );
     this.connections = new ProviderConnections(
       store.path,
@@ -114,28 +120,46 @@ export class Daemon {
     );
     this.connectionsEnabled = !factory || options.connections !== undefined;
     const metadataProviders = new Set<CodexProvider | ClaudeProvider>();
+    const withMetadata = async <T>(
+      id: 'codex' | 'claude',
+      read: (provider: CodexProvider | ClaudeProvider) => Promise<T>,
+    ): Promise<T> => {
+      const executable = this.connections.binary(id);
+      if (!executable) throw new Error('Install and connect ' + id + ' in Connector first');
+      const provider =
+        id === 'codex'
+          ? new CodexProvider({ transport: { command: executable.command } })
+          : new ClaudeProvider({ executablePath: executable.command });
+      metadataProviders.add(provider);
+      provider.setProcessScope(this.processScope());
+      const timeout = setTimeout(() => void provider.forceStop(), 15000);
+      try {
+        await provider.start();
+        return await read(provider);
+      } finally {
+        clearTimeout(timeout);
+        await provider.stop();
+        metadataProviders.delete(provider);
+      }
+    };
     this.models = new ModelCatalog(
-      options.modelCatalog ??
-        (async (id) => {
-          const executable = this.connections.binary(id);
-          if (!executable) throw new Error('Install and connect ' + id + ' in Connector first');
-          const provider =
-            id === 'codex'
-              ? new CodexProvider({ transport: { command: executable.command } })
-              : new ClaudeProvider({ executablePath: executable.command });
-          metadataProviders.add(provider);
-          provider.setProcessScope(this.processScope());
-          try {
-            await provider.start();
-            return await provider.listModels();
-          } finally {
-            await provider.stop();
-            metadataProviders.delete(provider);
-          }
-        }),
+      options.modelCatalog ?? ((id) => withMetadata(id, (provider) => provider.listModels())),
       async () => {
         await Promise.allSettled([...metadataProviders].map((provider) => provider.forceStop()));
       },
+    );
+    this.limits = new UsageLimits(
+      options.providerLimits ??
+        (async (id) => {
+          const connection = this.connections.snapshot().find((item) => item.id === id);
+          if (
+            !this.connectionsEnabled ||
+            !connection?.authenticated ||
+            ['api_key', 'api_key_helper', 'third_party'].includes(connection.authMethod || '')
+          )
+            return [];
+          return withMetadata(id, (provider) => provider.usageLimits());
+        }),
     );
 
     const tools = options.tools ?? this.workspace.tools;
@@ -252,6 +276,7 @@ export class Daemon {
       const revision = JSON.stringify([state.status, state.executable, state.authMethod]);
       if (revisions.get(id) !== revision) {
         revisions.set(id, revision);
+        this.limits.invalidate(id);
         if (id === 'codex') codexRuntimes.clear();
         this.scheduler.reconnectProvider(id);
       }

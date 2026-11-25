@@ -232,12 +232,64 @@
 }
 .work-filters {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 10px;
   padding: 12px 22px;
   min-height: 58px;
   background: var(--surface);
   border-bottom: 1px solid var(--hover);
+}
+.work-progress {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px 24px;
+  padding: 16px 22px;
+  font-size: 0.8125rem;
+  background: var(--surface);
+}
+.work-progress progress {
+  display: block;
+  width: 220px;
+  max-width: 100%;
+  height: 5px;
+  margin-top: 8px;
+  border: 0;
+  border-radius: 4px;
+  overflow: hidden;
+  accent-color: var(--success);
+}
+.work-progress progress::-webkit-progress-bar {
+  background: var(--line);
+}
+.work-progress progress::-webkit-progress-value {
+  background: var(--success);
+}
+.work-progress-counts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+}
+.work-progress-counts > span {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--muted);
+}
+.work-card-completed {
+  display: block;
+  margin-top: 10px;
+  color: var(--success);
+  font-size: 0.6875rem;
+}
+.work-completed-date {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.6875rem;
+  color: var(--muted);
 }
 .work-filters input {
   max-width: 250px;
@@ -342,36 +394,13 @@
   flex-shrink: 0;
 }
 .work-stage-icon.active {
-  border-color: #00acc9;
-  background: linear-gradient(90deg, #00acc9 50%, transparent 50%);
-}
-.work-stage-icon.review {
-  border-color: #8a66df;
-  background: linear-gradient(90deg, #8a66df 50%, transparent 50%);
+  border-color: #3578dc;
+  background: linear-gradient(90deg, #3578dc 50%, transparent 50%);
 }
 .work-stage-icon.done {
   border-color: #378568;
   background: #378568;
   box-shadow: inset 0 0 0 2px white;
-}
-.work-stage-agent {
-  display: flex;
-  align-items: center;
-  gap: 5px;
-  font-size: 0.6875rem;
-  max-width: 125px;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  padding: 3px 6px;
-  background: var(--surface);
-  border-color: var(--line);
-  margin-left: auto;
-}
-.work-stage-agent .work-avatar {
-  width: 17px;
-  height: 17px;
-  font-size: 0.625rem;
 }
 .work-card {
   display: block;
@@ -924,26 +953,6 @@
 .work-comment-composer > div > span {
   color: var(--muted);
   font-size: 0.6875rem;
-}
-.work-workflow-heading {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  margin-top: 25px;
-  font-size: 0.875rem;
-}
-.work-stage-editor {
-  border-bottom: 1px solid var(--line);
-  padding: 12px 0 16px;
-}
-.work-stage-editor .field-grid {
-  align-items: center;
-}
-.work-stage-editor .help {
-  margin: 0;
-}
-.work-stage-editor .field-grid .field {
-  margin: 0;
 }
 .work-editor-advanced {
   font-size: 0.8125rem;

@@ -7,6 +7,10 @@ Planned release line v0.2.
 
 ### Maintenance
 
+- Preserve the real Chromium browser identity by removing Clerk’s global
+  user-agent override. Add an explicit default-browser fallback for sites that
+  reject embedded browsers, while keeping verification under user control.
+
 - Replace frontend globals and script-order dependencies with feature modules and
   a single local asset build. Remove the retired Skills editor, unused handlers,
   internal compatibility exports, and 66 obsolete style selectors.
@@ -15,6 +19,36 @@ Planned release line v0.2.
   and a maintenance guide.
 
 ### Added
+
+- Show provider usage above the profile with weekly and shorter-window rings,
+  reported reset times, additional limits, and unavailable states. Read cached
+  account metadata from local Codex and Claude tooling without model prompts.
+
+- Remove project context character and save-request limits. Preserve full text
+  on create/edit and expose complete long context through a local provider file.
+
+- Add project completion summaries, completion dates and actors, and a Completed
+  view with date/assignee filters. Remove Agent work, Needs attention, and Archived
+  sidebar views. Preserve completion history when work is reopened.
+
+- Make GitHub a shared connection across Kru, with token-only setup and automatic
+  tool calls. Remove GitHub owner and approval selectors and Connect another.
+
+- Simplify project creation to name, context, and files. Generate uppercase
+  three-letter prefixes, preserve identifiers on rename, and share persisted
+  context attachments with project work and chats. Remove status form controls.
+
+- Simplify project workflows to To Do, In Progress, and Done categories. Map custom
+  statuses to a fixed category, remove template/stage-agent setup and mandatory
+  review gates, and preserve existing status IDs and history.
+
+- Require Clerk sign-in before opening the desktop workspace, with email/social
+  sign-in, encrypted session storage, public-only app configuration, and native
+  OAuth callbacks. Return to a dedicated sign-in screen after signing out.
+
+- Add a GitHub connector card using the official hosted MCP server, encrypted
+  desktop token setup, per-chat/bot access, live tool discovery, reconnect and
+  disconnect controls, and existing Skills workflow support.
 
 - Share projects between Conversations and Work. Group chats, create projects in
   either view, move existing conversations, and inherit Work-run project links.

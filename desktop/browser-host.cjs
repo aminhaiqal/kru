@@ -1,6 +1,6 @@
 /* Browser globals are used only inside functions serialized into isolated page worlds. */
 /* global document, CSS, location, getSelection */
-const { WebContentsView, session, nativeTheme, Menu, clipboard } = require('electron');
+const { WebContentsView, session, nativeTheme, Menu, clipboard, shell } = require('electron');
 const { createHash, randomUUID } = require('node:crypto');
 const validAgent = (id) => typeof id === 'string' && /^[\w-]{1,100}$/.test(id);
 const safeUrl = (value) => {
@@ -127,7 +127,9 @@ class NativeBrowserHost {
     const target = session.fromPartition('persist:' + partition, { cache: true });
     if (!target.__kruConfigured) {
       target.__kruConfigured = true;
-      target.setUserAgent(target.getUserAgent().replace(/\s(?:Electron|KRU|kru)\/\S+/g, ''));
+      // App identity is added by Clerk as "Kru/version". Match every casing,
+      // while retaining the actual bundled Chromium version for compatibility.
+      target.setUserAgent(target.getUserAgent().replace(/\s(?:Electron|Kru)\/\S+/gi, ''));
       target.setPermissionRequestHandler((_c, p, callback) =>
         callback(['fullscreen', 'clipboard-sanitized-write'].includes(p)),
       );
@@ -136,6 +138,13 @@ class NativeBrowserHost {
       );
     }
     return target;
+  }
+  async openExternal(id) {
+    if (!validAgent(id)) throw new Error('Invalid browser owner');
+    const url = this.groups.get(id)?.active?.view.webContents.getURL();
+    if (!url) throw new Error('Open a page first');
+    await shell.openExternal(safeUrl(url));
+    return { opened: true };
   }
   start(id) {
     if (!validAgent(id)) throw new Error('Invalid browser owner');

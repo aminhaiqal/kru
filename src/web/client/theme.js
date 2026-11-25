@@ -1,5 +1,8 @@
 import { themeCheckIcon, themeDarkIcon, themeLightIcon, themeSystemIcon } from './icons.js';
 
+if (document.querySelector('meta[name="kru-desktop"]')?.content === 'true')
+  document.documentElement.classList.add('account-required');
+
 ('use strict');
 // Run before styles load so reopening KRU never flashes the wrong appearance.
 (() => {

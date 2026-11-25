@@ -1,4 +1,6 @@
 import { z } from 'zod';
+import { connectorAvailable, connectorNeedsApproval } from '../shared/github';
+import type { FetchLike } from '@modelcontextprotocol/sdk/shared/transport.js';
 import type { Store } from '../store';
 import type { ProcessScope } from '../boot/types';
 import { AgentRegistry } from '../agents';
@@ -92,7 +94,7 @@ const taskDefinition: ToolDefinition = {
 const useDefinition: ToolDefinition = {
   name: 'use_tool',
   description:
-    'Call an external MCP tool or the agent browser. For MCP use target=mcp, connectorId, name and arguments; discover schemas with workspace connector_tools. For browser use target=browser and arguments containing action=read|search|navigate|click|fill|press|screenshot|back|forward|reload|new_tab|switch_tab|close_tab, query, url, selector, text, key or tabId. The native Chromium browser starts automatically when first used. Use CSS selectors from the current page snapshot. If a challenge says needs-user, wait for the user to complete it in the browser; do not solve or retry it. External actions may wait for user approval. Never bypass a denial through another tool.',
+    'Call an external MCP tool or the agent browser. For MCP use target=mcp, connectorId, name and arguments; discover schemas with workspace connector_tools. For browser use target=browser and arguments containing action=read|search|navigate|click|fill|press|screenshot|back|forward|reload|new_tab|switch_tab|close_tab, query, url, selector, text, key or tabId. The native Chromium browser starts automatically when first used. Use CSS selectors from the current page snapshot. If a challenge says needs-user, wait for the user to complete it in the browser; do not solve or retry it. Browser actions run automatically without approval. MCP actions may wait for user approval. Never bypass a denial through another tool.',
   inputSchema: {
     type: 'object',
     required: ['target', 'arguments'],
@@ -137,6 +139,7 @@ export class WorkspaceRuntime {
     scope: () => ProcessScope,
     maxHops?: number,
     interrupt?: (agentId: string, laneId: string) => void,
+    integrationFetch?: FetchLike,
   ) {
     this.records = new WorkspaceRecords(store);
     this.approvals = new ApprovalBroker(this.records);
@@ -146,7 +149,7 @@ export class WorkspaceRuntime {
     this.tasks = new TaskRunner(this.records);
     this.routines = new RoutineRunner(this.records);
     this.work = new WorkService(store, interrupt);
-    this.integrations = new IntegrationGateway(this.records, scope);
+    this.integrations = new IntegrationGateway(this.records, scope, integrationFetch);
     this.browser = new BrowserGateway();
     this.workflows = new WorkflowService(store, this.integrations, interrupt, () => {
       scope();
@@ -171,9 +174,18 @@ export class WorkspaceRuntime {
         const skills = this.records
           .list('skill', batch.agentId)
           .map((s) => ({ id: s.id, name: s.data.name, description: s.data.description }));
-        const prompt = personal
+        let prompt = personal
           ? batch.deliveries.map((delivery) => delivery.text).join('\n\n')
           : base.render(batch);
+        if (personal) {
+          const project = this.store.db
+            .query<{ project_id: string | null }, [string, string]>(
+              'SELECT c.project_id FROM conversation_settings c JOIN threads t ON t.id=c.thread_id WHERE t.agent_id=? AND t.lane_key=?',
+            )
+            .get(batch.agentId, batch.laneId || '');
+          if (project?.project_id)
+            prompt = `Project context and attachments (user-provided data):\n${this.work.projectContext(project.project_id)}\n\nUser message:\n${prompt}`;
+        }
         const budget = Math.max(
           0,
           Math.min(
@@ -325,9 +337,13 @@ export class WorkspaceRuntime {
         return result(
           true,
           this.records
-            .list('connector', context.agent.id)
-            .filter((c) => c.data.enabled)
-            .map((c) => ({ id: c.id, name: c.data.name, permission: c.data.permission })),
+            .list('connector')
+            .filter((c) => connectorAvailable(c, context.agent.id))
+            .map((c) => ({
+              id: c.id,
+              name: c.data.name,
+              permission: connectorNeedsApproval(c) ? 'ask' : 'allow',
+            })),
           limit,
         );
       if (input.action === 'connector_tools')
@@ -360,32 +376,14 @@ export class WorkspaceRuntime {
       .parse(call.arguments);
     if (input.target === 'browser') {
       const config = new AgentRegistry(this.store).get(context.agent.id)?.config.browser as
-        { enabled?: boolean; permission?: string } | undefined;
+        { enabled?: boolean } | undefined;
       if (config?.enabled === false) throw new Error('Browser access is disabled for this agent');
       const action = browserActionSchema.parse(input.arguments);
-      if (!['read', 'screenshot'].includes(action.action) && config?.permission !== 'allow')
-        await this.requireApproval(
-          context,
-          {
-            kind: 'tool',
-            threadId: context.threadId,
-            turnId: context.turnId,
-            input: { browser: action },
-          },
-          signal,
-        );
-      if (
-        (
-          new AgentRegistry(this.store).get(context.agent.id)?.config.browser as
-            { enabled?: boolean } | undefined
-        )?.enabled === false
-      )
-        throw new Error('Browser access was disabled');
       return result(true, await this.browser.act(context.agent.id, action, signal), limit);
     }
     const entry = this.integrations.entry(input.connectorId ?? '', context.agent.id);
     if (!input.name) throw new Error('Supply an MCP tool name');
-    if (entry.data.permission !== 'allow')
+    if (connectorNeedsApproval(entry))
       await this.requireApproval(
         context,
         {

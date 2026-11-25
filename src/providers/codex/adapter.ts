@@ -262,6 +262,11 @@ export interface CodexProviderOptions {
   answerTimeoutMs?: number;
 }
 export class CodexProvider extends ProviderBase {
+  async usageLimits(): Promise<import('../limits').LimitWindow[]> {
+    this.requireReady();
+    const { codexLimits } = await import('../limits');
+    return codexLimits(await this.runtime.request('account/rateLimits/read', {}));
+  }
   async listModels(): Promise<ModelOption[]> {
     this.requireReady();
     const models: any[] = [];

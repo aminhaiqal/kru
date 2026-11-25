@@ -1,13 +1,15 @@
 import {
+  GithubIcon,
   Globe02Icon,
   Upload01Icon,
   Folder01Icon,
   File01Icon,
   ArrowLeft01Icon,
   ArrowRight01Icon,
+  ArrowDown01Icon,
+  PencilEdit02Icon,
+  Delete02Icon,
   RefreshIcon,
-  ArrowExpandDiagonal01Icon,
-  ArrowShrink01Icon,
   Cancel01Icon,
   Add01Icon,
   StopIcon,
@@ -42,8 +44,6 @@ export const chatFileIcon = render(File01Icon);
 export const browserBackIcon = render(ArrowLeft01Icon);
 export const browserForwardIcon = render(ArrowRight01Icon);
 export const browserReloadIcon = render(RefreshIcon);
-export const browserExpandIcon = render(ArrowExpandDiagonal01Icon);
-export const browserCollapseIcon = render(ArrowShrink01Icon);
 export const browserCloseIcon = render(Cancel01Icon);
 export const browserAddIcon = render(Add01Icon);
 export const browserStopIcon = render(StopIcon);
@@ -52,3 +52,8 @@ export const themeDarkIcon = render(Moon02Icon);
 export const themeSystemIcon = render(ComputerIcon);
 export const themeCheckIcon = render(Tick02Icon);
 export const chatSidebarIcon = render(PanelLeftIcon);
+export const chatModelChevronIcon = render(ArrowDown01Icon);
+export const chatRenameIcon = render(PencilEdit02Icon);
+export const chatTrashIcon = render(Delete02Icon);
+
+export const githubIcon = render(GithubIcon);

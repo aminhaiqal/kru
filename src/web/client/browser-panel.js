@@ -5,8 +5,6 @@ import {
   browserAddIcon,
   browserBackIcon,
   browserCloseIcon,
-  browserCollapseIcon,
-  browserExpandIcon,
   browserForwardIcon,
   browserReloadIcon,
   browserStopIcon,
@@ -18,7 +16,6 @@ import { S } from './state.js';
 ('use strict');
 const BP = {
   open: false,
-  expanded: false,
   agent: null,
   status: null,
   states: new Map(),
@@ -36,15 +33,17 @@ function browserPanelLayout() {
   const visible = BP.open && S.view === 'chat' && BP.agent === S.agent;
   $('#browser-panel').hidden = !visible;
   $('.workspace-body').classList.toggle('browser-panel-open', visible);
-  $('.workspace-body').classList.toggle('browser-panel-expanded', visible && BP.expanded);
-  $('.conversation-browser')?.setAttribute('aria-pressed', String(visible));
+  const toggle = $('.conversation-browser');
+  toggle?.setAttribute('aria-pressed', String(visible));
+  toggle?.setAttribute('aria-label', visible ? 'Close browser' : 'Open browser');
+  toggle?.setAttribute('title', visible ? 'Close browser' : 'Open browser');
   if (!BP.layoutFrame)
     BP.layoutFrame = requestAnimationFrame(() => {
       BP.layoutFrame = null;
       const surface = $('#browser-native-surface'),
         box = surface?.getBoundingClientRect(),
         covered = !!$(
-          'dialog[open], .workspace.menu-open, .conversation-sidebar.open, .chat-attach-menu, #theme-menu:popover-open',
+          'dialog[open], .workspace.menu-open, .conversation-sidebar.open, .chat-attach-menu, #theme-menu:popover-open, #usage-limits-menu:popover-open',
         );
       const input = {
         agentId: BP.agent,
@@ -70,13 +69,12 @@ function browserPanelMount() {
   BP.tabSignature = '';
   BP.resize?.disconnect();
   $('#browser-panel').innerHTML =
-    `<header class="browser-panel-heading"><span>${chatGlobeIcon}<strong>Browser</strong><small>Chromium</small></span><div>${browserButton('import', 'Import browser data', chatUploadIcon)}${browserButton('expand', 'Expand browser', browserExpandIcon)}${browserButton('close', 'Close browser panel', browserCloseIcon)}</div></header><div id="browser-tabs" class="browser-panel-tabs" role="tablist" aria-label="Browser tabs"></div><form id="browser-navigate" class="browser-address-bar"><div>${browserButton('back', 'Go back', browserBackIcon)}${browserButton('forward', 'Go forward', browserForwardIcon)}${browserButton('reload', 'Reload page', browserReloadIcon)}</div><input id="browser-url" type="text" aria-label="Browser address" placeholder="Search or enter a URL" autocomplete="off" spellcheck="false"><button type="submit" aria-label="Navigate" title="Navigate">${browserForwardIcon}</button></form><div id="browser-challenge" class="browser-panel-challenge" hidden><span>This site needs your verification. Complete it below, then ask the assistant to continue.</span><button data-browser-action="read">Recheck</button></div><div id="browser-native-surface" class="browser-native-surface"><div id="browser-panel-empty" class="browser-panel-empty">${chatGlobeIcon}<strong>Your browser, alongside the conversation</strong><p>${window.kruBrowser ? 'Search or open a page. Click, type and browse directly.' : 'Open KRU desktop to use its native browser.'}</p>${browserButton('import', 'Import browser data', chatUploadIcon)}</div></div><p id="browser-panel-error" class="browser-panel-error" role="status" hidden></p><footer class="browser-panel-footer"><span id="browser-panel-activity" role="status">Browser ready</span><div>${browserButton('retry', 'Start browser', browserReloadIcon)}${browserButton('stop', 'Stop browser', browserStopIcon)}</div></footer>`;
+    `<div id="browser-tabs" class="browser-panel-tabs" role="tablist" aria-label="Browser tabs"></div><form id="browser-navigate" class="browser-address-bar"><div>${browserButton('back', 'Go back', browserBackIcon)}${browserButton('forward', 'Go forward', browserForwardIcon)}${browserButton('reload', 'Reload page', browserReloadIcon)}</div><input id="browser-url" type="text" aria-label="Browser address" placeholder="Search or enter a URL" autocomplete="off" spellcheck="false"><button type="submit" aria-label="Navigate" title="Navigate">${browserForwardIcon}</button></form><div id="browser-challenge" class="browser-panel-challenge" hidden><span>This site needs verification. If it cannot run here, open this page in your browser. Browser sessions are separate.</span><button data-browser-action="external">Open in browser</button><button data-browser-action="read">Recheck</button></div><div id="browser-native-surface" class="browser-native-surface"><div id="browser-panel-empty" class="browser-panel-empty">${chatGlobeIcon}<strong>Your browser, alongside the conversation</strong><p>${window.kruBrowser ? 'Search or open a page. Click, type and browse directly.' : 'Open KRU desktop to use its native browser.'}</p>${browserButton('import', 'Import browser data', chatUploadIcon)}</div></div><p id="browser-panel-error" class="browser-panel-error" role="status" hidden></p><footer class="browser-panel-footer"><span id="browser-panel-activity" role="status">Browser ready</span><div>${browserButton('import', 'Import browser data', chatUploadIcon)}${browserButton('retry', 'Start browser', browserReloadIcon)}${browserButton('stop', 'Stop browser', browserStopIcon)}</div></footer>`;
   BP.resize = new ResizeObserver(browserPanelLayout);
   BP.resize.observe($('#browser-native-surface'));
 }
 function browserPanelClose() {
   BP.open = false;
-  BP.expanded = false;
   browserPanelLayout();
   BP.resize?.disconnect();
   $('#browser-panel').innerHTML = '';
@@ -102,6 +100,10 @@ async function browserPanelOpen(agentId, start = true) {
   } finally {
     BP.starting = false;
   }
+}
+function browserPanelToggle(agentId) {
+  if (BP.open && BP.agent === agentId) browserPanelClose();
+  else return browserPanelOpen(agentId);
 }
 function browserPanelError(message) {
   const el = $('#browser-panel-error');
@@ -131,11 +133,14 @@ function browserPanelUpdate(state) {
     BP.tabSignature = signature;
   }
   $('#browser-challenge').hidden = !state.challenge;
+  for (const button of document.querySelectorAll('[data-browser-action="external"]'))
+    button.disabled = !window.kruBrowser?.openExternal || !/^https?:\/\//.test(state.url || '');
   $('#browser-panel-empty').hidden = !!(state.running && state.url && state.url !== 'about:blank');
   browserPanelLayout();
 }
 function browserPanelInit() {
-  $('#theme-menu')?.addEventListener('toggle', browserPanelLayout);
+  for (const selector of ['#theme-menu', '#usage-limits-menu'])
+    $(selector)?.addEventListener('toggle', browserPanelLayout);
   window.kruBrowser?.onState(({ agentId, state }) => {
     BP.states.set(agentId, state);
     const previous = BP.observed.get(agentId) || 0;
@@ -238,18 +243,6 @@ document.addEventListener('click', async (event) => {
   const button = event.target.closest('[data-browser-action]');
   if (!button) return;
   const action = button.dataset.browserAction;
-  if (action === 'close') {
-    browserPanelClose();
-    return;
-  }
-  if (action === 'expand') {
-    BP.expanded = !BP.expanded;
-    browserPanelLayout();
-    button.innerHTML = BP.expanded ? browserCollapseIcon : browserExpandIcon;
-    button.setAttribute('aria-label', BP.expanded ? 'Restore browser panel' : 'Expand browser');
-    button.title = button.getAttribute('aria-label');
-    return;
-  }
   if (action === 'import') {
     await browserPanelImport();
     return;
@@ -265,6 +258,14 @@ document.addEventListener('click', async (event) => {
   }
   if (action === 'retry') {
     await browserPanelOpen(BP.agent);
+    return;
+  }
+  if (action === 'external') {
+    try {
+      await window.kruBrowser.openExternal(BP.agent);
+    } catch (error) {
+      browserPanelError(error.message);
+    }
     return;
   }
   await browserPanelAction(action, button.dataset.tab);
@@ -292,4 +293,4 @@ document.addEventListener('submit', async (event) => {
   }
 });
 
-export { browserPanelInit, browserPanelLayout, browserPanelOpen };
+export { browserPanelInit, browserPanelLayout, browserPanelToggle };

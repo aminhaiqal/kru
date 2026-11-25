@@ -13,6 +13,9 @@
   </head>
   <body>
     <div class="desktop-titlebar" aria-hidden="true"></div>
+    <section id="auth-gate" aria-label="Sign in to Kru" hidden>
+      <p role="status">Checking your account…</p>
+    </section>
     <div id="app" class="workspace">
       <aside class="sidebar" aria-label="Workspace navigation">
         <a class="wordmark" href="/" aria-label="KRU home"
@@ -34,6 +37,14 @@
         </div>
         <div id="agents" class="agent-list"></div>
         <div class="sidebar-bottom">
+          <div id="usage-limits" class="usage-limits" aria-label="Provider usage limits"></div>
+          <div
+            id="usage-limits-menu"
+            class="usage-limits-menu"
+            popover
+            aria-label="Usage limits"
+          ></div>
+          <div id="account" class="account-control" aria-label="Kru account" hidden></div>
           <div class="appearance-control">
             <button
               id="theme-trigger"

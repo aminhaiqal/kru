@@ -1,3 +1,4 @@
+import { connectorAvailable } from '../../shared/github.ts';
 import { scopeFilter } from './activity.js';
 import { api, patch, post } from './api.js';
 import { draw, refresh, scheduleRefresh, selectAgent } from './app.js';
@@ -110,6 +111,13 @@ function wfSettings(isNew = false) {
       F.dirty = false;
       F.forms = {};
       F.node = isNew ? 'agent' : F.node;
+      if (isNew) {
+        F.runId = null;
+        F.run = null;
+        F.inspect = 'parameters';
+        F.edge = null;
+        F.connect = null;
+      }
       F.tab = 'editor';
       F.data.workflows = [saved, ...F.data.workflows.filter((item) => item.id !== saved.id)];
       S.view = 'skill';
@@ -238,8 +246,8 @@ function renderWFInspector() {
       wfField('Instructions', 'prompt', config.prompt || '', { area: true, rows: 7 }) +
       wfField('Maximum turns', 'maxTurns', config.maxTurns || 8, { type: 'number' });
   if (node.type === 'connector') {
-    const connectors = records('connector').filter(
-        (entry) => entry.agentId === F.draft.agentId && entry.data.enabled,
+    const connectors = records('connector').filter((entry) =>
+        connectorAvailable(entry, F.draft.agentId),
       ),
       selected = F.forms[node.id]?.connectorId ?? config.connectorId,
       selectedTool = F.forms[node.id]?.tool ?? config.tool,

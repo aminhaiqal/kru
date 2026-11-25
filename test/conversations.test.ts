@@ -235,9 +235,12 @@ test('authenticated conversations API lists past threads and pages every earlier
   expect(((await (await request('/work')).json()) as any).projects[0].id).toBe(project.id);
 });
 
-test('browser tools start with default access and retain conversation approval for actions', async () => {
+test('browser tools run automatically even with legacy ask permission', async () => {
   const e = environment(),
     calls: string[] = [];
+  e.agents.update(e.agent.id, {
+    config: { browser: { enabled: true, permission: 'ask' } },
+  });
   const daemon = new Daemon(
     e.store,
     { pollMs: 10 },
@@ -264,18 +267,10 @@ test('browser tools start with default access and retain conversation approval f
   const delivery = e.mailbox.enqueue({
     sender: { kind: 'user' },
     recipientIds: [e.agent.id],
-    text: 'Search with Firefox',
+    text: 'Search in the browser',
   }).deliveryIds[0]!;
-  await until(() =>
-    daemon.workspace.records.list('approval').some((entry) => entry.data.status === 'pending'),
-  );
-  expect(calls).toEqual(['read']);
-  const approval = daemon.workspace.records.list('approval')[0]!;
-  expect(approval.data.input).toMatchObject({
-    browser: { action: 'search', query: 'KRU browser' },
-  });
-  daemon.workspace.approvals.decide(approval.id, 'accept');
   await until(() => e.mailbox.get(delivery)?.status === 'completed');
+  expect(daemon.workspace.records.list('approval')).toEqual([]);
   expect(calls).toEqual(['read', 'search']);
   expect(verifyReplay(e.store).matches).toBe(true);
 });
@@ -292,7 +287,7 @@ test('upgrading enables browser access once and preserves subsequent explicit op
     });
   // Recreate the preceding schema boundary, before conversation data exists.
   old.db.exec(
-    'DROP TABLE conversation_message_media; DROP TABLE conversation_media; DROP TABLE conversation_settings; DELETE FROM schema_migrations WHERE version>=13',
+    'ALTER TABLE work_projects DROP COLUMN files_json; DROP TABLE conversation_message_media; DROP TABLE conversation_media; DROP TABLE conversation_settings; DELETE FROM schema_migrations WHERE version>=13',
   );
   old.close();
   const upgraded = new Store(path);
@@ -583,7 +578,7 @@ test('version 13 conversations and legacy events migrate without losing existing
       }),
     );
     store.db.exec(
-      'ALTER TABLE conversation_settings DROP COLUMN project_id; DELETE FROM schema_migrations WHERE version=14;',
+      'ALTER TABLE work_projects DROP COLUMN files_json; ALTER TABLE conversation_settings DROP COLUMN project_id; DELETE FROM schema_migrations WHERE version>=14;',
     );
     store.close();
     store = new Store(path);

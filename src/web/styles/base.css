@@ -636,6 +636,15 @@ dialog::backdrop {
   gap: 9px;
   margin-top: 25px;
 }
+.dialog-footer button.destructive {
+  background: #b42332;
+  border-color: #b42332;
+  color: #fff;
+}
+.dialog-footer button.destructive:hover {
+  background: #91202b;
+  border-color: #91202b;
+}
 .field {
   display: grid;
   gap: 7px;

@@ -17,11 +17,15 @@ or depend on the page body already existing. Other features use explicit imports
 and start through `main.js`, after all modules have loaded.
 
 Run `bun run build:web` after changing frontend sources. It creates the local
-`app.js`, `theme.js`, and `style.css` served from `src/web/public/`, along with
+`app.js`, `theme.js`, `account.js`, and `style.css` served from `src/web/public/`, along with
 third-party license notices. These generated files are checked in so the local
 engine can serve the UI without a separate development server. Do not edit the
 bundles directly. `src/web/public/index.html` is the handwritten document shell.
 Tailwind Preflight is deliberately omitted to preserve the application controls.
+
+`account.js` is a separate React island for Clerk's Electron SDK; it loads only
+in the desktop app. Keep account configuration public-only. See [Clerk](CLERK.md)
+for its native bridge, security boundaries, and live smoke check.
 
 `bun run desktop:package` builds these assets and the engine before packaging
 Electron. Packaging recreates the staging resources so removed files do not

@@ -3,6 +3,7 @@ export function storedError(message: string | undefined): string | undefined {
   if (message === undefined) return undefined;
   const clean = message
     .replace(/\b(authorization["']?\s*:\s*["']?(?:bearer|basic)\s+)[^"'\s,;]+/gi, '$1[REDACTED]')
+    .replace(/\b(?:github_pat_[A-Za-z0-9_]+|gh[pousr]_[A-Za-z0-9]+)\b/g, '[REDACTED]')
     .replace(/\bsk-[a-zA-Z0-9_-]{8,}/g, '[REDACTED]')
     .replace(
       /((?:api[_-]?key|access[_-]?token|refresh[_-]?token|token|client[_-]?secret|password)["']?\s*[=:]\s*)(?:"[^"]*"|'[^']*'|[^\s&;,}\]]+)/gi,

@@ -9,6 +9,9 @@ import {
   chatFileIcon,
   chatFolderIcon,
   chatGlobeIcon,
+  chatModelChevronIcon,
+  chatRenameIcon,
+  chatTrashIcon,
   chatSidebarIcon,
   chatUploadIcon,
 } from './icons.js';
@@ -110,7 +113,13 @@ function renderThread(thread) {
     waiting = pendingApprovals().some(
       (entry) => entry.agentId === thread.agentId && entry.laneId === thread.laneId,
     );
-  return `<button class="conversation-thread ${selected ? 'selected' : ''}" data-action="chat-open" data-id="${thread.id}" ${selected ? 'aria-current="true"' : ''} title="${escape(thread.title)}"><span>${escape(thread.title)}</span><small>${escape(name(thread.agentId))}${waiting ? ' · Waiting for you' : busy ? ' · Working' : ''}</small>${!thread.projectInherited ? `<span class="chat-move-thread" data-action="chat-move" data-id="${thread.id}" role="button" tabindex="0" aria-label="Move ${escape(thread.title)} to project" title="Move to project">${chatFolderIcon}</span>` : ''}<span class="chat-delete-thread" data-action="chat-delete" data-id="${thread.id}" role="button" tabindex="0" aria-label="Delete ${escape(thread.title)}">×</span>${waiting ? '<i aria-label="Approval waiting">!</i>' : busy ? '<i class="working" aria-label="Working"></i>' : ''}</button>`;
+  const subtitle = [
+    thread.agentId === S.state.personal?.id ? '' : name(thread.agentId),
+    waiting ? 'Waiting for you' : busy ? 'Working' : '',
+  ]
+    .filter(Boolean)
+    .join(' · ');
+  return `<button class="conversation-thread ${selected ? 'selected' : ''}" data-action="chat-open" data-id="${thread.id}" ${selected ? 'aria-current="true"' : ''} title="${escape(thread.title)}"><span>${escape(thread.title)}</span>${subtitle ? `<small>${escape(subtitle)}</small>` : ''}${!thread.projectInherited ? `<span class="chat-move-thread" data-action="chat-move" data-id="${thread.id}" role="button" tabindex="0" aria-label="Move ${escape(thread.title)} to project" title="Move to project">${chatFolderIcon}</span>` : ''}<span class="chat-rename-thread" data-action="chat-rename" data-id="${thread.id}" role="button" tabindex="0" aria-label="Rename ${escape(thread.title)}" title="Rename conversation">${chatRenameIcon}</span><span class="chat-delete-thread" data-action="chat-delete" data-id="${thread.id}" role="button" tabindex="0" aria-label="Delete ${escape(thread.title)}" title="Delete conversation">${chatTrashIcon}</span>${waiting ? '<i aria-label="Approval waiting">!</i>' : busy ? '<i class="working" aria-label="Working"></i>' : ''}</button>`;
 }
 function renderThreadSidebar() {
   const query = C.search.toLowerCase(),
@@ -198,7 +207,7 @@ function renderConversations() {
   const composer = `<div class="conversation-compose-area">${pending.length ? `<div class="busy-indicator">${escape(agent.name)} is waiting for your decision in this conversation.${canEnableRequestNotifications() ? actions('enable-reminders', 'Enable notifications', '', 'quiet') : ''}</div>` : lane ? `<div class="busy-indicator">${escape(lane.error || lane.reason || 'Working…')}${lane.turnId ? ' ' + actions('stop-lane', 'Stop', lane.batchId, 'quiet') : ''}</div>` : queued ? '<div class="busy-indicator">Message queued</div>' : ''}
     ${!connected ? `<div class="connection-notice"><span>${escape(connection(selection.provider)?.message || 'Connect this account to continue.')}</span><button type="button" class="small" data-view="connector">Connect provider</button></div>` : ''}
     <form id="composer" class="composer">${renderChatAttachments()}<textarea id="message-input" aria-label="${personal ? 'Message' : 'Message teammate'}" ${C.creating ? 'disabled' : ''} placeholder="${personal ? 'How can I help you today?' : 'Message ' + escape(agent.name) + '…'}" rows="2">${escape(S.draft)}</textarea><div class="composer-footer"><div class="chat-attach-wrap"><button type="button" class="quiet small chat-attach" data-action="chat-attach" aria-label="Add attachments" title="Add attachments" aria-haspopup="menu" aria-expanded="${C.attachMenu}" aria-controls="chat-attach-menu">${browserAddIcon}</button>${C.attachMenu ? `<div id="chat-attach-menu" class="chat-attach-menu" role="menu" aria-label="Add attachments"><button type="button" role="menuitem" data-action="chat-upload-files">${chatUploadIcon}Upload or add files</button><button type="button" role="menuitem" data-action="chat-upload-folder">${chatFolderIcon}Add folder</button><p>Images, text and code files</p></div>` : ''}</div><button class="primary conversation-send" type="submit" aria-label="Send message" title="Send message" ${!connected || S.sending || C.creating || C.uploading ? 'disabled' : ''}>↑</button></div></form>
-    <div class="conversation-compose-options"><button type="button" class="quiet conversation-folder" data-action="chat-upload-folder" ${C.uploading || !selection.id ? 'disabled' : ''}>${chatFolderIcon}<span>Add folder</span></button><button type="button" class="conversation-model" data-action="chat-model" ${busy || C.modelBusy || !selection.id ? 'disabled' : ''} title="Change model for this conversation" aria-label="Change model for this conversation"><span>${escape(chatModelName(selection.provider, selection.model))}</span><small>${escape(selection.effort ? effortLabel(selection.effort) : 'Default effort')}</small><span aria-hidden="true">⌄</span></button></div>${hasMessages ? '<p class="conversation-compose-hint">Enter to send · Shift + Enter for a new line<span>Context stays with this conversation</span></p>' : ''}</div>`;
+    <div class="conversation-compose-options"><button type="button" class="quiet conversation-folder" data-action="chat-upload-folder" ${C.uploading || !selection.id ? 'disabled' : ''}>${chatFolderIcon}<span>Add folder</span></button><button type="button" class="conversation-model" data-action="chat-model" ${busy || C.modelBusy || !selection.id ? 'disabled' : ''} title="Change model for this conversation" aria-label="Change model for this conversation"><span>${escape(chatModelName(selection.provider, selection.model))}</span><small>${escape(selection.effort ? effortLabel(selection.effort) : 'Default effort')}</small>${chatModelChevronIcon}</button></div>${hasMessages ? '<p class="conversation-compose-hint">Enter to send · Shift + Enter for a new line<span>Context stays with this conversation</span></p>' : ''}</div>`;
   const content = hasMessages
     ? `<div class="messages" role="log" aria-label="Conversation">${S.messages?.hasMore ? `<button class="chat-load-earlier" data-action="chat-earlier" ${C.loading ? 'disabled' : ''}>${C.loading ? 'Loading…' : 'Load earlier messages'}</button>` : ''}${renderConversation(agent)}</div>${composer}`
     : `<div class="conversation-start"><div class="conversation-start-content"><div class="conversation-welcome"><h1>What shall we work on?</h1>${selection.provider === 'fake' ? '<p>This is a demo teammate. It echoes messages without calling an AI model.</p>' : ''}</div>${composer}${personal ? renderRecentConversations() : ''}</div></div>`;
@@ -506,7 +515,7 @@ document.addEventListener('click', async (event) => {
       if (thread)
         openForm(
           'Delete conversation?',
-          '<p class="help">Remove this conversation and its attached files from your chats?</p>',
+          `<p class="help">The chat <strong>${escape(thread.title)}</strong> and its attached files will be deleted.</p>`,
           async () => {
             await api('/conversations/' + thread.id, { method: 'DELETE' });
             C.data.conversations = C.data.conversations.filter((item) => item.id !== thread.id);
@@ -517,14 +526,16 @@ document.addEventListener('click', async (event) => {
             }
           },
           'Delete',
+          true,
         );
     }
     if (action === 'chat-rename') {
-      const selection = chatSelection();
+      const thread = C.data.conversations.find((item) => item.id === button.dataset.id);
+      const selection = thread || chatSelection();
       if (!selection.id) return;
       openForm(
         'Rename conversation',
-        field('Conversation name', 'title', chatTitle(), { required: true }),
+        field('Conversation name', 'title', thread?.title || chatTitle(), { required: true }),
         async (form) => {
           await patch('/conversations/' + selection.id, {
             title: form.get('title'),
@@ -583,7 +594,7 @@ document.addEventListener('change', (event) => {
 document.addEventListener('keydown', (event) => {
   if (
     ['Enter', ' '].includes(event.key) &&
-    event.target.matches('.chat-move-thread,.chat-delete-thread')
+    event.target.matches('.chat-move-thread,.chat-rename-thread,.chat-delete-thread')
   ) {
     event.preventDefault();
     event.stopPropagation();
@@ -687,4 +698,4 @@ function renderMessage(entry) {
   return `<article class="message ${escape(entry.role)} ${entering ? 'enter' : ''}"><div class="message-meta">${entry.role === 'assistant' ? (entry.agentId === S.state.personal?.id ? escape(providerName(entry.provider || chatSelection().provider)) : escape(name(entry.agentId))) : entry.role === 'user' ? 'You' : entry.role === 'routine' ? 'Routine' : 'Teammate'}<time datetime="${escape(entry.timestamp)}">${stamp(entry.timestamp)}</time>${entry.role === 'assistant' && entry.provider ? `<span class="message-model">${escape(providerName(entry.provider))}${entry.model && !['unknown', 'fake'].includes(entry.model) ? ' · ' + escape(entry.model) : ''}</span>` : ''}${entry.partial ? '<span class="streaming-label">Working</span>' : ''}</div><div class="message-body ${['assistant', 'agent'].includes(entry.role) ? 'markdown-body' : ''}">${['assistant', 'agent'].includes(entry.role) ? renderChatMarkdown(entry.text || '') : escape(entry.text || '')}${entry.media?.length ? `<div class="message-media">${entry.media.map((item) => (item.mime.startsWith('image/') ? `<img data-media-id="${item.id}" alt="${escape(item.name)}">` : `<span class="message-file">${chatFileIcon}<span>${escape(item.name)}</span></span>`)).join('')}</div>` : ''}</div></article>`;
 }
 
-export { C, chatKey, chatLoadMedia, chatMerge, renderConversations };
+export { C, chatKey, chatLoadMedia, chatMerge, chatSelection, renderConversations };

@@ -276,7 +276,12 @@
   color: var(--muted);
   white-space: nowrap;
 }
-.conversation-model > span:last-child {
+.conversation-model > svg {
+  display: block;
+  width: 16px;
+  height: 16px;
+  flex-shrink: 0;
+  align-self: center;
   color: var(--muted);
 }
 .conversation-main .conversation-send {
@@ -901,14 +906,14 @@ html:has(.conversation-layout) .desktop-titlebar {
   color: var(--ink);
 }
 .conversation-thread > span:first-child {
-  padding-right: 42px;
+  padding-right: 72px;
 }
 .conversation-thread > .chat-move-thread {
   position: absolute;
   display: grid;
   place-items: center;
   top: 9px;
-  right: 34px;
+  right: 56px;
   width: 22px;
   height: 22px;
   padding: 0;
@@ -924,11 +929,43 @@ html:has(.conversation-layout) .desktop-titlebar {
 .conversation-thread:focus-within > .chat-delete-thread {
   opacity: 1;
 }
+.conversation-thread > .chat-rename-thread,
+.conversation-thread > .chat-delete-thread,
+.conversation-thread > .chat-move-thread {
+  display: grid;
+  place-items: center;
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 22px;
+  height: 22px;
+  padding: 0;
+}
+.conversation-thread > .chat-rename-thread {
+  right: 32px;
+  opacity: 0;
+  color: var(--muted);
+}
+.chat-rename-thread svg,
+.chat-delete-thread svg {
+  width: 14px;
+  height: 14px;
+}
+.conversation-thread:hover > .chat-rename-thread,
+.conversation-thread:focus-within > .chat-rename-thread {
+  opacity: 1;
+}
+.conversation-thread > .chat-delete-thread:hover {
+  color: var(--danger);
+}
 .conversation-thread:hover > i {
   visibility: hidden;
 }
 @media (max-width: 800px) {
   .conversation-thread > .chat-move-thread {
+    opacity: 1;
+  }
+  .conversation-thread > .chat-rename-thread {
     opacity: 1;
   }
 }

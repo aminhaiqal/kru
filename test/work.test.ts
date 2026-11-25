@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os';
 import { Store } from '../src/store';
 import { verifyReplay } from '../src/store/replay';
 import { WorkService } from '../src/work/service';
-import { standardStages } from '../src/work/types';
+import { standardStages, type ProjectRow } from '../src/work/types';
 import { AgentRegistry } from '../src/agents';
 import { SqliteMailbox } from '../src/mailbox';
 import { WorkspaceRecords } from '../src/workspace/records';
@@ -41,23 +41,70 @@ function env() {
   };
 }
 
-test('human work is durable, revision guarded, review gated and replayable without an agent', () => {
+test('human work is durable, revision guarded, three-category and replayable without an agent', () => {
   const e = env();
   let item = e.work.create({ title: 'Write a launch brief', description: 'Define the audience.' });
   expect(item.identifier).toBe('KRU-1');
   expect(item.stageId).toBe('brief');
   expect(e.records.list('task')).toHaveLength(0);
-  expect(() => e.work.update(item.id, { stageId: 'done' }, item.revision)).toThrow('Review');
   item = e.work.update(
     item.id,
     { priority: 'high', labels: ['launch'], dueDate: '2026-12-01' },
     item.revision,
   );
   expect(() => e.work.update(item.id, { title: 'stale edit' }, 1)).toThrow('changed');
-  item = e.work.update(item.id, { stageId: 'review' }, item.revision);
+  item = e.work.update(item.id, { stageId: 'in_progress' }, item.revision);
   item = e.work.update(item.id, { stageId: 'done' }, item.revision);
   expect(item.stageId).toBe('done');
   expect(e.work.detail(item.id).activity.map((a) => a.kind)).toContain('stage_changed');
+  expect(verifyReplay(e.store).matches).toBe(true);
+});
+
+test('completion dates survive edits, clear on reopening and preserve completion history', () => {
+  const e = env();
+  let item = e.work.create({ title: 'Ship release' });
+  expect(item.completedAt).toBeNull();
+  item = e.work.update(item.id, { stageId: 'done' }, item.revision);
+  const completedAt = item.completedAt;
+  expect(completedAt).not.toBeNull();
+  expect(item.completedBy).toBeNull();
+  item = e.work.update(item.id, { title: 'Release shipped' }, item.revision);
+  expect(item.completedAt).toBe(completedAt);
+  item = e.work.update(item.id, { stageId: 'in_progress' }, item.revision);
+  expect(item.completedAt).toBeNull();
+  item = e.work.update(item.id, { stageId: 'done' }, item.revision);
+  expect(item.completedAt).not.toBeNull();
+  expect(
+    e.work
+      .detail(item.id)
+      .activity.filter((a) => a.kind === 'stage_changed' && a.metadata.to === 'done'),
+  ).toHaveLength(2);
+  expect(verifyReplay(e.store).matches).toBe(true);
+});
+
+test('project prefixes are generated and context files persist across project edits and replay', async () => {
+  const e = env();
+  const first = e.work.saveProject({ name: 'Autopilots launch', stages: standardStages() });
+  const second = e.work.saveProject({ name: 'Automatic tests', stages: standardStages() });
+  expect(first.key).toBe('AUT');
+  expect(second.key).toBe('AUT2');
+  expect(e.work.saveProject({ name: 'ai', stages: standardStages() }).key).toBe('AIX');
+  const attached = await e.work.attachFile(
+    first.id,
+    new File(['Customer requirements: fast and simple'], 'requirements.txt'),
+  );
+  expect(attached.files[0]?.name).toBe('requirements.txt');
+  expect(e.work.projectContext(first.id)).toContain('fast and simple');
+  const renamed = e.work.saveProject(
+    { name: 'Renamed', description: 'New context', stages: first.stages },
+    first.id,
+  );
+  expect(renamed.key).toBe('AUT');
+  expect(renamed.files).toEqual(attached.files);
+  expect(e.work.projectContext(first.id)).toContain('New context');
+  await expect(
+    e.work.attachFile(first.id, new File([new Uint8Array(5 * 1024 * 1024 + 1)], 'large.bin')),
+  ).rejects.toThrow('5 MB');
   expect(verifyReplay(e.store).matches).toBe(true);
 });
 
@@ -87,7 +134,7 @@ test('workflow validation protects used stages and explicit unassignment overrid
     e.work.saveProject({
       name: 'Bad',
       key: 'BAD',
-      stages: stages.filter((s) => s.category !== 'review'),
+      stages: stages.filter((s) => s.category !== 'active'),
     }),
   ).toThrow();
   expect(() =>
@@ -103,7 +150,7 @@ test('workflow validation protects used stages and explicit unassignment overrid
   expect(verifyReplay(e.store).matches).toBe(true);
 });
 
-test('stage handoffs run the configured agents, carry evidence forward, and stop at human review', async () => {
+test('stage handoffs run the configured agents, carry evidence forward, and complete in Done', async () => {
   const e = env(),
     researcher = e.agents.create({ name: 'researcher', provider: 'fake' }),
     writer = e.agents.create({ name: 'writer', provider: 'fake' });
@@ -158,19 +205,19 @@ test('stage handoffs run the configured agents, carry evidence forward, and stop
     description: 'Explain the product.',
     stageId: 'research',
   });
-  await until(() => e.work.detail(item.id).item.stageId === 'review');
+  await until(() => e.work.detail(item.id).item.stageId === 'done');
   const detail = e.work.detail(item.id);
   expect(detail.runs).toHaveLength(2);
   expect(writerSawResearch).toBe(true);
   expect(detail.runs.map((run) => run.agentId)).toEqual([researcher.id, writer.id]);
   expect(detail.activity.filter((a) => a.kind === 'agent_result')).toHaveLength(2);
   await Bun.sleep(60);
-  expect(e.work.detail(item.id).item.stageId).toBe('review');
+  expect(e.work.detail(item.id).item.stageId).toBe('done');
   e.work.update(item.id, { stageId: 'done' }, detail.item.revision);
   expect(verifyReplay(e.store).matches).toBe(true);
 });
 
-test('leaving an active stage cancels its task and review cannot complete while any previous execution is still active', () => {
+test('leaving In Progress cancels its task and Done waits for native execution to stop', () => {
   const e = env(),
     agent = e.agents.create({ name: 'coder', provider: 'fake' });
   const item = e.work.create({
@@ -180,13 +227,58 @@ test('leaving an active stage cancels its task and review cannot complete while 
   });
   const batch = e.mailbox.claimBatch(agent.id, 'task:' + item.taskId)!;
   e.mailbox.markBatchRunning(batch.id, 'native-turn');
-  const review = e.work.update(item.id, { stageId: 'review' }, item.revision);
+  const review = e.work.update(item.id, { stageId: 'brief' }, item.revision);
   expect(e.records.require('task', item.taskId!).data.status).toBe('cancelled');
   expect(() => e.work.update(item.id, { stageId: 'done' }, review.revision)).toThrow(
     'finish running',
   );
   e.mailbox.finishBatch(batch.id, 'interrupted');
   expect(e.work.update(item.id, { stageId: 'done' }, review.revision).stageId).toBe('done');
+});
+
+test('custom statuses require one of three categories and legacy Review stays readable and replayable', () => {
+  const e = env();
+  expect(standardStages().map((s) => s.name)).toEqual(['To Do', 'In Progress', 'Done']);
+  const stages = standardStages();
+  stages.splice(2, 0, {
+    id: 'quality',
+    name: 'Quality check',
+    category: 'active',
+    agentId: null,
+    instructions: '',
+  });
+  const project = e.work.saveProject({ name: 'Custom', key: 'CUS', stages });
+  expect(project.stages.find((s) => s.id === 'quality')?.category).toBe('active');
+  expect(() =>
+    e.work.saveProject({
+      name: 'Invalid',
+      key: 'BAD',
+      stages: stages.map((s) => ({ ...s, category: 'unknown' })),
+    }),
+  ).toThrow();
+  const row = e.store.db
+    .query<ProjectRow, [string]>('SELECT * FROM work_projects WHERE id=?')
+    .get(project.id)!;
+  e.store.atomic(() =>
+    e.store.emit('work.project_saved', {
+      row: {
+        ...row,
+        stages_json: JSON.stringify(
+          stages.map((s) => (s.id === 'quality' ? { ...s, category: 'review' } : s)),
+        ),
+      },
+    }),
+  );
+
+  const restored = e.work.projects().find((p) => p.id === project.id)!;
+  expect(restored.stages.find((s) => s.id === 'quality')?.category).toBe('active');
+  const item = e.work.create({
+    projectId: project.id,
+    stageId: 'quality',
+    title: 'Preserved status',
+  });
+  expect(e.work.update(item.id, { stageId: 'done' }, item.revision).stageId).toBe('done');
+  expect(verifyReplay(e.store).matches).toBe(true);
 });
 
 test('existing tasks import once, retain their lanes/history and do not create duplicate deliveries', () => {
@@ -276,9 +368,27 @@ test('authenticated work API validates writes and round-trips project, board, de
       ...(body === undefined ? {} : { body: JSON.stringify(body) }),
     });
   expect((await fetch(web.url + '/api/work')).status).toBe(401);
+  const longContext = 'Project requirements — '.repeat(5000) + 'FINAL CONTEXT MARKER';
   const project = (await (
-    await request('/projects', 'POST', { name: 'Product', key: 'PRD', stages: standardStages() })
+    await request('/projects', 'POST', {
+      name: 'Product',
+      key: 'PRD',
+      description: longContext,
+      stages: standardStages(),
+    })
   ).json()) as any;
+  expect(project.description).toBe(longContext);
+  const updatedContext = longContext + '\nMore requirements';
+  const updatedProject = await request('/projects/' + project.id, 'PATCH', {
+    name: 'Product',
+    description: updatedContext,
+    stages: standardStages(),
+  });
+  expect(updatedProject.status).toBe(200);
+  expect(((await updatedProject.json()) as any).description).toBe(updatedContext);
+  const nativeContext = e.work.projectContext(project.id);
+  const fullContextPath = nativeContext.match(/^Full project context: (.+)\n/)![1]!;
+  expect(await Bun.file(fullContextPath).text()).toBe(updatedContext);
   const item = (await (
     await request('/items', 'POST', {
       projectId: project.id,
@@ -305,4 +415,6 @@ test('authenticated work API validates writes and round-trips project, board, de
   const board = (await (await request('')).json()) as any;
   expect(board.items).toHaveLength(1);
   expect(board.projects[0].name).toBe('Product');
+  expect(board.projects[0].description).toBe(updatedContext);
+  expect(verifyReplay(e.store).matches).toBe(true);
 });

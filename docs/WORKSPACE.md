@@ -92,32 +92,49 @@ main-agent spend; unknown usage and external service charges are not invented.
 
 ## Work
 
-Work replaces the Tasks page. Create a project with a stable identifier prefix
-and either the standard workflow (Brief → In progress → Review → Done) or the
-content workflow (Brief → Research → Writing → Review → Done). Project settings
-let you rename stages, add active stages, choose stage agents and supply stage
-instructions. Stages containing work cannot be removed.
+Create a project with its name, context, and optional context files. Its identifier
+prefix is generated from the first three letters of the name in uppercase (for
+example, Autopilots becomes AUT); collisions receive a numeric suffix. Existing
+prefixes stay stable when a project is renamed. Short names are padded with X.
+New projects use To Do (grey), In Progress (blue), and Done (green). Status setup
+is not part of the project form; existing custom statuses and history are kept.
+
+Project context text has no application-defined length limit and is saved in full.
+Provider prompts use bounded previews of long context, with the complete text
+available in a local context file for provider tools to read.
+
+Attach up to 20 context files, 5 MB each. Files are stored privately alongside the
+workspace database and their metadata participates in event replay. Text content
+is included within context limits; other files are supplied by local path for
+provider tools to read. Project context is shared with work and personal chats
+assigned to that project. Keep the project-files directory with database backups.
 
 Write a work item with a brief, priority, assignee, labels, due date and acceptance
 criteria. Use the project board or list, search and assignee/priority filters.
 Click a card for its properties, activity, comments, results and agent run history.
+Project headers show completed/total work, a percentage, and category counts.
+Sidebar project counts show completed/total. All work and Completed are the two
+sidebar views. Within a project, use the completion selector, completion-date
+filter, and existing assignee filter to find finished work. Completion dates and
+actors come from durable activity history; editing a completed item does not
+change its completion date. Reopening clears its current completion marker and
+updates the progress summary while preserving earlier completion history.
 Drag cards between stages or use the detail panel's Stage selector. Concurrent
 edits are rejected using the work item's revision so stale clients cannot overwrite
 newer state.
 
-Entering an active stage starts its stage agent; explicitly choosing Unassigned
-keeps it human-owned. With no stage agent, the current work item assignee is kept.
-Changing the agent or stage cancels the previous pending run and interrupts its
-native lane. Agent completion hands evidence to the next active stage, then stops
-at Review. **Approve & complete** moves reviewed work to Done; **Request changes**
-returns it to the last active stage. An active historical execution prevents Done.
+Entering In Progress starts the assigned agent. Unassigned work stays manual.
+Changing the agent or status cancels the previous pending run and interrupts its
+native lane. Agent completion passes evidence through subsequent statuses, then
+reaches Done without a mandatory review gate. Active native execution must stop
+before work can move to Done.
 Comments are context for the next stage or explicitly resumed blocked run; they do
 not inject messages into a currently running turn. Archive stops pending execution;
 restore preserves history without restarting it. Use Resume agent to explicitly
 restart restored, cancelled work or a blocked run.
 
 Existing task records become General project work items with the same execution
-lanes and history. Completed tasks enter Review, and cancelled tasks are archived.
+lanes and history. Completed tasks enter Done, and cancelled tasks are archived.
 Import is idempotent and never queues another delivery for an existing task.
 See [Work architecture](WORK_ARCHITECTURE.md) for the source research and data flow.
 
@@ -178,13 +195,18 @@ bun run dev -- approval accept <approval-id>
 bun run dev -- approval decline <approval-id>
 ```
 
-External MCP connections and browser actions default to asking before actions.
-An operator may explicitly select Allow for a connection or browser. Agent tools
+Browser actions run automatically without approval prompts. External MCP connections
+default to asking before actions. An operator may explicitly select Allow for a connection. Agent tools
 cannot modify those grants. An agent with `approvalPolicy=never` receives a tool
 error when a KRU external action would need consent. Connector ownership,
 configuration and enabled status are rechecked before execution.
 
 ## Connector: third-party apps
+
+GitHub has a built-in card with token-only setup. Its connection is shared across
+personal chats, bots, Work, and Skills, and tool calls run without Kru approval
+prompts. Disconnect blocks that connection throughout the workspace.
+See [GitHub setup](GITHUB.md).
 
 Open **Connector** and choose **Connect app**. Select the bot that will use the
 app, give the connection a recognizable name, and enter either the app's remote
@@ -331,38 +353,38 @@ authentication, public hosting, or remote administration service in this release
 
 Core routes:
 
-| Method | Route | Purpose |
-| --- | --- | --- |
-| GET | `/api/state` | Agents, lanes, workspace records, usage and activity |
-| GET | `/api/providers` | Checked local CLI connection states |
-| POST | `/api/providers/codex\|claude/refresh\|install\|login\|cancel` | Check or set up an account connection |
-| POST | `/api/providers/claude/code` | Forward a sign-in code to the active Claude login |
-| GET | `/api/events` | Authenticated server-sent events |
-| POST / PATCH | `/api/agents[/:id]` | Create or configure a teammate |
-| POST / GET | `/api/agents/:id/messages` | Queue text or retrieve a lane |
-| GET / POST | `/api/conversations` | List past threads/model suggestions or create a thread |
-| PATCH | `/api/conversations/:id` | Rename or revision-guard a thread provider/model selection |
-| GET / POST | `/api/workflows` | List workflow definitions/runs or create a draft |
-| GET / PATCH | `/api/workflows/:id` | Read or revision-guard a workflow definition |
-| POST | `/api/workflows/:id/run` | Start with JSON input and `Idempotency-Key` |
-| GET | `/api/workflows/runs/:id` | Frozen graph and per-node execution data |
-| POST | `/api/workflows/runs/:id/cancel\|resume` | Stop or explicitly resume execution |
-| GET | `/api/work` | Projects and work items with execution state |
-| POST / PATCH | `/api/work/projects[/:id]` | Create a project or update its workflow |
-| POST | `/api/work/items` | Create work (human or agent-assigned) |
-| GET / PATCH | `/api/work/items/:id` | Detail/history or revision-guarded update |
-| POST | `/api/work/items/:id/comments` | Post a comment with `Idempotency-Key` |
-| POST | `/api/work/items/:id/archive\|restore\|resume` | Revision-guarded work controls |
-| POST | `/api/records/:kind` | Create task, routine, connector, memory or skill |
-| PATCH | `/api/records/:kind/:id` | Edit routine, connector, memory or skill |
-| DELETE | `/api/records/memory\|skill/:id` | Remove saved knowledge |
-| POST | `/api/records/task/:id/resume\|cancel` | Control a task |
-| POST | `/api/records/approval/:id/decide` | Accept or decline an active request |
-| POST | `/api/records/routine/:id/run\|token` | Run a routine or rotate its webhook token |
-| POST | `/api/records/connector/:id/tools` | Discover server tools |
-| POST | `/api/agents/:id/browser/start\|stop\|action` | Control an enabled browser |
-| GET | `/api/agents/:id/browser/screenshot` | Current browser screenshot |
-| POST | `/api/webhooks/:routine-id` | Authenticated, deduplicated event ingestion |
+| Method       | Route                                                          | Purpose                                                    |
+| ------------ | -------------------------------------------------------------- | ---------------------------------------------------------- |
+| GET          | `/api/state`                                                   | Agents, lanes, workspace records, usage and activity       |
+| GET          | `/api/providers`                                               | Checked local CLI connection states                        |
+| POST         | `/api/providers/codex\|claude/refresh\|install\|login\|cancel` | Check or set up an account connection                      |
+| POST         | `/api/providers/claude/code`                                   | Forward a sign-in code to the active Claude login          |
+| GET          | `/api/events`                                                  | Authenticated server-sent events                           |
+| POST / PATCH | `/api/agents[/:id]`                                            | Create or configure a teammate                             |
+| POST / GET   | `/api/agents/:id/messages`                                     | Queue text or retrieve a lane                              |
+| GET / POST   | `/api/conversations`                                           | List past threads/model suggestions or create a thread     |
+| PATCH        | `/api/conversations/:id`                                       | Rename or revision-guard a thread provider/model selection |
+| GET / POST   | `/api/workflows`                                               | List workflow definitions/runs or create a draft           |
+| GET / PATCH  | `/api/workflows/:id`                                           | Read or revision-guard a workflow definition               |
+| POST         | `/api/workflows/:id/run`                                       | Start with JSON input and `Idempotency-Key`                |
+| GET          | `/api/workflows/runs/:id`                                      | Frozen graph and per-node execution data                   |
+| POST         | `/api/workflows/runs/:id/cancel\|resume`                       | Stop or explicitly resume execution                        |
+| GET          | `/api/work`                                                    | Projects and work items with execution state               |
+| POST / PATCH | `/api/work/projects[/:id]`                                     | Create a project or update its workflow                    |
+| POST         | `/api/work/items`                                              | Create work (human or agent-assigned)                      |
+| GET / PATCH  | `/api/work/items/:id`                                          | Detail/history or revision-guarded update                  |
+| POST         | `/api/work/items/:id/comments`                                 | Post a comment with `Idempotency-Key`                      |
+| POST         | `/api/work/items/:id/archive\|restore\|resume`                 | Revision-guarded work controls                             |
+| POST         | `/api/records/:kind`                                           | Create task, routine, connector, memory or skill           |
+| PATCH        | `/api/records/:kind/:id`                                       | Edit routine, connector, memory or skill                   |
+| DELETE       | `/api/records/memory\|skill/:id`                               | Remove saved knowledge                                     |
+| POST         | `/api/records/task/:id/resume\|cancel`                         | Control a task                                             |
+| POST         | `/api/records/approval/:id/decide`                             | Accept or decline an active request                        |
+| POST         | `/api/records/routine/:id/run\|token`                          | Run a routine or rotate its webhook token                  |
+| POST         | `/api/records/connector/:id/tools`                             | Discover server tools                                      |
+| POST         | `/api/agents/:id/browser/start\|stop\|action`                  | Control an enabled browser                                 |
+| GET          | `/api/agents/:id/browser/screenshot`                           | Current browser screenshot                                 |
+| POST         | `/api/webhooks/:routine-id`                                    | Authenticated, deduplicated event ingestion                |
 
 Migration 10 adds `workspace_records`. Versioned workspace events participate in
 the same transaction, ownership fence and replay verification as core domain

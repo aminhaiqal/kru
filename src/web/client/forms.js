@@ -26,10 +26,10 @@ function requireTeammate() {
   toast('Create a teammate first.');
   return false;
 }
-function openForm(title, markup, onSubmit, submitLabel = 'Save') {
+function openForm(title, markup, onSubmit, submitLabel = 'Save', destructive = false) {
   dialogSubmit = onSubmit;
   $('#dialog-content').innerHTML =
-    `<div class="dialog-header"><h2 id="dialog-title">${title}</h2><button class="icon-button" data-action="close-dialog" aria-label="Close dialog">×</button></div><form id="editor-form" class="dialog-body">${markup}<div id="form-error" class="form-error" role="alert" hidden></div><div class="dialog-footer"><button type="button" data-action="close-dialog">Cancel</button><button class="primary" type="submit">${submitLabel}</button></div></form>`;
+    `<div class="dialog-header"><h2 id="dialog-title">${title}</h2>${destructive ? '' : '<button class="icon-button" data-action="close-dialog" aria-label="Close dialog">×</button>'}</div><form id="editor-form" class="dialog-body">${markup}<div id="form-error" class="form-error" role="alert" hidden></div><div class="dialog-footer"><button type="button" data-action="close-dialog">Cancel</button><button class="${destructive ? 'destructive' : 'primary'}" type="submit">${submitLabel}</button></div></form>`;
   if (!$('#dialog').open) $('#dialog').showModal();
 }
 function showInfo(title, markup) {
@@ -99,13 +99,7 @@ function openAgent(id) {
         help: 'Optional. Requires a priced model.',
       }) +
       '</div>' +
-      check('Enable this teammate’s browser', 'browser', c.browser?.enabled !== false) +
-      field('External browser actions', 'browserPermission', c.browser?.permission || 'ask', {
-        options: [
-          ['ask', 'Ask for approval'],
-          ['allow', 'Allow actions without asking'],
-        ],
-      }),
+      check('Enable this teammate’s browser', 'browser', c.browser?.enabled !== false),
     async (form) => {
       const provider = form.get('provider'),
         profile = form.get('profile');
@@ -115,7 +109,7 @@ function openAgent(id) {
         instructions: form.get('instructions'),
         promptProfile: profile,
         permissions: { sandbox: form.get('sandbox'), approvalPolicy: form.get('approvalPolicy') },
-        browser: { enabled: form.has('browser'), permission: form.get('browserPermission') },
+        browser: { enabled: form.has('browser') },
       };
       if (form.get('model').trim()) config.model = form.get('model').trim();
       else if (agent) config.model = null;
@@ -162,6 +156,10 @@ document.addEventListener('submit', async (event) => {
 
 $('#dialog').addEventListener('cancel', (event) => {
   if (dialogBusy) event.preventDefault();
+});
+
+$('#dialog').addEventListener('close', () => {
+  for (const input of $('#dialog').querySelectorAll('input[type="password"]')) input.value = '';
 });
 
 export { check, closeDialog, field, openAgent, openForm, requireTeammate, showInfo };

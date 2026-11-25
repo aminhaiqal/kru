@@ -1,7 +1,7 @@
 {
   "entry": [
     "src/desktop/engine.ts",
-    "src/web/client/{main,theme}.js",
+    "src/web/client/{main,theme,account}.js",
     "desktop/{main,preload}.cjs",
     "scripts/*.{ts,cjs}",
     "examples/*.ts",

@@ -6,6 +6,8 @@ import { Store } from '../src/store';
 import { Daemon } from '../src/daemon';
 import { FakeProvider } from '../src/providers/fake/adapter';
 import { createWebServer } from '../src/web/server';
+import { githubFixture } from '../test/fakes/github';
+import { setGitHubToken } from '../src/workspace/github';
 import type { ConnectedProvider } from '../src/providers/connections';
 
 const executable = process.env.KRU_BROWSER_EXECUTABLE || chromium.executablePath();
@@ -19,11 +21,30 @@ const artifactDir = process.env.KRU_UI_ARTIFACT_DIR || join(tmpdir(), 'kru-works
 mkdirSync(artifactDir, { recursive: true });
 const signedIn = { codex: false, claude: false },
   installed = { codex: true, claude: false };
+const restoreGitHubToken = setGitHubToken(undefined);
+let githubFixtureToken = '';
 const completeLogin: Partial<Record<ConnectedProvider, () => void>> = {};
 const daemon = new Daemon(
   store,
   {
     pollMs: 10,
+    providerLimits: async (provider) => [
+      {
+        id: 'weekly',
+        label: 'Weekly',
+        usedPercent: provider === 'codex' ? 42 : 55,
+        windowMinutes: 10080,
+        resetsAt: new Date(Date.now() + 86400000).toISOString(),
+      },
+      {
+        id: 'short',
+        label: '5-hour',
+        usedPercent: provider === 'codex' ? 18 : 33,
+        windowMinutes: 300,
+        resetsAt: new Date(Date.now() + 3600000).toISOString(),
+      },
+    ],
+    integrationFetch: githubFixture(() => githubFixtureToken || 'missing-fixture-token'),
     modelCatalog: async (provider) => [
       {
         id: provider === 'codex' ? 'gpt-6.2-sol' : 'opus',
@@ -190,7 +211,18 @@ try {
   web = createWebServer({ store, daemon, port: 0 });
   browser = await chromium.launch({ headless: true, executablePath: executable });
   page = await browser.newPage({ viewport: { width: 1440, height: 960 }, deviceScaleFactor: 1 });
+  await page.exposeFunction('__githubFixtureStorage', async (token?: string) => {
+    if (token) {
+      githubFixtureToken = token;
+      setGitHubToken(token);
+    }
+    return { available: true, saved: !!githubFixtureToken, error: null };
+  });
   await page.addInitScript(() => {
+    (globalThis as any).kruGitHub = {
+      status: () => (globalThis as any).__githubFixtureStorage(),
+      saveToken: (token: string) => (globalThis as any).__githubFixtureStorage(token),
+    };
     const notices: { title: string; body: string; closed: boolean }[] = [];
     (globalThis as any).__requestNotifications = notices;
     class RequestNotification {
@@ -391,6 +423,15 @@ try {
   completeLogin.codex!();
   await codex.getByText('Connected', { exact: true }).waitFor();
   checks.push('Codex device sign-in transitions from not connected to connected');
+  await page.locator('.usage-limits-trigger[aria-label*="Weekly: 42% used"]').waitFor();
+  await page.locator('.usage-limits-trigger').click();
+  await check(
+    (await page.locator('.limit-ring.weekly').getAttribute('stroke-dasharray')) === '42 100' &&
+      (await page.locator('.limit-ring.short').getAttribute('stroke-dasharray')) === '18 100' &&
+      (await page.locator('#usage-limits-menu').innerText()).includes('Resets'),
+    'Provider usage rings show weekly outside, five-hour inside, and reset times in a popover',
+  );
+  await page.keyboard.press('Escape');
   await claude.getByRole('button', { name: 'Install Claude Code', exact: true }).click();
   await claude.getByRole('button', { name: 'Sign in', exact: true }).click();
   await claude.getByRole('button', { name: 'Enter a sign-in code', exact: true }).click();
@@ -496,6 +537,12 @@ try {
   await page.locator('#message-input').fill('Confirm the launch date.');
   await page.getByRole('button', { name: 'Send message' }).click();
   await waitText(page, 'The launch date is June 18, as agreed earlier.');
+  await page.locator('.usage-limits-trigger[aria-label*="Claude Code usage"]').waitFor();
+  await page.locator('.usage-limits-trigger[aria-label*="Weekly: 55% used"]').waitFor();
+  await check(
+    (await page.locator('.limit-ring.short').getAttribute('stroke-dasharray')) === '33 100',
+    'Usage rings follow the selected provider when switching models in a conversation',
+  );
   await check(
     await page
       .locator('.conversation-model')
@@ -517,6 +564,46 @@ try {
     'Past conversation search finds a thread by its first message',
   );
   await page.getByRole('searchbox', { name: 'Search conversations' }).fill('');
+  await page.getByRole('button', { name: 'New conversation', exact: true }).click();
+  await page.locator('.conversation-thread[aria-current="true"]').hover();
+  await page.locator('.conversation-thread[aria-current="true"] .chat-rename-thread').click();
+  await page.getByLabel('Conversation name', { exact: true }).fill('Disposable rename fixture');
+  await saveDialog(page, 'Rename');
+  const disposable = () => page!.locator('.conversation-thread[title="Disposable rename fixture"]');
+  await disposable().waitFor();
+  await disposable().hover();
+  await disposable().locator('.chat-delete-thread').click();
+  const confirmation = page.getByRole('dialog');
+  await check(
+    (await confirmation.getByRole('button').count()) === 2 &&
+      (await confirmation.getByText(/and its attached files will be deleted/).count()) === 1,
+    'Trash icon opens a deletion warning with only Cancel and Delete',
+  );
+  const red = await confirmation
+    .getByRole('button', { name: 'Delete', exact: true })
+    .evaluate((button) => {
+      const rgb = (globalThis as any)
+        .getComputedStyle(button)
+        .backgroundColor.match(/\d+/g)
+        .map(Number);
+      return rgb[0] > rgb[1] * 2 && rgb[0] > rgb[2] * 2;
+    });
+  await check(red, 'Delete confirmation uses a red destructive action');
+  await confirmation.getByRole('button', { name: 'Cancel', exact: true }).click();
+  await check(
+    (await disposable().count()) === 1,
+    'Cancelling deletion keeps the renamed conversation',
+  );
+  await disposable().hover();
+  await disposable().locator('.chat-delete-thread').click();
+  await saveDialog(page, 'Delete');
+  await page.waitForFunction(
+    () =>
+      !(globalThis as any).document.querySelector(
+        '.conversation-thread[title="Disposable rename fixture"]',
+      ),
+  );
+  checks.push('Sidebar rename persists and confirmed deletion removes the intended conversation');
   await page.locator('[data-agent]').first().click();
   await waitText(page, 'Echo: Review the workspace and report back.');
   checks.push('Personal chat stays separate from teammate conversation history');
@@ -593,14 +680,31 @@ try {
   await page.getByRole('button', { name: 'Work', exact: true }).click();
   await page.getByRole('button', { name: 'New project', exact: true }).click();
   await page.getByLabel('Project name', { exact: true }).fill('Autopilots launch');
-  await page.getByLabel('Identifier prefix').fill('LAU');
-  await page.getByLabel('Workflow template').selectOption('content');
   const workerId = daemon.workspace.workflows.list()[0]!.agentId;
-  await page.locator('#f-stage-agent-1').selectOption(workerId);
-  await page.locator('#f-stage-agent-2').selectOption(workerId);
+  await check(
+    (await page.getByLabel('Status name', { exact: true }).count()) === 0,
+    'Project form omits workflow status configuration',
+  );
+  await page.locator('#project-files').setInputFiles({
+    name: 'context.txt',
+    mimeType: 'text/plain',
+    buffer: Buffer.from('Project attachment fixture'),
+  });
   await saveDialog(page, 'Create project');
-  await page.getByRole('button', { name: 'Add work to Brief', exact: true }).click();
+  const contextProject = daemon.workspace.work
+    .projects()
+    .find((project) => project.name === 'Autopilots launch')!;
+  await check(
+    contextProject.key === 'AUT' &&
+      contextProject.files[0]?.name === 'context.txt' &&
+      daemon.workspace.work
+        .projectContext(contextProject.id)
+        .includes('Project attachment fixture'),
+    'Project creation generates uppercase prefixes and persists context uploads',
+  );
+  await page.getByRole('button', { name: 'Add work to To Do', exact: true }).click();
   await page.getByLabel('Title', { exact: true }).fill('Launch post for Autopilots');
+  await page.getByLabel('Assignee', { exact: true }).selectOption(workerId);
   await page
     .getByLabel('Brief', { exact: true })
     .fill(
@@ -615,40 +719,58 @@ try {
     .locator('.work-comment')
     .getByText('Include a clear next step for readers.', { exact: true })
     .waitFor();
-  await page.getByLabel('Work stage', { exact: true }).selectOption('research');
+  await page.getByLabel('Work stage', { exact: true }).selectOption('in_progress');
   await page.waitForFunction(
-    () =>
-      ((globalThis as any).document.querySelector('#work-item-stage') as any)?.value === 'review',
-  );
-  await check(
-    daemon.workspace.work.list().find((item) => item.title === 'Launch post for Autopilots')
-      ?.stageId === 'review',
-    'Project stage assignment runs Research and Writing and stops at Review',
+    () => ((globalThis as any).document.querySelector('#work-item-stage') as any)?.value === 'done',
   );
   const launchItem = daemon.workspace.work
     .list()
     .find((item) => item.title === 'Launch post for Autopilots')!;
   await check(
-    daemon.workspace.work.detail(launchItem.id).runs.length === 2,
-    'Stage handoffs create exactly one durable run per stage',
+    launchItem.stageId === 'done',
+    'Assigned work completes without a mandatory review gate',
   );
-  await page.getByRole('button', { name: 'Approve & complete', exact: true }).click();
-  await page.waitForFunction(
-    () => ((globalThis as any).document.querySelector('#work-item-stage') as any)?.value === 'done',
+  await check(
+    daemon.workspace.work.detail(launchItem.id).runs.length === 1,
+    'Fixed In Progress status completes its assigned work',
   );
   await page.getByRole('button', { name: 'Close work details' }).click();
-  await page.getByRole('button', { name: 'Add work to Brief', exact: true }).click();
+  await page.getByRole('button', { name: 'Add work to To Do', exact: true }).click();
   await page.getByLabel('Title', { exact: true }).fill('Review the launch checklist');
   await page.getByLabel('Assignee', { exact: true }).selectOption('');
   await saveDialog(page, 'Create work');
   await page.getByRole('button', { name: 'Close work details' }).click();
+  await page
+    .locator('.work-progress')
+    .getByText('1 of 2 completed · 50%', { exact: true })
+    .waitFor();
+  await page.getByLabel('Work completion', { exact: true }).selectOption('completed');
+  await check(
+    (await page.locator('.work-card').count()) === 1 &&
+      (await page.locator('.work-card-completed').count()) === 1,
+    'Project progress and Completed view show dated completed work',
+  );
+  await check(
+    (await page.locator('[aria-label="Work views"] button').count()) === 2,
+    'Work sidebar contains only All work and Completed views',
+  );
+  await page.getByLabel('Completed since', { exact: true }).fill('2099-01-01');
+  await check(
+    (await page.locator('.work-card').count()) === 0,
+    'Completion date filter excludes earlier work',
+  );
+  await page.getByLabel('Work completion', { exact: true }).selectOption('all');
   const checklist = page.locator('.work-card').filter({ hasText: 'Review the launch checklist' });
   await checklist.dragTo(
-    page.getByRole('region', { name: 'Review column', exact: true }).locator('.work-column-body'),
+    page
+      .getByRole('region', { name: 'In Progress column', exact: true })
+      .locator('.work-column-body'),
   );
   await page.waitForFunction(() =>
     [
-      ...(globalThis as any).document.querySelectorAll('[data-drop-stage="review"] .work-card'),
+      ...(globalThis as any).document.querySelectorAll(
+        '[data-drop-stage="in_progress"] .work-card',
+      ),
     ].some((el: any) => el.textContent.includes('Review the launch checklist')),
   );
   checks.push('Drag work between stages using revision-guarded updates');
@@ -902,15 +1024,102 @@ try {
     'Reminder opens the exact waiting thread and declining keeps its own conversation history',
   );
 
+  await page.getByRole('button', { name: 'Connector', exact: true }).click();
+  await page.locator('.github-card').getByText('Not connected', { exact: true }).waitFor();
+  await page.locator('.github-card').getByRole('button', { name: 'Connect', exact: true }).click();
+  await page
+    .getByLabel('GitHub token', { exact: true })
+    .fill('github_pat_' + 'uifixtureonly'.repeat(3));
+  await check(
+    (await page.getByLabel('Tool permissions', { exact: true }).count()) === 0 &&
+      (await page.getByLabel('Use in', { exact: true }).count()) === 0,
+    'GitHub setup contains only its token field without scope or approval selectors',
+  );
+  await saveDialog(page, 'Connect GitHub');
+  await check(
+    (await page.locator('#f-githubToken').inputValue()) === '',
+    'Closing GitHub setup clears its password field',
+  );
+  await page.locator('.github-card').getByText('Connected', { exact: true }).waitFor();
+  const githubPersonal = daemon.workspace.records
+    .list('connector')
+    .find((entry) => entry.data.name === 'GitHub')!;
+  await check(
+    githubPersonal.agentId === null && githubPersonal.data.permission === 'allow',
+    'GitHub creates one platform-wide connector with automatic tool access',
+  );
+  await page
+    .locator('.github-card')
+    .getByRole('button', { name: 'View tools', exact: true })
+    .click();
+  await page.getByRole('dialog').getByText('search_repositories', { exact: true }).waitFor();
+  await page.getByRole('button', { name: 'Close dialog', exact: true }).click();
+  await page
+    .locator('.github-card')
+    .getByRole('button', { name: 'Disconnect', exact: true })
+    .click();
+  await page.locator('.github-card').getByText('Disconnected', { exact: true }).waitFor();
+  await page.locator('.github-card').getByRole('button', { name: 'Connect', exact: true }).click();
+  await page.locator('.github-card').getByText('Connected', { exact: true }).waitFor();
+  checks.push('GitHub exposes discovered tools and supports disconnect and reconnect');
+  const githubBot = githubPersonal;
+  await check(
+    (await daemon.workspace.integrations.tools(githubPersonal.id, workerId)).some(
+      (tool) => tool.name === 'search_repositories',
+    ),
+    'The same GitHub connector is available to other bots',
+  );
+  await check(
+    !JSON.stringify(daemon.workspace.records.list('connector')).includes(
+      process.env.KRU_GITHUB_TOKEN!,
+    ),
+    'GitHub credentials stay out of connector records and UI state',
+  );
+  await page.screenshot({
+    path: join(artifactDir, 'connector-github.png'),
+    fullPage: true,
+    animations: 'disabled',
+  });
+  await page.getByRole('button', { name: 'Skills', exact: true }).click();
+  if (await page.locator('[data-action="wf-back"]').count())
+    await page.locator('[data-action="wf-back"]').click();
+  await page.getByRole('button', { name: 'New workflow', exact: true }).click();
+  await page.getByLabel('Workflow name', { exact: true }).fill('GitHub repository lookup');
+  await page.getByLabel('Workflow bot', { exact: true }).selectOption(workerId);
+  await saveDialog(page, 'Create workflow');
+  await check(
+    (await page.locator('.wf-run-strip').count()) === 0,
+    'A new GitHub workflow opens fresh settings without inheriting a previous execution',
+  );
+  await page.getByRole('button', { name: 'Remove node', exact: true }).click();
+  await page.locator('[data-action="wf-add"][data-id="connector"]').click();
+  await page.getByLabel('App connection', { exact: true }).selectOption(githubBot.id);
+  await page.getByRole('button', { name: 'Load app tools', exact: true }).click();
+  await page.getByLabel('App tool', { exact: true }).selectOption('search_repositories');
+  await page.getByLabel('Arguments (JSON)', { exact: true }).fill('{"query":"kru"}');
+  await page.getByRole('button', { name: 'Apply node', exact: true }).click();
+  await page.getByRole('button', { name: 'Output of When run manually', exact: true }).click();
+  await page.getByRole('button', { name: 'Input of App tool', exact: true }).click();
+  await page.getByRole('button', { name: 'Save', exact: true }).click();
+  await page.getByRole('button', { name: 'Run workflow', exact: true }).click();
+  await saveDialog(page, 'Run workflow');
+  await page.waitForFunction(
+    () =>
+      (globalThis as any).document.querySelector('.wf-run-strip .status')?.textContent ===
+      'completed',
+  );
+  checks.push(
+    'Skills workflows execute discovered GitHub connector tools through the shared gateway',
+  );
+
   // Projects are shared records; both views use the existing Work project editor.
   await page.getByRole('button', { name: 'Conversations', exact: true }).click();
   await page.getByRole('button', { name: 'New project', exact: true }).click();
   await page.getByLabel('Project name', { exact: true }).fill('Chat launch');
-  await page.getByLabel('Identifier prefix').fill('CHT');
   await saveDialog(page, 'Create project');
   const sharedChatProject = daemon.workspace.work
     .projects()
-    .find((project) => project.key === 'CHT')!;
+    .find((project) => project.key === 'CHA')!;
   const chatGroup = () =>
     page!.locator(`.conversation-project[data-project-id="${sharedChatProject.id}"]`);
   await chatGroup().locator('.conversation-thread[aria-current="true"]').waitFor();
@@ -942,11 +1151,10 @@ try {
   await page.getByRole('button', { name: 'Work', exact: true }).click();
   await page.getByRole('button', { name: 'New project', exact: true }).click();
   await page.getByLabel('Project name', { exact: true }).fill('Work research');
-  await page.getByLabel('Identifier prefix').fill('WRS');
   await saveDialog(page, 'Create project');
   const sharedWorkProject = daemon.workspace.work
     .projects()
-    .find((project) => project.key === 'WRS')!;
+    .find((project) => project.key === 'WOR')!;
   await page.getByRole('button', { name: 'Conversations', exact: true }).click();
   const workGroup = () =>
     page!.locator(`.conversation-project[data-project-id="${sharedWorkProject.id}"]`);
@@ -1005,14 +1213,14 @@ try {
   await page.waitForTimeout(250);
   await page.screenshot({ path: join(artifactDir, 'desktop.png'), fullPage: true });
   await page.locator(`[data-agent="${agentId}"]`).click();
-  await page.getByRole('button', { name: 'Browser', exact: true }).click();
+  await page.locator('.conversation-browser').click();
   await page.getByRole('complementary', { name: 'Browser panel' }).waitFor();
   await check(
     (await page.locator('#browser-native-surface').count()) === 1 &&
       (await page.locator('#browser-live-frame, #browser-keyboard').count()) === 0,
     'Browser panel uses a native desktop surface without screenshot or input proxy elements',
   );
-  await page.getByRole('button', { name: 'Close browser panel', exact: true }).click();
+  await page.locator('.conversation-browser').click();
   await page.locator(`[data-agent="${agentId}"]`).click();
   await page.setViewportSize({ width: 390, height: 844 });
   await page.waitForTimeout(250);
@@ -1121,6 +1329,7 @@ try {
   await browser?.close();
   await web?.close();
   await daemon.stop(0);
+  restoreGitHubToken();
   store.close();
   rmSync(dir, { recursive: true, force: true });
 }

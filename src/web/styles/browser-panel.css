@@ -50,29 +50,6 @@
   height: 18px;
   flex-shrink: 0;
 }
-.browser-panel-heading {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 12px 14px 10px;
-  min-height: 58px;
-  border-bottom: 1px solid var(--browser-line);
-}
-.browser-panel-heading > span,
-.browser-panel-heading > div {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-.browser-panel-heading strong {
-  font-size: 0.8125rem;
-  font-weight: 500;
-}
-.browser-panel-heading small {
-  font-size: 0.625rem;
-  color: var(--muted);
-  margin-left: 3px;
-}
 .browser-panel-tabs {
   display: flex;
   align-items: center;
@@ -218,16 +195,6 @@
 .browser-panel-error[hidden] {
   display: none;
 }
-.browser-panel-expanded > .browser-panel {
-  position: absolute;
-  inset: 0;
-  width: 100%;
-  z-index: 6;
-}
-.browser-panel-expanded .conversation-browser[aria-pressed='true'] {
-  background: var(--tint);
-  color: var(--accent);
-}
 @keyframes browser-working {
   to {
     opacity: 0.35;
@@ -255,12 +222,9 @@
 @media (max-width: 680px) {
   .browser-panel {
     position: absolute;
-    inset: 0;
+    inset: 56px 0 0;
     width: 100%;
     z-index: 6;
-  }
-  .browser-panel-heading {
-    min-height: 52px;
   }
   .browser-address-bar button {
     width: 26px;
@@ -285,6 +249,7 @@
 }
 .browser-panel-challenge {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 10px;
   padding: 12px 14px;
@@ -293,10 +258,14 @@
   background: var(--warning-bg);
   color: var(--warning);
 }
+.browser-panel-challenge > span {
+  flex-basis: 100%;
+}
 .browser-panel-challenge[hidden] {
   display: none;
 }
 .browser-panel-challenge button {
+  white-space: nowrap;
   width: auto;
   padding: 6px 9px;
   background: var(--warning-bg);
