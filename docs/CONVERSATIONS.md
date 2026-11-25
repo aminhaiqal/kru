@@ -13,7 +13,7 @@ for the installed CLI and account. The UI offers only that model's supported
 efforts, then sends the chosen model and effort to the native CLI. Codex receives
 `model_reasoning_effort` and turn `effort`; Claude receives SDK `model`, `effort`
 and a matching `CLAUDE_CODE_EFFORT_LEVEL` for the child process. Global CLI
-configuration is not rewritten. Provider sign-in is managed in Connector.
+configuration is not rewritten. Provider sign-in is managed in Plugin.
 
 The current metadata queries were verified against Codex CLI 0.171.0 and Claude
 Code 2.1.310. Codex returned GPT-6.2 Sol/Astra and its available older models;

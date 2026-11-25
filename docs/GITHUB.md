@@ -1,6 +1,6 @@
-# GitHub connector
+# GitHub plugin
 
-Open **Connector → GitHub → Connect** and paste a GitHub personal access token.
+Open **Plugin → GitHub → Connect** and paste a GitHub personal access token.
 The form links to GitHub's token creation page, where you choose the repositories
 and GitHub permissions it can access. Kru uses
 [GitHub's official hosted MCP server](https://github.com/github/github-mcp-server#remote-github-mcp-server).
@@ -10,8 +10,8 @@ Work, and Skills workflows share the same connection. GitHub tool calls run
 automatically without Kru approval prompts. GitHub still enforces the token's
 repository access and scopes. Disconnect disables access everywhere.
 
-The card shows **Connected** after successfully discovering tools. Use **View
-tools**, **Recheck**, **Edit**, or **Disconnect**. Existing GitHub records also
+The card shows **Connected** after successfully discovering tools. Click it
+to access **View tools**, **Edit**, or **Disconnect**. Existing GitHub records also
 receive platform-wide access without changing their persisted ownership/history.
 Other app connectors retain their existing scope and permission behavior.
 

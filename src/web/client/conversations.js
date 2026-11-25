@@ -259,7 +259,7 @@ async function chatModel(provider = chatSelection().provider) {
       showInfo(
         'Choose a model',
         tabs() +
-          `<p class="form-error">${escape(error.message)}</p><button data-view="connector">Open Connector</button>`,
+          `<p class="form-error">${escape(error.message)}</p><button data-view="connector">Open Plugin</button>`,
       );
   } finally {
     C.modelBusy = false;

@@ -30,7 +30,7 @@ const F = {
 const wfTypes = {
   trigger: ['↗', 'Trigger', 'Start manually or on an interval'],
   agent: ['✳', 'Bot task', 'Let a bot reason and do work'],
-  connector: ['↔', 'App tool', 'Use an existing Connector'],
+  connector: ['↔', 'App tool', 'Use an existing Plugin'],
   set: ['≡', 'Edit data', 'Map and shape the next input'],
   if: ['⑂', 'Condition', 'Send data to a true or false branch'],
 };
@@ -92,7 +92,7 @@ function wfSettings(isNew = false) {
         help: 'Optional. Leave blank for manual runs only.',
       }) +
       check('Activate interval schedule', 'active', flow?.active) +
-      '<p class="help">App steps use connectors belonging to this workflow’s bot. Bot tasks may choose a different bot.</p>',
+      '<p class="help">App steps use plugins belonging to this workflow’s bot. Bot tasks may choose a different bot.</p>',
     async (form) => {
       if (!isNew) wfCollectNode();
       const body = {
@@ -191,7 +191,7 @@ function renderWorkflows() {
             )
             .join(
               '',
-            )}<p>Click an output circle, then another node’s input to connect them.</p><button class="quiet small" data-action="wf-add-connector">Open Connector</button></aside><div class="wf-stage"><div class="wf-canvas-toolbar"><span>${F.connect ? 'Select an input to complete the connection' : 'Drag nodes to arrange your workflow'}</span><div><button data-action="wf-zoom-in" aria-label="Zoom in">+</button><button data-action="wf-zoom-out" aria-label="Zoom out">−</button><button data-action="wf-fit">Fit</button></div></div><svg class="wf-canvas" aria-label="Workflow canvas" viewBox="${F.view.x} ${F.view.y} ${F.view.w} ${F.view.h}" preserveAspectRatio="xMidYMid meet"><defs><pattern id="wf-grid" width="22" height="22" patternUnits="userSpaceOnUse"><circle cx="1" cy="1" r="1" class="wf-grid-dot"/></pattern><marker id="wf-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z"/></marker></defs><rect class="wf-grid" x="-20000" y="-20000" width="40000" height="40000" fill="url(#wf-grid)"/><g class="wf-edges">${flow.graph.edges.map((edge, index) => wfEdge(edge, index)).join('')}</g>${flow.graph.nodes.map(wfCanvasNode).join('')}</svg>${run ? `<div class="wf-run-strip">${status(run.status)}<span>${run.nodes.filter((node) => node.status === 'completed').length}/${run.nodes.length} steps completed${run.error ? ' · ' + escape(run.error) : ''}</span>${running ? actions('wf-cancel', 'Stop run', run.id, 'quiet') : ['failed', 'interrupted'].includes(run.status) ? actions('wf-resume', 'Resume', run.id, 'quiet') : ''}<button class="quiet small" data-action="wf-runs-tab">View execution</button></div>` : ''}</div><aside class="wf-inspector" aria-label="Node settings">${renderWFInspector()}</aside></div>`
+            )}<p>Click an output circle, then another node’s input to connect them.</p><button class="quiet small" data-action="wf-add-connector">Open Plugin</button></aside><div class="wf-stage"><div class="wf-canvas-toolbar"><span>${F.connect ? 'Select an input to complete the connection' : 'Drag nodes to arrange your workflow'}</span><div><button data-action="wf-zoom-in" aria-label="Zoom in">+</button><button data-action="wf-zoom-out" aria-label="Zoom out">−</button><button data-action="wf-fit">Fit</button></div></div><svg class="wf-canvas" aria-label="Workflow canvas" viewBox="${F.view.x} ${F.view.y} ${F.view.w} ${F.view.h}" preserveAspectRatio="xMidYMid meet"><defs><pattern id="wf-grid" width="22" height="22" patternUnits="userSpaceOnUse"><circle cx="1" cy="1" r="1" class="wf-grid-dot"/></pattern><marker id="wf-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z"/></marker></defs><rect class="wf-grid" x="-20000" y="-20000" width="40000" height="40000" fill="url(#wf-grid)"/><g class="wf-edges">${flow.graph.edges.map((edge, index) => wfEdge(edge, index)).join('')}</g>${flow.graph.nodes.map(wfCanvasNode).join('')}</svg>${run ? `<div class="wf-run-strip">${status(run.status)}<span>${run.nodes.filter((node) => node.status === 'completed').length}/${run.nodes.length} steps completed${run.error ? ' · ' + escape(run.error) : ''}</span>${running ? actions('wf-cancel', 'Stop run', run.id, 'quiet') : ['failed', 'interrupted'].includes(run.status) ? actions('wf-resume', 'Resume', run.id, 'quiet') : ''}<button class="quiet small" data-action="wf-runs-tab">View execution</button></div>` : ''}</div><aside class="wf-inspector" aria-label="Node settings">${renderWFInspector()}</aside></div>`
     }</div>`;
 }
 function wfEdge(edge, index) {
@@ -255,7 +255,7 @@ function renderWFInspector() {
     fields +=
       wfField('App connection', 'connectorId', selected || '', {
         options: [
-          ['', 'Choose a connector'],
+          ['', 'Choose a plugin'],
           ...connectors.map((entry) => [entry.id, entry.data.name]),
         ],
       }) +
@@ -273,7 +273,7 @@ function renderWFInspector() {
         area: true,
         rows: 7,
       }) +
-      '<p class="help">Uses this workflow’s bot and its existing Connector permissions. Ask-before-action requests appear in the bot’s conversation.</p>';
+      '<p class="help">Uses this workflow’s bot and its existing Plugin permissions. Ask-before-action requests appear in the bot’s conversation.</p>';
     const tool = tools.find((tool) => tool.name === selectedTool);
     if (tool)
       fields += `<details><summary>Tool input schema</summary><pre class="wf-json">${escape(JSON.stringify(tool.inputSchema, null, 2))}</pre></details>`;

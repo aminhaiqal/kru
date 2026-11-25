@@ -27,31 +27,31 @@ Preflight is omitted to preserve the application controls. See
 
 ### Connect Codex and Claude Code
 
-Open **Connector**. KRU checks `codex login status` and
+Open **Plugin**. KRU checks `codex login status` and
 `claude auth status --json` on this computer. The page starts in Checking and
 distinguishes Not installed, Not connected, Connected, and Needs attention.
 Executable presence or an imported SDK alone never produces Connected. A status
 check confirms the local CLI reports authentication; it does not make a paid
 model request or guarantee quota, network access or model entitlement.
 
-Use **Install** when a CLI is missing. KRU runs npm against the official
+Use **Connect** when a CLI is missing to install it. KRU runs npm against the official
 `@openai/codex` or `@anthropic-ai/claude-code` package in a project-private
 `providers/<database-id>/<provider>` directory beside the database. Existing
 global installations are not overwritten. Node.js with npm is required for this
 installation path. Update CLI uses the same private installation when the
 existing CLI cannot report its authentication state.
 
-Use **Sign in** for an installed provider. Codex starts its native device flow
+Use **Connect** for an installed provider to sign in. Codex starts its native device flow
 and displays the provider's verification link and one-time code. Claude Code
 starts `claude auth login`, opens its normal browser sign-in, and exposes an
 official sign-in link when the CLI prints one. If Claude asks for a returned code,
 **Enter a sign-in code** forwards it directly to that running CLI. Setup can be
 cancelled and expires after ten minutes (five minutes for installation).
 
-Completing setup triggers another status check. **Recheck** also picks up sign-in
-or sign-out performed in another terminal; checks refresh every thirty seconds
-while the UI runs. Disconnected providers hold queued work, and the conversation
-composer links to Connector. Reconnecting refreshes idle provider
+Completing setup triggers another status check. Checks refresh every thirty
+seconds while the UI runs and pick up sign-in or sign-out in another terminal.
+Connected cards show **Connected**; click it to access account settings. Disconnected providers hold queued work, and the conversation
+composer links to Plugin. Reconnecting refreshes idle provider
 runtimes so newly installed executables and credentials are used. Existing active
 turns finish normally. Demo teammates require no connection.
 
@@ -198,17 +198,17 @@ bun run dev -- approval decline <approval-id>
 Browser actions run automatically without approval prompts. External MCP connections
 default to asking before actions. An operator may explicitly select Allow for a connection. Agent tools
 cannot modify those grants. An agent with `approvalPolicy=never` receives a tool
-error when a KRU external action would need consent. Connector ownership,
+error when a KRU external action would need consent. Plugin ownership,
 configuration and enabled status are rechecked before execution.
 
-## Connector: third-party apps
+## Plugin: third-party apps
 
 GitHub has a built-in card with token-only setup. Its connection is shared across
 personal chats, bots, Work, and Skills, and tool calls run without Kru approval
 prompts. Disconnect blocks that connection throughout the workspace.
 See [GitHub setup](GITHUB.md).
 
-Open **Connector** and choose **Connect app**. Select the bot that will use the
+Open **Plugin** and choose **Connect app**. Select the bot that will use the
 app, give the connection a recognizable name, and enter either the app's remote
 MCP server URL or its local integration command. Authentication headers and
 environment mappings are available in the connection form's expandable settings.
@@ -216,13 +216,13 @@ Saving checks the actual server and discovers its available tools.
 
 The page shows Connected, Not checked, Not connected, or Needs attention based on
 the current process's connection checks. Merely saving or enabling a configuration
-does not mark it Connected. View tools displays the app's available tools and
-schemas; Recheck checks the live connection again. Disconnect disables access
+does not mark it Connected. Click **Connected** to open settings. **View tools**
+displays the app's available tools and schemas. **Disconnect** disables access
 and closes the cached connection; Connect re-enables it and checks it again.
 Editing settings invalidates the previous check. After restarting KRU, configured
 connections start unchecked until they are connected or checked again.
 
-Connector supports local stdio processes and remote Streamable HTTP MCP
+Plugin supports local stdio processes and remote Streamable HTTP MCP
 servers. Connections belong to one bot. Agents discover tools through `workspace` and
 call them using `use_tool`; dynamic discovery keeps Kru's six-tool prefix bounded.
 MCP server-initiated model sampling and elicitation are not enabled.
@@ -331,7 +331,7 @@ results, errors and timings. Export JSON downloads the workflow definition.
 
 Workflow settings provide an optional interval and an explicit activation switch.
 Schedules run only while KRU runs. Bot steps use the existing bounded task runner;
-app steps use existing Connector permissions. Ask-before-action requests appear
+app steps use existing Plugin permissions. Ask-before-action requests appear
 in the bot's conversation and link back through the reminder. Stop run cancels
 pending work. Interrupted or failed runs can be explicitly resumed after checking
 effects, while completed steps remain recorded.

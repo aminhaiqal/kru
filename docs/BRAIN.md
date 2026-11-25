@@ -7,10 +7,10 @@ Terminal workspaces otherwise use `KRU Brain` next to their database.
 
 ## Using the vault
 
-Open **Connector → Obsidian** to see the real vault path and note counts.
-**Open in Obsidian** opens the vault once it is registered. On the first use,
+Open **Plugin → Obsidian** to see the real vault path and note counts.
+Click **Connected** to open the vault in Obsidian once it is registered. On the first use,
 KRU opens Obsidian's vault manager and shows the folder to select with **Open
-folder as vault**. **Open folder** opens the same location in the file manager.
+folder as vault**.
 Obsidian does not need to be running for KRU to read or write its Markdown.
 No community plugin, cloud account, or API key is required.
 
@@ -75,7 +75,7 @@ instructions. Avoid storing credentials in knowledge notes.
 `test/brain.test.ts` covers Markdown editing, shared recall, personal chat,
 private-memory isolation, migration, deletions, optimistic updates, Unicode
 context limits and path/symlink boundaries. The shared UI and desktop checks
-verify the Connector card and Obsidian/folder controls using isolated vaults.
+verify the Plugin card and Obsidian/folder controls using isolated vaults.
 
 References: [Obsidian vaults](https://help.obsidian.md/vault),
 [properties](https://help.obsidian.md/properties), and

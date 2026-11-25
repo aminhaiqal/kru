@@ -4,9 +4,48 @@ import { toast } from './dom.js';
 import { $, actions, escape } from './dom.js';
 import { field, openForm, requireTeammate, showInfo } from './forms.js';
 import { githubUrl, githubTokenReference, isGitHubConnector } from '../../shared/github.ts';
-import { chatFolderIcon, githubIcon } from './icons.js';
+import { githubIcon } from './icons.js';
 import { S, connectionLabel, name, records } from './state.js';
 
+const codexMark =
+  '<svg viewBox="0 0 32 32" fill="none"><path d="m8 10 6 6-6 6m10 0h7" stroke="currentColor" stroke-width="2.7" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+const obsidianMark =
+  '<svg viewBox="0 0 32 32" fill="none"><path d="m18 3 9 12-5 13-12 2-6-13Z" fill="#9b7ce5"/><path d="m18 3-3 15 7 10 5-13Z" fill="#c4b0f4"/><path d="m4 17 11 1-5 12Z" fill="#6c47b0"/></svg>';
+
+function openPluginSettings(id) {
+  const provider = id.startsWith('provider:')
+    ? S.state.providers?.find((p) => p.id === id.slice(9))
+    : null;
+  if (provider) {
+    showInfo(
+      provider.name,
+      '<p class="help">Your account is connected.</p>' +
+        actions('provider-login', 'Sign in again', provider.id),
+    );
+    return;
+  }
+  const entry = records('connector').find((item) => item.id === id);
+  if (!entry) return;
+  showInfo(
+    entry.data.name,
+    '<p class="help">Manage this plugin’s connection.</p>' +
+      actions('connector-tools', 'View tools', id) +
+      actions('toggle-connector', 'Disconnect', id) +
+      actions(isGitHubConnector(entry) ? 'github-setup' : 'edit-connector', 'Edit', id),
+  );
+}
+function pluginRow({
+  classes = '',
+  attributes = '',
+  mark,
+  title,
+  caption,
+  status = '',
+  controls,
+  extra = '',
+}) {
+  return `<article class="connector-card ${classes}" ${attributes}><header class="connector-card-header"><div class="connector-card-mark" aria-hidden="true">${mark}</div><div class="connector-card-copy"><div class="plugin-title"><h2>${escape(title)}</h2>${status}</div><p class="connector-card-caption" title="${escape(caption)}">${escape(caption)}</p></div></header><footer class="connector-card-actions">${controls}</footer>${extra}</article>`;
+}
 function renderProviderCards() {
   return (S.state.providers || [])
     .map((p) => {
@@ -18,20 +57,51 @@ function renderProviderCards() {
           : 'Signing in'
         : connectionLabel(p.id);
       const attention = p.status === 'error' || p.action?.status === 'failed';
-      return `<article class="connector-card provider-card" data-provider="${p.id}"><header class="connector-card-header"><div class="connector-card-mark" aria-hidden="true">${p.id === 'codex' ? 'C' : '✳'}</div><div><h2>${escape(p.name)}</h2><span class="connector-status ${connected ? 'connected' : busy || p.status === 'checking' ? 'connecting' : attention ? 'error' : ''}">${escape(label)}</span></div></header>
-    ${attention ? `<p class="record-error">${escape(p.action?.status === 'failed' ? p.action.message : p.message)}</p>` : ''}
-    ${busy && p.action.verificationUrl ? `<div class="provider-signin">${p.action.deviceCode ? `<div class="device-code"><code>${escape(p.action.deviceCode)}</code>${actions('provider-copy-code', 'Copy code', p.id)}</div>` : ''}<a class="button-link" href="${escape(p.action.verificationUrl)}" target="_blank" rel="noopener noreferrer">Open sign-in page</a>${p.id === 'claude' ? actions('provider-code', 'Enter a sign-in code', p.id, 'quiet') : ''}</div>` : busy && p.id === 'claude' ? `<div class="provider-signin">${actions('provider-code', 'Enter a sign-in code', p.id)}</div>` : ''}
-    <footer class="connector-card-actions">${busy ? actions('provider-cancel', 'Cancel setup', p.id) : p.status === 'checking' && !p.checkedAt ? '<span class="subtext">Checking…</span>' : `${!connected ? actions(p.installed && p.status !== 'error' ? 'provider-login' : 'provider-install', p.installed && p.status !== 'error' ? 'Sign in' : p.installed ? 'Update CLI' : 'Install ' + p.name, p.id, 'primary') : ''}${actions('provider-refresh', 'Recheck', p.id, 'quiet')}${connected ? actions('provider-login', 'Sign in again', p.id, 'quiet') : ''}`}</footer></article>`;
+      const status = connected
+        ? ''
+        : `<span class="connector-status ${busy || p.status === 'checking' ? 'connecting' : attention ? 'error' : ''}">${escape(label)}</span>`;
+      const controls = busy
+        ? actions('provider-cancel', 'Cancel setup', p.id)
+        : connected
+          ? actions('plugin-settings', 'Connected', 'provider:' + p.id, 'plugin-connected')
+          : p.status === 'checking' && !p.checkedAt
+            ? '<button disabled>Connect</button>'
+            : actions(
+                p.installed && p.status !== 'error' ? 'provider-login' : 'provider-install',
+                'Connect',
+                p.id,
+              );
+      const extra = `${attention ? `<p class="record-error">${escape(p.action?.status === 'failed' ? p.action.message : p.message)}</p>` : ''}${busy && p.action.verificationUrl ? `<div class="provider-signin">${p.action.deviceCode ? `<div class="device-code"><code>${escape(p.action.deviceCode)}</code>${actions('provider-copy-code', 'Copy code', p.id)}</div>` : ''}<a class="button-link" href="${escape(p.action.verificationUrl)}" target="_blank" rel="noopener noreferrer">Open sign-in page</a>${p.id === 'claude' ? actions('provider-code', 'Enter a sign-in code', p.id, 'quiet') : ''}</div>` : busy && p.id === 'claude' ? `<div class="provider-signin">${actions('provider-code', 'Enter a sign-in code', p.id)}</div>` : ''}`;
+      return pluginRow({
+        classes: `provider-card plugin-${p.id}`,
+        attributes: `data-provider="${p.id}"`,
+        mark: p.id === 'codex' ? codexMark : '✳',
+        title: p.name,
+        caption:
+          p.id === 'codex'
+            ? 'Coding and everyday work with Codex.'
+            : 'Code, research and write with Claude.',
+        status,
+        controls,
+        extra,
+      });
     })
     .join('');
 }
 function renderConnectors() {
   const connections = records('connector');
   $('#content').innerHTML =
-    `<div class="page connector-page"><div class="page-heading"><h1>Connector</h1><button class="primary" data-action="new-connector">Connect app</button></div><div class="connector-grid">${renderProviderCards()}${renderBrainCard()}${connections.some(isGitHubConnector) ? '' : renderGitHubCard()}${connections.map(renderConnector).join('')}</div></div>`;
+    `<div class="page connector-page"><div class="page-heading"><h1>Plugin</h1><button class="primary" data-action="new-connector">Connect app</button></div><div class="connector-grid">${renderProviderCards()}${renderBrainCard()}${connections.some(isGitHubConnector) ? '' : renderGitHubCard()}${connections.map(renderConnector).join('')}</div></div>`;
 }
 function renderGitHubCard() {
-  return `<article class="connector-card github-card"><header class="connector-card-header"><div class="connector-card-mark" aria-hidden="true">${githubIcon}</div><div><h2>GitHub</h2><span class="connector-status">Not connected</span></div></header><p class="connector-card-caption">Repositories, issues and pull requests.</p><footer class="connector-card-actions"><button class="primary" data-action="github-setup">Connect</button></footer></article>`;
+  return pluginRow({
+    classes: 'github-card plugin-github',
+    mark: githubIcon,
+    title: 'GitHub',
+    caption: 'Repositories, issues and pull requests.',
+    status: '<span class="connector-status">Not connected</span>',
+    controls: '<button data-action="github-setup">Connect</button>',
+  });
 }
 async function openGitHub(id) {
   const entry =
@@ -82,7 +152,16 @@ function renderBrainCard() {
   const brain = S.state.brain;
   if (!brain) return '';
   const ready = brain.state === 'ready';
-  return `<article class="connector-card brain-card"><header class="connector-card-header"><div class="connector-card-mark" aria-hidden="true">${chatFolderIcon}</div><div><h2>Obsidian</h2><span class="connector-status ${ready ? 'connected' : 'error'}">${ready ? 'Ready' : 'Needs attention'}</span></div></header><p class="connector-card-caption">${ready ? `${brain.sharedNotes} shared notes · ${brain.privateNotes} private memories` : escape(brain.message)}</p><footer class="connector-card-actions"><button data-action="brain-open" ${!window.kruBrain || !ready ? 'disabled' : ''}>Open in Obsidian</button><button class="quiet" data-action="brain-folder" ${!window.kruBrain || !ready ? 'disabled' : ''}>Open folder</button></footer></article>`;
+  return pluginRow({
+    classes: 'brain-card plugin-obsidian',
+    mark: obsidianMark,
+    title: 'Obsidian',
+    caption: ready
+      ? `${brain.sharedNotes} shared notes · ${brain.privateNotes} private memories`
+      : brain.message,
+    status: `<span class="connector-status ${ready ? 'connected' : 'error'}">${ready ? 'Ready' : 'Needs attention'}</span>`,
+    controls: `<button class="${ready ? 'plugin-connected' : ''}" title="Open in Obsidian" data-action="brain-open" ${!window.kruBrain || !ready ? 'disabled' : ''}>${ready ? 'Connected' : 'Connect'}</button>`,
+  });
 }
 function renderConnector(entry) {
   const github = isGitHubConnector(entry);
@@ -101,13 +180,26 @@ function renderConnector(entry) {
       disconnected: 'Not connected',
       error: 'Needs attention',
     }[state] || 'Not checked';
-  const connectLabel =
-    state === 'connected'
-      ? 'Recheck'
-      : state === 'error' || state === 'disconnected'
-        ? 'Reconnect'
-        : 'Connect';
-  return `<article class="connector-card connector-row ${github ? 'github-card' : ''}" data-connector-id="${entry.id}"><header class="connector-card-header"><div class="connector-card-mark" aria-hidden="true">${github ? githubIcon : escape(data.name.slice(0, 1).toUpperCase())}</div><div><h2>${escape(data.name)}</h2><span class="connector-status ${escape(state)}">${label}</span></div></header><p class="connector-card-caption">${github ? 'Available throughout Kru' : 'Bot: ' + escape(name(entry.agentId))}${health.toolCount != null ? ` · ${health.toolCount} ${health.toolCount === 1 ? 'tool' : 'tools'}` : ''}</p>${health.error ? `<p class="record-error">${escape(health.error)}</p>` : ''}<footer class="connector-card-actions">${checking ? '<span class="subtext">Checking…</span>' : data.enabled ? `${actions('test-connector', connectLabel, entry.id, state === 'connected' ? 'quiet' : 'primary')}${state === 'connected' ? actions('connector-tools', 'View tools', entry.id, 'quiet') : ''}${actions('toggle-connector', 'Disconnect', entry.id, 'quiet')}` : actions('toggle-connector', 'Connect', entry.id, 'primary')}${actions(github ? 'github-setup' : 'edit-connector', 'Edit', entry.id, 'quiet')}</footer></article>`;
+  const primary = checking
+    ? '<button disabled>Connect</button>'
+    : state === 'connected'
+      ? actions('plugin-settings', 'Connected', entry.id, 'plugin-connected')
+      : data.enabled
+        ? actions('test-connector', 'Connect', entry.id)
+        : actions('toggle-connector', 'Connect', entry.id);
+  return pluginRow({
+    classes: `connector-row ${github ? 'github-card plugin-github' : 'plugin-custom'}`,
+    attributes: `data-connector-id="${entry.id}"`,
+    mark: github ? githubIcon : escape(data.name.slice(0, 1).toUpperCase()),
+    title: data.name,
+    caption: `${github ? 'Repositories, issues and pull requests' : 'Bot: ' + name(entry.agentId)}${health.toolCount != null ? ` · ${health.toolCount} ${health.toolCount === 1 ? 'tool' : 'tools'}` : ''}`,
+    status:
+      state === 'connected'
+        ? ''
+        : `<span class="connector-status ${escape(state)}">${label}</span>`,
+    controls: primary,
+    extra: health.error ? `<p class="record-error">${escape(health.error)}</p>` : '',
+  });
 }
 function parseObject(text) {
   try {
@@ -234,4 +326,11 @@ async function checkConnector(id, showTools = false) {
   }
 }
 
-export { checkConnector, openConnector, openGitHub, renderConnectors, updateConnectorFields };
+export {
+  openPluginSettings,
+  checkConnector,
+  openConnector,
+  openGitHub,
+  renderConnectors,
+  updateConnectorFields,
+};

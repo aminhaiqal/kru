@@ -28,7 +28,7 @@ No n8n runtime, node code or frontend code is embedded or copied.
 | --- | --- |
 | Trigger | Accept manual JSON input, or start on an activated interval |
 | Bot task | Use the existing bounded task runner; return `result` and checked `steps` |
-| App tool | Call a tool on an existing Connector owned by the workflow bot |
+| App tool | Call a tool on an existing Plugin owned by the workflow bot |
 | Edit data | Build fields from literals or mapped values; merge or replace input |
 | Condition | Route input to true/false outputs using a typed comparison |
 
@@ -60,7 +60,7 @@ Each node's stored input/output is limited to 64 KB. Bot input has an additional
 
 ## Existing connectors and conversations
 
-App tool nodes reference Connector IDs; credentials remain in the existing
+App tool nodes reference Plugin IDs; credentials remain in the existing
 connector/environment mechanism. The editor loads the actual MCP tool list and
 shows its input schema. Disabled or foreign-bot connectors cannot run.
 

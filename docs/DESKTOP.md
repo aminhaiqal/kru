@@ -44,14 +44,14 @@ for the selected development application, desktop callbacks, and production setu
 
 ## GitHub
 
-The GitHub card in Connector saves a personal access token using OS encryption,
+The GitHub card in Plugin saves a personal access token using OS encryption,
 scoped to the selected workspace. See [GitHub setup](GITHUB.md) for permissions,
 reconnecting, and workflow use.
 
 ## Obsidian
 
 KRU's central knowledge and memory live in a dedicated Obsidian vault. See
-[Obsidian](BRAIN.md) for its layout and **Connector → Obsidian** controls.
+[Obsidian](BRAIN.md) for its layout and **Plugin → Obsidian** controls.
 
 ## Appearance
 

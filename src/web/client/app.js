@@ -7,6 +7,7 @@ import {
   checkConnector,
   openConnector,
   openGitHub,
+  openPluginSettings,
   renderConnectors,
   updateConnectorFields,
 } from './connectors.js';
@@ -36,7 +37,7 @@ const icons = {
 const views = [
   ['chat', 'Conversations'],
   ['work', 'Work'],
-  ['connector', 'Connector'],
+  ['connector', 'Plugin'],
   ['skill', 'Skills'],
   ['activity', 'Activity'],
 ];
@@ -178,7 +179,7 @@ function draw() {
   $('#navigation').innerHTML = views
     .map(
       ([key, label]) =>
-        `<button class="nav-item ${S.view === key ? 'active' : ''}" data-view="${key}" title="${label}" aria-label="${label}" ${S.view === key ? 'aria-current="page"' : ''}><svg viewBox="0 0 24 24" aria-hidden="true">${icons[key]}</svg><span class="nav-label"><span class="nav-label-full">${label}</span><span class="nav-label-short">${{ chat: 'Chat', connector: 'Connector' }[key] || label}</span></span>${key === 'chat' && pending ? `<span class="count">${pending}</span>` : ''}</button>`,
+        `<button class="nav-item ${S.view === key ? 'active' : ''}" data-view="${key}" title="${label}" aria-label="${label}" ${S.view === key ? 'aria-current="page"' : ''}><svg viewBox="0 0 24 24" aria-hidden="true">${icons[key]}</svg><span class="nav-label"><span class="nav-label-full">${label}</span><span class="nav-label-short">${{ chat: 'Chat', connector: 'Plugin' }[key] || label}</span></span>${key === 'chat' && pending ? `<span class="count">${pending}</span>` : ''}</button>`,
     )
     .join('');
   $('#agents').innerHTML = S.state.agents.length
@@ -294,9 +295,9 @@ document.addEventListener('click', async (event) => {
       openAgent(id);
       return;
     }
-    if (action === 'brain-open' || action === 'brain-folder') {
+    if (action === 'brain-open') {
       if (!window.kruBrain) return;
-      const result = await window.kruBrain.open(action === 'brain-open' ? 'vault' : 'folder');
+      const result = await window.kruBrain.open('vault');
       if (result.needsSetup)
         showInfo(
           'Open Obsidian vault',
@@ -306,6 +307,10 @@ document.addEventListener('click', async (event) => {
     }
     if (action === 'browser-controls') {
       await browserPanelToggle(id);
+      return;
+    }
+    if (action === 'plugin-settings') {
+      openPluginSettings(id);
       return;
     }
     if (action === 'github-setup') {
@@ -333,10 +338,7 @@ document.addEventListener('click', async (event) => {
       return;
     }
     button.disabled = true;
-    if (action === 'provider-refresh') {
-      await post('/providers/' + id + '/refresh');
-      toast('Connection checked');
-    } else if (action === 'provider-install' || action === 'provider-login') {
+    if (action === 'provider-install' || action === 'provider-login') {
       await post('/providers/' + id + '/' + (action === 'provider-install' ? 'install' : 'login'));
       toast(action === 'provider-install' ? 'Installation started' : 'Sign-in started');
     } else if (action === 'provider-cancel') {

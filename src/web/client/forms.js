@@ -43,7 +43,7 @@ function openAgent(id) {
     c = agent?.config || {};
   openForm(
     agent ? 'Teammate settings' : 'Create teammate',
-    '<p class="help">Codex and Claude Code need a connected account. Manage your sign-ins in Connector.</p>' +
+    '<p class="help">Codex and Claude Code need a connected account. Manage your sign-ins in Plugin.</p>' +
       (agent ? '' : field('Name', 'name', '', { required: true })) +
       '<div class="field-grid">' +
       field('Provider', 'provider', agent?.provider || 'codex', {

@@ -279,7 +279,7 @@ try {
     fullPage: true,
     animations: 'disabled',
   });
-  await page.getByRole('button', { name: 'Connector', exact: true }).click();
+  await page.getByRole('button', { name: 'Plugin', exact: true }).click();
   await page.screenshot({
     path: join(artifactDir, 'theme-dark-connector.png'),
     fullPage: true,
@@ -368,7 +368,7 @@ try {
       };
     });
   const workShell = await shellGeometry();
-  for (const label of ['Conversations', 'Connector', 'Skills', 'Activity', 'Work']) {
+  for (const label of ['Conversations', 'Plugin', 'Skills', 'Activity', 'Work']) {
     await page.getByRole('button', { name: label, exact: true }).click();
     if (JSON.stringify(await shellGeometry()) !== JSON.stringify(workShell))
       throw new Error('Sidebar or content geometry changed on ' + label);
@@ -399,10 +399,10 @@ try {
     (await page.locator('#navigation [data-view="connections"]').count()) === 0,
     'AI accounts have no separate navigation page',
   );
-  await page.getByRole('button', { name: 'Connector', exact: true }).click();
+  await page.getByRole('button', { name: 'Plugin', exact: true }).click();
   await check(
     (await page.locator('.connector-grid [data-provider]').count()) === 2,
-    'Connector contains Codex and Claude Code account cards alongside apps',
+    'Plugin contains Codex and Claude Code account cards alongside apps',
   );
   await check(
     (await page
@@ -410,15 +410,15 @@ try {
       .getByRole('heading', { name: 'Obsidian', exact: true })
       .count()) === 1 &&
       (await page.locator('.brain-card .connector-status').innerText()) === 'Ready',
-    'Connector shows the dedicated Obsidian brain with its actual vault status',
+    'Plugin shows the dedicated Obsidian brain with its actual vault status',
   );
   const codex = page.locator('[data-provider="codex"]'),
     claude = page.locator('[data-provider="claude"]');
   await codex.getByText('Not connected', { exact: true }).waitFor();
   await claude.getByText('Not installed', { exact: true }).waitFor();
-  checks.push('Connector account cards show checked signed-out and missing CLI states');
+  checks.push('Plugin account cards show checked signed-out and missing CLI states');
   await page.screenshot({ path: join(artifactDir, 'connections-before.png'), fullPage: true });
-  await codex.getByRole('button', { name: 'Sign in', exact: true }).click();
+  await codex.getByRole('button', { name: 'Connect', exact: true }).click();
   await codex.getByText('ABCD-EFGH', { exact: true }).waitFor();
   completeLogin.codex!();
   await codex.getByText('Connected', { exact: true }).waitFor();
@@ -432,8 +432,9 @@ try {
     'Provider usage rings show weekly outside, five-hour inside, and reset times in a popover',
   );
   await page.keyboard.press('Escape');
-  await claude.getByRole('button', { name: 'Install Claude Code', exact: true }).click();
-  await claude.getByRole('button', { name: 'Sign in', exact: true }).click();
+  await claude.getByRole('button', { name: 'Connect', exact: true }).click();
+  await claude.getByText('Not connected', { exact: true }).waitFor();
+  await claude.getByRole('button', { name: 'Connect', exact: true }).click();
   await claude.getByRole('button', { name: 'Enter a sign-in code', exact: true }).click();
   await page.getByLabel('Sign-in code', { exact: true }).fill('ui-test-private-code');
   await saveDialog(page, 'Complete sign-in');
@@ -839,7 +840,7 @@ try {
   );
   await page.setViewportSize({ width: 1440, height: 960 });
 
-  await page.getByRole('button', { name: 'Connector', exact: true }).click();
+  await page.getByRole('button', { name: 'Plugin', exact: true }).click();
   await page.getByRole('button', { name: 'Connect app', exact: true }).click();
   await page.getByLabel('App name').fill('Local echo');
   await page.getByLabel('Connection method', { exact: true }).selectOption('stdio');
@@ -849,6 +850,10 @@ try {
     .fill(JSON.stringify([new URL('../test/fakes/workspace-mcp.ts', import.meta.url).pathname]));
   await saveDialog(page, 'Connect app');
   await page.locator('.connector-row').getByText('Connected', { exact: true }).waitFor();
+  await page
+    .locator('.connector-row')
+    .getByRole('button', { name: 'Connected', exact: true })
+    .click();
   await page.getByRole('button', { name: 'View tools', exact: true }).click();
   await waitText(page, '1 tool available.');
   await page.getByRole('button', { name: 'Close dialog' }).click();
@@ -860,7 +865,13 @@ try {
     fullPage: true,
     animations: 'disabled',
   });
+  if (!(await page.getByRole('button', { name: 'Disconnect', exact: true }).isVisible()))
+    await page
+      .locator('.connector-row')
+      .getByRole('button', { name: 'Connected', exact: true })
+      .click();
   await page.getByRole('button', { name: 'Disconnect', exact: true }).click();
+  await page.getByRole('button', { name: 'Close dialog', exact: true }).click();
   await page.locator('.connector-status').getByText('Disconnected', { exact: true }).waitFor();
   await page
     .locator('.connector-row')
@@ -870,7 +881,7 @@ try {
   checks.push('Disconnect and reconnect an app with verified status');
   await check(
     (await page.getByRole('button', { name: 'Tools & browser', exact: true }).count()) === 0,
-    'Connector replaces Tools & browser with AI accounts and app connections',
+    'Plugin replaces Tools & browser with AI accounts and app connections',
   );
   await page.setViewportSize({ width: 390, height: 844 });
   await check(
@@ -878,7 +889,7 @@ try {
       () =>
         (globalThis as any).document.documentElement.scrollWidth <= (globalThis as any).innerWidth,
     ),
-    'Connector app rows and actions fit mobile',
+    'Plugin app rows and actions fit mobile',
   );
   await page.waitForTimeout(250);
   await page.screenshot({
@@ -1024,7 +1035,7 @@ try {
     'Reminder opens the exact waiting thread and declining keeps its own conversation history',
   );
 
-  await page.getByRole('button', { name: 'Connector', exact: true }).click();
+  await page.getByRole('button', { name: 'Plugin', exact: true }).click();
   await page.locator('.github-card').getByText('Not connected', { exact: true }).waitFor();
   await page.locator('.github-card').getByRole('button', { name: 'Connect', exact: true }).click();
   await page
@@ -1050,14 +1061,17 @@ try {
   );
   await page
     .locator('.github-card')
-    .getByRole('button', { name: 'View tools', exact: true })
+    .getByRole('button', { name: 'Connected', exact: true })
     .click();
+  await page.getByRole('dialog').getByRole('button', { name: 'View tools', exact: true }).click();
   await page.getByRole('dialog').getByText('search_repositories', { exact: true }).waitFor();
   await page.getByRole('button', { name: 'Close dialog', exact: true }).click();
   await page
     .locator('.github-card')
-    .getByRole('button', { name: 'Disconnect', exact: true })
+    .getByRole('button', { name: 'Connected', exact: true })
     .click();
+  await page.getByRole('dialog').getByRole('button', { name: 'Disconnect', exact: true }).click();
+  await page.getByRole('button', { name: 'Close dialog', exact: true }).click();
   await page.locator('.github-card').getByText('Disconnected', { exact: true }).waitFor();
   await page.locator('.github-card').getByRole('button', { name: 'Connect', exact: true }).click();
   await page.locator('.github-card').getByText('Connected', { exact: true }).waitFor();
