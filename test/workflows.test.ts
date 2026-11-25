@@ -5,7 +5,7 @@ import { join } from 'node:path';
 import { Store } from '../src/store';
 import { AgentRegistry } from '../src/agents';
 import { Daemon } from '../src/daemon';
-import { FakeProvider } from '../src/providers/fake/adapter';
+import { FakeProvider, type FakeProviderOptions } from '../src/providers/fake/adapter';
 import { createWebServer } from '../src/web/server';
 import { verifyReplay } from '../src/store/replay';
 import { graphSchema, starterGraph, type Graph } from '../src/workflows/types';
@@ -15,7 +15,7 @@ const cleanups: (() => void | Promise<void>)[] = [];
 afterEach(async () => {
   for (const cleanup of cleanups.splice(0).reverse()) await cleanup();
 });
-async function env() {
+async function env(options: FakeProviderOptions = {}) {
   const dir = mkdtempSync(join(tmpdir(), 'kru-flows-')),
     store = new Store(join(dir, 'db.sqlite'));
   cleanups.push(() => {
@@ -35,6 +35,7 @@ async function env() {
         if (!answer.success) throw new Error('Task update failed');
         return 'Done.';
       },
+      ...options,
     });
   const daemon = new Daemon(store, { pollMs: 10 }, factory);
   cleanups.push(() => daemon.stop(0));
@@ -190,6 +191,43 @@ test('bot steps use bounded tasks, expose evidence and never import workflow tas
   e.daemon.workspace.work.importTasks();
   expect(e.daemon.workspace.work.list()).toHaveLength(0);
   expect(verifyReplay(e.store).matches).toBe(true);
+});
+
+test('workflow completion waits for native execution after an agent reports its task complete', async () => {
+  let release!: () => void;
+  const pending = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  const e = await env({
+    script: async (_prompt, call) => {
+      const result = await call('task_update', {
+        status: 'completed',
+        result: 'Evidence recorded before native completion',
+      });
+      if (!result.success) throw new Error('Task update failed');
+      await pending;
+      return 'Native execution finished.';
+    },
+  });
+  try {
+    const flow = save(e, starterGraph('Complete the task.'));
+    const run = e.flows.start(flow.id);
+    await until(e, () =>
+      e.daemon.workspace.records.list('task').some((task) => task.data.status === 'completed'),
+    );
+    expect(e.flows.detail(run.id).status).toBe('running');
+    expect(e.flows.detail(run.id).nodes.find((node) => node.id === 'agent')?.status).toBe(
+      'running',
+    );
+    release();
+    await until(e, () => e.flows.detail(run.id).status === 'completed');
+    expect(e.flows.detail(run.id).nodes.find((node) => node.id === 'agent')?.output).toMatchObject({
+      result: 'Evidence recorded before native completion',
+    });
+    expect(verifyReplay(e.store).matches).toBe(true);
+  } finally {
+    release();
+  }
 });
 
 test('connector nodes use an existing connection and pass typed app results into the next node', async () => {

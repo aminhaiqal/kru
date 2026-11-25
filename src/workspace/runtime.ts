@@ -148,12 +148,18 @@ export class WorkspaceRuntime {
     this.memory = new AgentMemory(this.records, this.brain);
     this.tasks = new TaskRunner(this.records);
     this.routines = new RoutineRunner(this.records);
-    this.work = new WorkService(store, interrupt);
+    this.work = new WorkService(store, interrupt, this.tasks);
     this.integrations = new IntegrationGateway(this.records, scope, integrationFetch);
     this.browser = new BrowserGateway();
-    this.workflows = new WorkflowService(store, this.integrations, interrupt, () => {
-      scope();
-    });
+    this.workflows = new WorkflowService(
+      store,
+      this.integrations,
+      interrupt,
+      () => {
+        scope();
+      },
+      this.tasks,
+    );
     const base = new ToolRouter(
       new SqliteMailbox(store),
       new AgentRegistry(store),

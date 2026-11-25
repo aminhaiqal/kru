@@ -8,6 +8,27 @@ export class TaskRunner {
     private readonly records: WorkspaceRecords,
     private readonly mailbox = new SqliteMailbox(records.store),
   ) {}
+  /** Delivery state is authoritative while a task's native execution is still settling. */
+  execution(task: RecordEntry<'task'> | null) {
+    const deliveries = task?.data.deliveryIds.map((id) => this.mailbox.get(id)) ?? [];
+    const running = deliveries.some((delivery) => delivery?.status === 'running');
+    const queued = deliveries.some(
+      (delivery) => delivery && ['queued', 'starting'].includes(delivery.status),
+    );
+    return {
+      active: running || queued,
+      confirmed: deliveries.every((delivery) => delivery?.status === 'completed'),
+      state: running ? 'working' : queued ? 'queued' : (task?.data.status ?? 'idle'),
+    };
+  }
+  /** Cancel pending task work inside the caller's transaction; interrupt native work after commit. */
+  cancelPending(task: RecordEntry<'task'>): boolean {
+    if (['running', 'queued', 'blocked'].includes(task.data.status)) {
+      this.cancel(task.id);
+      return true;
+    }
+    return this.execution(task).active;
+  }
   create(agentId: string, input: unknown, id: string = crypto.randomUUID()): RecordEntry<'task'> {
     const data = taskSchema.parse(input);
     return this.records.store.atomic(() => {
@@ -114,16 +135,12 @@ export class TaskRunner {
   tick(): void {
     for (const entry of this.records.list('task')) {
       if (!['running', 'queued'].includes(entry.data.status)) continue;
-      const deliveries = entry.data.deliveryIds.map((id) => this.mailbox.get(id));
-      if (deliveries.some((d) => d && ['queued', 'starting', 'running'].includes(d.status)))
-        continue;
+      const execution = this.execution(entry);
+      if (execution.active) continue;
       this.records.store.atomic(() => {
         const current = this.records.require('task', entry.id);
         if (!['running', 'queued'].includes(current.data.status)) return;
-        if (
-          deliveries.some((d) => !d || d.status !== 'completed') ||
-          current.data.attempts >= current.data.maxTurns
-        ) {
+        if (!execution.confirmed || current.data.attempts >= current.data.maxTurns) {
           this.records.put(
             'task',
             current.agentId,
@@ -149,12 +166,7 @@ export class TaskRunner {
         throw new Error(
           'This task reached the 50-turn limit. Create a new task with the remaining work.',
         );
-      if (
-        entry.data.deliveryIds.some((id) => {
-          const d = this.mailbox.get(id);
-          return d && ['queued', 'starting', 'running'].includes(d.status);
-        })
-      )
+      if (this.execution(entry).active)
         throw new Error('The previous task execution is still active');
       // User explicitly authorizes another bounded run after inspecting uncertain effects.
       return this.enqueue({

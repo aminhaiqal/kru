@@ -7,6 +7,10 @@ Planned release line v0.2.
 
 ### Maintenance
 
+- Share the workspace TaskRunner across Work and Skills workflows. Centralize
+  task delivery-state and pending-cancellation checks, removing direct mailbox
+  interpretation from both services while preserving execution-settlement gates.
+
 - Preserve the real Chromium browser identity by removing Clerk’s global
   user-agent override. Add an explicit default-browser fallback for sites that
   reject embedded browsers, while keeping verification under user control.

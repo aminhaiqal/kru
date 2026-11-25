@@ -351,6 +351,36 @@ test('comments deduplicate, archive stops queued work, and restore never restart
   expect(verifyReplay(e.store).matches).toBe(true);
 });
 
+test('failed work transitions roll back task cancellation and never interrupt native execution', () => {
+  const e = env();
+  const agent = e.agents.create({ name: 'worker', provider: 'fake' });
+  const interrupted: string[] = [];
+  const work = new WorkService(e.store, (_agentId, lane) => {
+    expect(e.store.db.inTransaction).toBe(false);
+    expect(e.records.require('task', item.taskId!).data.status).toBe('cancelled');
+    interrupted.push(lane);
+  });
+  const item = work.create({
+    title: 'Keep cancellation atomic',
+    stageId: 'in_progress',
+    assigneeId: agent.id,
+  });
+  e.store.db.exec(
+    "CREATE TRIGGER reject_work_update BEFORE UPDATE ON work_items BEGIN SELECT RAISE(ABORT, 'work update rejected'); END",
+  );
+  expect(() => work.update(item.id, { stageId: 'brief' }, item.revision)).toThrow(
+    'work update rejected',
+  );
+  expect(e.records.require('task', item.taskId!).data.status).toBe('running');
+  expect(e.mailbox.get(item.task!.deliveryIds[0]!)?.status).toBe('queued');
+  expect(interrupted).toEqual([]);
+  e.store.db.exec('DROP TRIGGER reject_work_update');
+  work.update(item.id, { stageId: 'brief' }, item.revision);
+  expect(interrupted).toEqual(['task:' + item.taskId]);
+  expect(e.mailbox.get(item.task!.deliveryIds[0]!)?.status).toBe('cancelled');
+  expect(verifyReplay(e.store).matches).toBe(true);
+});
+
 test('authenticated work API validates writes and round-trips project, board, detail and comments', async () => {
   const e = env(),
     daemon = new Daemon(e.store, {}, () => new FakeProvider());

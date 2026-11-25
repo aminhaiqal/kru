@@ -2,7 +2,6 @@ import { connectorNeedsApproval } from '../shared/github';
 import { z } from 'zod';
 import type { Store } from '../store';
 import { AgentRegistry } from '../agents';
-import { SqliteMailbox } from '../mailbox';
 import { WorkspaceRecords } from '../workspace/records';
 import { TaskRunner } from '../workspace/tasks';
 import type { IntegrationGateway } from '../workspace/integrations';
@@ -22,9 +21,7 @@ const at = () => new Date().toISOString();
 const open = (status: string) => ['running', 'waiting'].includes(status);
 export class WorkflowService {
   private readonly records: WorkspaceRecords;
-  private readonly tasks: TaskRunner;
   private readonly agents: AgentRegistry;
-  private readonly mailbox: SqliteMailbox;
   private readonly live = new Map<
     string,
     { controller: AbortController; promise: Promise<void> }
@@ -34,11 +31,10 @@ export class WorkflowService {
     private readonly integrations: IntegrationGateway,
     private readonly interrupt?: (agent: string, lane: string) => void,
     private readonly guard: () => void = () => {},
+    private readonly tasks = new TaskRunner(new WorkspaceRecords(store)),
   ) {
     this.records = new WorkspaceRecords(store);
-    this.tasks = new TaskRunner(this.records);
     this.agents = new AgentRegistry(store);
-    this.mailbox = new SqliteMailbox(store);
   }
   private changed(id: string) {
     this.store.publishChanges([{ topic: 'workflow', id }]);
@@ -301,16 +297,9 @@ export class WorkflowService {
       })),
     };
   }
-  private activeTask(taskId: string): boolean {
-    return this.records
-      .require('task', taskId)
-      .data.deliveryIds.some((id) =>
-        ['queued', 'starting', 'running'].includes(this.mailbox.get(id)?.status ?? ''),
-      );
-  }
   private stopTask(id: string): void {
     const task = this.records.require('task', id);
-    if (['queued', 'running', 'blocked'].includes(task.data.status)) this.tasks.cancel(id);
+    this.tasks.cancelPending(task);
     if (task.agentId) this.interrupt?.(task.agentId, 'task:' + id);
   }
   cancel(id: string) {
@@ -346,7 +335,10 @@ export class WorkflowService {
         throw new Error('This workflow already has an active run');
       if (
         this.live.has(id) ||
-        this.nodes(id).some((node) => node.task_id && this.activeTask(node.task_id))
+        this.nodes(id).some(
+          (node) =>
+            node.task_id && this.tasks.execution(this.records.require('task', node.task_id)).active,
+        )
       )
         throw new Error('Previous execution is still stopping');
       for (const node of this.nodes(id))
@@ -498,11 +490,9 @@ export class WorkflowService {
         try {
           if (active.task_id) {
             const task = this.records.require('task', active.task_id);
-            if (this.activeTask(task.id)) return;
-            if (
-              task.data.status !== 'completed' ||
-              task.data.deliveryIds.some((id) => this.mailbox.get(id)?.status !== 'completed')
-            )
+            const execution = this.tasks.execution(task);
+            if (execution.active) return;
+            if (task.data.status !== 'completed' || !execution.confirmed)
               throw new Error(task.data.error || 'Bot step ended without confirmed completion');
             this.store.atomic(() =>
               this.complete(active, { result: task.data.result, steps: task.data.steps }),

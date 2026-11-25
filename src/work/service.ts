@@ -13,7 +13,6 @@ import type { Store } from '../store';
 import { WorkspaceRecords, type RecordEntry } from '../workspace/records';
 import { TaskRunner } from '../workspace/tasks';
 import { AgentRegistry } from '../agents';
-import { SqliteMailbox } from '../mailbox';
 import {
   projectSchema,
   standardStages,
@@ -39,17 +38,14 @@ const bounded = (value: string, bytes: number) => {
 };
 export class WorkService {
   private readonly records: WorkspaceRecords;
-  private readonly tasks: TaskRunner;
   private readonly agents: AgentRegistry;
-  private readonly mailbox: SqliteMailbox;
   constructor(
     readonly store: Store,
     private readonly interrupt?: (agentId: string, laneId: string) => void,
+    private readonly tasks = new TaskRunner(new WorkspaceRecords(store)),
   ) {
     this.records = new WorkspaceRecords(store);
-    this.tasks = new TaskRunner(this.records);
     this.agents = new AgentRegistry(store);
-    this.mailbox = new SqliteMailbox(store);
   }
   projects() {
     return this.store.db
@@ -250,20 +246,11 @@ export class WorkService {
   private currentTask(row: WorkRow) {
     return row.task_id ? this.records.get('task', row.task_id) : null;
   }
-  private isActive(task: RecordEntry<'task'> | null) {
-    return (
-      !!task &&
-      task.data.deliveryIds.some((id) => {
-        const d = this.mailbox.get(id);
-        return d && ['queued', 'starting', 'running'].includes(d.status);
-      })
-    );
-  }
   private hasActiveRun(itemId: string) {
     return this.store.db
       .query<RunRow, [string]>('SELECT * FROM work_runs WHERE item_id=?')
       .all(itemId)
-      .some((run) => this.isActive(this.records.get('task', run.task_id)));
+      .some((run) => this.tasks.execution(this.records.get('task', run.task_id)).active);
   }
   private start(row: WorkRow, stage: Stage): WorkRow {
     if (!row.assignee_id || stage.category !== 'active') return row;
@@ -385,14 +372,7 @@ export class WorkService {
           : data.assigneeId;
       if (assignee && !this.agents.get(assignee)) throw new Error('Unknown assignee');
       const reassigned = assignee !== row.assignee_id;
-      if (
-        (moved || reassigned) &&
-        oldTask &&
-        ['running', 'queued', 'blocked'].includes(oldTask.data.status)
-      ) {
-        this.tasks.cancel(oldTask.id);
-        stopped = oldTask;
-      } else if ((moved || reassigned) && oldTask && this.isActive(oldTask)) stopped = oldTask;
+      if ((moved || reassigned) && oldTask && this.tasks.cancelPending(oldTask)) stopped = oldTask;
       row = this.save({
         ...row,
         title: data.title,
@@ -451,10 +431,7 @@ export class WorkService {
       if (row.revision !== revision)
         throw new Error('This work item changed. Refresh it before saving.');
       const task = this.currentTask(row);
-      if (!restore && task && ['running', 'queued', 'blocked'].includes(task.data.status)) {
-        this.tasks.cancel(task.id);
-        stopped = task;
-      } else if (!restore && task && this.isActive(task)) stopped = task;
+      if (!restore && task && this.tasks.cancelPending(task)) stopped = task;
       this.save({
         ...row,
         archived_at: restore ? null : now(),
@@ -586,7 +563,7 @@ export class WorkService {
       const task = this.records.require('task', run.task_id);
       if (
         !['completed', 'blocked', 'cancelled'].includes(task.data.status) ||
-        this.isActive(task) ||
+        this.tasks.execution(task).active ||
         (task.data.status === 'completed' && this.hasActiveRun(run.item_id))
       )
         continue;
@@ -647,12 +624,7 @@ export class WorkService {
           )
           .get(row.id, row.stage_id)
       : null;
-    const deliveries = task?.data.deliveryIds.map((id) => this.mailbox.get(id)) ?? [];
-    const execution = deliveries.some((d) => d?.status === 'running')
-      ? 'working'
-      : deliveries.some((d) => d && ['queued', 'starting'].includes(d.status))
-        ? 'queued'
-        : (task?.data.status ?? 'idle');
+    const execution = this.tasks.execution(task).state;
     return {
       id: row.id,
       identifier: `${project.key}-${row.number}`,

@@ -6,6 +6,29 @@ adapters. A work item describes an outcome; a run executes one workflow stage.
 Keeping these separate allows human work, reassignment, multiple agent stages
 and review without losing execution history.
 
+## Execution ownership
+
+The workspace creates one `TaskRunner` and shares it with Work and Skills
+workflows. These services do not read the mailbox directly to interpret a task's
+execution state.
+
+| Layer | Owns |
+| --- | --- |
+| Work | Project stages, assignments, activity, and stage handoffs |
+| Skills workflows | Graph steps, data mapping, and workflow run state |
+| TaskRunner | Task attempts, delivery-state checks, continuation, and pending cancellation |
+| Scheduler | Provider execution, concurrency, budgets, and native interruption |
+
+`TaskRunner.execution()` reports whether deliveries are active, whether they all
+completed successfully, and the task's display state. An agent's task-completion
+report does not mean its native execution has stopped. Work and workflows wait
+for active deliveries to settle before advancing.
+
+`TaskRunner.cancelPending()` updates pending task work within the caller's
+transaction. Work interrupts native execution only after its update commits, so
+a failed stage change cannot cancel or interrupt the original execution.
+Scheduler remains responsible for stopping the actual provider process.
+
 ## Multica reference
 
 The implementation was informed by the supplied Multica screenshot and source at

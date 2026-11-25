@@ -74,6 +74,10 @@ Bot task nodes may use the default workflow bot or another selected bot. They us
 the same provider connections, permissions, memory, budget, task completion and
 native approval behavior as other KRU work. Workflow tasks stay in their workflow
 history rather than being duplicated as General project Work items.
+The workspace shares one TaskRunner with Work and workflows. TaskRunner owns
+delivery-state and pending-cancellation checks; workflows own graph progression
+and require both explicit task completion and successfully settled deliveries
+before completing a bot step. See [execution ownership](WORK_ARCHITECTURE.md#execution-ownership).
 
 ## Persistence and recovery
 
