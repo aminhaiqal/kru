@@ -6,7 +6,8 @@ import { projectHistory, putHistory } from '../../threads/records';
 export const columns = {
   conversation_media: 'id,thread_id,name,mime,bytes,sha256,path,created_at',
   conversation_message_media: 'message_id,media_id',
-  conversation_settings: 'thread_id,title,provider,model,effort,deleted_at,revision,updated_at',
+  conversation_settings:
+    'thread_id,title,provider,model,effort,deleted_at,revision,updated_at,project_id',
   workflow_definitions:
     'id,agent_id,name,description,graph_json,active,interval_minutes,next_run_at,legacy_skill_id,revision,created_at,updated_at',
   workflow_runs:
@@ -133,7 +134,7 @@ export function project(db: Database, event: DomainEvent): void {
       put(db, 'conversation_message_media', event.payload.row);
       break;
     case 'conversation.saved':
-      put(db, 'conversation_settings', event.payload.row);
+      put(db, 'conversation_settings', { project_id: null, ...event.payload.row });
       break;
     case 'workflow.saved':
       put(db, 'workflow_definitions', event.payload.row);

@@ -8,6 +8,8 @@ import { Daemon } from '../src/daemon';
 import { FakeProvider } from '../src/providers/fake/adapter';
 import { SqliteMailbox } from '../src/mailbox';
 import { Conversations } from '../src/threads/conversations';
+import { WorkService } from '../src/work/service';
+import { standardStages } from '../src/work/types';
 import { SqliteSessions } from '../src/daemon/sessions';
 import { createWebServer } from '../src/web/server';
 import { ConversationMedia } from '../src/threads/media';
@@ -209,6 +211,28 @@ test('authenticated conversations API lists past threads and pages every earlier
   expect(
     (await request('/conversations/' + thread.id, 'PATCH', { title: 'Stale', revision: 0 })).status,
   ).toBe(409);
+  const project = (await (
+    await request('/work/projects', 'POST', {
+      name: 'Shared launch',
+      key: 'SHR',
+      stages: standardStages(),
+    })
+  ).json()) as any;
+  expect(
+    ((await (await request('/state')).json()) as any).projects.map((p: any) => p.id),
+  ).toContain(project.id);
+  const moved = await request('/conversations/' + thread.id, 'PATCH', {
+    projectId: project.id,
+    revision: 1,
+  });
+  expect(moved.status).toBe(200);
+  expect(((await moved.json()) as any).projectId).toBe(project.id);
+  expect(
+    (
+      (await (await request('/conversations?agent=' + e.agent.id)).json()) as any
+    ).conversations.find((item: any) => item.id === thread.id).projectId,
+  ).toBe(project.id);
+  expect(((await (await request('/work')).json()) as any).projects[0].id).toBe(project.id);
 });
 
 test('browser tools start with default access and retain conversation approval for actions', async () => {
@@ -268,7 +292,7 @@ test('upgrading enables browser access once and preserves subsequent explicit op
     });
   // Recreate the preceding schema boundary, before conversation data exists.
   old.db.exec(
-    'DROP TABLE conversation_message_media; DROP TABLE conversation_media; DROP TABLE conversation_settings; DELETE FROM schema_migrations WHERE version=13',
+    'DROP TABLE conversation_message_media; DROP TABLE conversation_media; DROP TABLE conversation_settings; DELETE FROM schema_migrations WHERE version>=13',
   );
   old.close();
   const upgraded = new Store(path);
@@ -436,4 +460,151 @@ test('folder text files reach the CLI input and retain their contents on model h
   await expect(
     media.upload(thread.id, new File(['x'.repeat(128 * 1024 + 1)], 'large.txt')),
   ).rejects.toThrow('128 KB');
+});
+
+test('conversations share Work projects and preserve their models, history, and membership on replay', () => {
+  const e = environment(),
+    work = new WorkService(e.store);
+  const first = work.saveProject({ name: 'Launch', key: 'LN', stages: standardStages() });
+  const second = work.saveProject({ name: 'Research', key: 'RS', stages: standardStages() });
+  const a = e.conversations.create(e.agent.id, 'project-a', first.id);
+  const b = e.conversations.create(e.agent.id, 'project-b', first.id);
+  expect(e.conversations.create(e.agent.id, 'project-a', first.id)).toEqual(a);
+  expect(() => e.conversations.create(e.agent.id, 'project-a', second.id)).toThrow(
+    'different input',
+  );
+  const configured = e.conversations.save(a.id, { model: 'account-model', revision: a.revision });
+  const receipt = e.mailbox.enqueue({
+    sender: { kind: 'user' },
+    recipientIds: [e.agent.id],
+    laneId: a.laneId,
+    text: 'Keep this context in the same conversation.',
+  });
+  const moved = e.conversations.save(a.id, { projectId: second.id, revision: configured.revision });
+  expect(moved).toMatchObject({
+    id: a.id,
+    laneId: a.laneId,
+    projectId: second.id,
+    model: 'account-model',
+  });
+  expect(e.mailbox.get(receipt.deliveryIds[0]!)?.text).toContain('Keep this context');
+  expect(() =>
+    e.conversations.save(a.id, { projectId: first.id, revision: configured.revision }),
+  ).toThrow('changed');
+  expect(e.conversations.list(e.agent.id).find((thread) => thread.id === b.id)?.projectId).toBe(
+    first.id,
+  );
+  work.saveProject(
+    {
+      name: 'Launch renamed',
+      key: first.key,
+      description: first.description,
+      stages: first.stages,
+    },
+    first.id,
+  );
+  const unfiled = e.conversations.save(a.id, { projectId: null, revision: moved.revision });
+  expect(unfiled.model).toBe('account-model');
+  expect(unfiled.projectId).toBeNull();
+  e.conversations.remove(b.id);
+  expect(
+    e.store.db
+      .query<{ project_id: string }, [string]>(
+        'SELECT project_id FROM conversation_settings WHERE thread_id=?',
+      )
+      .get(b.id)?.project_id,
+  ).toBe(first.id);
+  expect(verifyReplay(e.store).matches).toBe(true);
+});
+
+test('unknown projects roll back conversation creation and cannot replace valid membership', () => {
+  const e = environment();
+  const thread = e.conversations.create(e.agent.id, 'unfiled');
+  expect(() => e.conversations.create(e.agent.id, 'missing', 'missing')).toThrow(
+    'Project not found',
+  );
+  expect(e.conversations.list(e.agent.id)).toHaveLength(1);
+  expect(() => e.conversations.save(thread.id, { projectId: 'missing', revision: 0 })).toThrow(
+    'Project not found',
+  );
+  expect(e.conversations.current(e.agent.id, thread.laneId)).toMatchObject({
+    projectId: null,
+    revision: 0,
+  });
+  expect(verifyReplay(e.store).matches).toBe(true);
+});
+
+test('Work conversations inherit the project for current and earlier stage runs', () => {
+  const e = environment(),
+    work = new WorkService(e.store);
+  const project = work.saveProject({ name: 'Shared work', key: 'SW', stages: standardStages() });
+  let item = work.create({
+    projectId: project.id,
+    title: 'Research brief',
+    stageId: 'in_progress',
+    assigneeId: e.agent.id,
+  });
+  const oldLane = 'task:' + item.taskId;
+  const thread = e.conversations.current(e.agent.id, oldLane);
+  expect(thread).toMatchObject({ projectId: project.id, projectInherited: true });
+  expect(() => e.conversations.save(thread.id, { projectId: null, revision: 0 })).toThrow(
+    'inherit',
+  );
+  item = work.update(item.id, { stageId: 'brief' }, item.revision);
+  item = work.update(item.id, { stageId: 'in_progress' }, item.revision);
+  expect('task:' + item.taskId).not.toBe(oldLane);
+  expect(e.conversations.current(e.agent.id, oldLane).projectId).toBe(project.id);
+  expect(e.conversations.list(e.agent.id).find((row) => row.id === thread.id)).toMatchObject({
+    projectId: project.id,
+    projectInherited: true,
+  });
+  expect(verifyReplay(e.store).matches).toBe(true);
+});
+
+test('version 13 conversations and legacy events migrate without losing existing settings', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'kru-project-upgrade-')),
+    path = join(dir, 'db.sqlite');
+  let store = new Store(path);
+  try {
+    const agent = new AgentRegistry(store).create({ name: 'Legacy', provider: 'fake' });
+    const old = new Conversations(store).create(agent.id, 'legacy');
+    store.atomic(() =>
+      store.emit('conversation.saved', {
+        row: {
+          thread_id: old.id,
+          title: 'Legacy title',
+          provider: 'fake',
+          model: 'original',
+          effort: null,
+          deleted_at: null,
+          revision: 1,
+          updated_at: new Date().toISOString(),
+        },
+      }),
+    );
+    store.db.exec(
+      'ALTER TABLE conversation_settings DROP COLUMN project_id; DELETE FROM schema_migrations WHERE version=14;',
+    );
+    store.close();
+    store = new Store(path);
+    const conversations = new Conversations(store);
+    expect(conversations.current(agent.id, old.laneId)).toMatchObject({
+      title: 'Legacy title',
+      model: 'original',
+      projectId: null,
+      revision: 1,
+    });
+    const project = new WorkService(store).saveProject({
+      name: 'Migrated',
+      key: 'MG',
+      stages: standardStages(),
+    });
+    expect(conversations.save(old.id, { projectId: project.id, revision: 1 }).projectId).toBe(
+      project.id,
+    );
+    expect(verifyReplay(store).matches).toBe(true);
+  } finally {
+    store.close();
+    rmSync(dir, { recursive: true, force: true });
+  }
 });

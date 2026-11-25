@@ -16,6 +16,10 @@ Planned release line v0.2.
 
 ### Added
 
+- Share projects between Conversations and Work. Group chats, create projects in
+  either view, move existing conversations, and inherit Work-run project links.
+  Preserve history and settings with migration 14 and replay compatibility.
+
 - Add KRU Brain: a dedicated Obsidian vault for shared knowledge and isolated
   personal/bot memory, live note retrieval, legacy imports, and Connector controls.
 - Add a persistent Light / Dark / System appearance selector to the sidebar,

@@ -902,6 +902,106 @@ try {
     'Reminder opens the exact waiting thread and declining keeps its own conversation history',
   );
 
+  // Projects are shared records; both views use the existing Work project editor.
+  await page.getByRole('button', { name: 'Conversations', exact: true }).click();
+  await page.getByRole('button', { name: 'New project', exact: true }).click();
+  await page.getByLabel('Project name', { exact: true }).fill('Chat launch');
+  await page.getByLabel('Identifier prefix').fill('CHT');
+  await saveDialog(page, 'Create project');
+  const sharedChatProject = daemon.workspace.work
+    .projects()
+    .find((project) => project.key === 'CHT')!;
+  const chatGroup = () =>
+    page!.locator(`.conversation-project[data-project-id="${sharedChatProject.id}"]`);
+  await chatGroup().locator('.conversation-thread[aria-current="true"]').waitFor();
+  await page.getByRole('button', { name: 'New conversation', exact: true }).click();
+  await page.waitForFunction(
+    (id) =>
+      (globalThis as any).document.querySelectorAll(
+        `.conversation-project[data-project-id="${id}"] .conversation-thread`,
+      ).length === 2,
+    sharedChatProject.id,
+  );
+  checks.push('Chat projects group multiple new conversations under one shared project');
+  await page.getByRole('button', { name: 'Work', exact: true }).click();
+  await page.locator(`[data-work-project="${sharedChatProject.id}"]`).waitFor();
+  await page.getByRole('button', { name: 'Project settings', exact: true }).click();
+  await page.getByLabel('Project name', { exact: true }).fill('Shared launch renamed');
+  await saveDialog(page, 'Save project');
+  await page.getByRole('button', { name: 'Conversations', exact: true }).click();
+  await chatGroup()
+    .getByRole('button', { name: 'Shared launch renamed', exact: false })
+    .first()
+    .waitFor();
+  await check(
+    await chatGroup()
+      .innerText()
+      .then((text) => text.includes('Shared launch renamed')),
+    'Projects created in Chat appear in Work and Work renames update Chat',
+  );
+  await page.getByRole('button', { name: 'Work', exact: true }).click();
+  await page.getByRole('button', { name: 'New project', exact: true }).click();
+  await page.getByLabel('Project name', { exact: true }).fill('Work research');
+  await page.getByLabel('Identifier prefix').fill('WRS');
+  await saveDialog(page, 'Create project');
+  const sharedWorkProject = daemon.workspace.work
+    .projects()
+    .find((project) => project.key === 'WRS')!;
+  await page.getByRole('button', { name: 'Conversations', exact: true }).click();
+  const workGroup = () =>
+    page!.locator(`.conversation-project[data-project-id="${sharedWorkProject.id}"]`);
+  await workGroup().waitFor();
+  checks.push('Projects created in Work appear in the conversation sidebar');
+  await page.locator('.conversation-thread[aria-current="true"] .chat-move-thread').click();
+  await page.getByLabel('Project', { exact: true }).selectOption(sharedWorkProject.id);
+  await saveDialog(page, 'Move conversation');
+  await workGroup().locator('.conversation-thread[aria-current="true"]').waitFor();
+  await page.reload();
+  await page.getByRole('button', { name: 'Conversations', exact: true }).click();
+  await workGroup().locator('.conversation-thread[aria-current="true"]').waitFor();
+  checks.push('Moving a conversation to a Work project persists after reload');
+  await workGroup()
+    .getByRole('button', { name: 'Settings for Work research', exact: true })
+    .click();
+  await page.getByLabel('Project name', { exact: true }).fill('Shared research renamed');
+  await saveDialog(page, 'Save project');
+  await page.getByRole('button', { name: 'Work', exact: true }).click();
+  await page
+    .locator(`[data-work-project="${sharedWorkProject.id}"]`)
+    .getByText('Shared research renamed', { exact: true })
+    .waitFor();
+  checks.push('Project settings edited in Chat update the existing Work project');
+  await page.getByRole('button', { name: 'Conversations', exact: true }).click();
+  await page.locator('.conversation-thread[aria-current="true"] .chat-move-thread').click();
+  await page.getByLabel('Project', { exact: true }).selectOption('');
+  await saveDialog(page, 'Move conversation');
+  await page
+    .locator('.conversation-thread-list > .conversation-thread[aria-current="true"]')
+    .waitFor();
+  checks.push('Conversations can be moved back out of a project');
+  await page
+    .getByRole('searchbox', { name: 'Search conversations', exact: true })
+    .fill('Shared launch renamed');
+  await chatGroup().locator('.conversation-thread').waitFor();
+  await check(
+    (await page.locator('.conversation-project').count()) === 1,
+    'Conversation search matches shared project names',
+  );
+  await page.getByRole('searchbox', { name: 'Search conversations', exact: true }).fill('');
+  await chatGroup().locator('[data-action="chat-project"]').click();
+  await chooseTheme('Dark');
+  await page.screenshot({
+    path: join(artifactDir, 'conversation-projects-dark.png'),
+    fullPage: true,
+    animations: 'disabled',
+  });
+  await chooseTheme('Light');
+  await page.screenshot({
+    path: join(artifactDir, 'conversation-projects-light.png'),
+    fullPage: true,
+    animations: 'disabled',
+  });
+
   await page.waitForTimeout(250);
   await page.screenshot({ path: join(artifactDir, 'desktop.png'), fullPage: true });
   await page.locator(`[data-agent="${agentId}"]`).click();

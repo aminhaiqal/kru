@@ -13,6 +13,7 @@ import {
   chatUploadIcon,
 } from './icons.js';
 import { renderChatMarkdown } from './markdown.js';
+import { openProjectEditor } from './work.js';
 import {
   S,
   connection,
@@ -26,6 +27,7 @@ import {
 const C = {
   data: { conversations: [], models: [] },
   search: '',
+  project: localStorage.getItem('kru-chat-project') || null,
   sidebar: false,
   collapsed: localStorage.getItem('kru-threads-collapsed') === 'true',
   older: [],
@@ -71,7 +73,7 @@ function chatTitle() {
       ?.title || (S.lane?.startsWith('workflow:') ? 'Workflow conversation' : 'New conversation')
   );
 }
-async function chatNew() {
+async function chatNew(projectId = C.project) {
   if (!S.state.personal) return;
   if (C.creating) return;
   C.creating = true;
@@ -79,10 +81,11 @@ async function chatNew() {
   try {
     const conversation = await api('/conversations', {
       method: 'POST',
-      body: { agentId: S.state.personal.id },
+      body: { agentId: S.state.personal.id, projectId },
       headers: { 'Idempotency-Key': crypto.randomUUID() },
     });
     C.creating = false;
+    chatProject(projectId);
     selectAgent(conversation.agentId, conversation.laneId);
     C.sidebar = false;
     await refresh();
@@ -92,45 +95,69 @@ async function chatNew() {
     draw();
   }
 }
+function chatProject(id) {
+  C.project = id || null;
+  localStorage.setItem('kru-chat-project', C.project || '');
+}
+function renderThread(thread) {
+  const selected = thread.agentId === S.agent && thread.laneId === S.lane,
+    busy = S.state.lanes.some(
+      (lane) =>
+        lane.agentId === thread.agentId &&
+        lane.laneId === thread.laneId &&
+        ['starting', 'running'].includes(lane.state),
+    ),
+    waiting = pendingApprovals().some(
+      (entry) => entry.agentId === thread.agentId && entry.laneId === thread.laneId,
+    );
+  return `<button class="conversation-thread ${selected ? 'selected' : ''}" data-action="chat-open" data-id="${thread.id}" ${selected ? 'aria-current="true"' : ''} title="${escape(thread.title)}"><span>${escape(thread.title)}</span><small>${escape(name(thread.agentId))}${waiting ? ' · Waiting for you' : busy ? ' · Working' : ''}</small>${!thread.projectInherited ? `<span class="chat-move-thread" data-action="chat-move" data-id="${thread.id}" role="button" tabindex="0" aria-label="Move ${escape(thread.title)} to project" title="Move to project">${chatFolderIcon}</span>` : ''}<span class="chat-delete-thread" data-action="chat-delete" data-id="${thread.id}" role="button" tabindex="0" aria-label="Delete ${escape(thread.title)}">×</span>${waiting ? '<i aria-label="Approval waiting">!</i>' : busy ? '<i class="working" aria-label="Working"></i>' : ''}</button>`;
+}
 function renderThreadSidebar() {
   const query = C.search.toLowerCase(),
+    projects = S.state.projects,
     items = C.data.conversations.filter((thread) =>
-      (thread.title + ' ' + name(thread.agentId)).toLowerCase().includes(query),
+      (
+        thread.title +
+        ' ' +
+        name(thread.agentId) +
+        ' ' +
+        (projects.find((project) => project.id === thread.projectId)?.name || '')
+      )
+        .toLowerCase()
+        .includes(query),
     );
+  const groups = projects
+    .filter(
+      (project) =>
+        !query ||
+        project.name.toLowerCase().includes(query) ||
+        items.some((thread) => thread.projectId === project.id),
+    )
+    .map((project) => {
+      const threads = items.filter((thread) => thread.projectId === project.id),
+        expanded = C.project === project.id || !!query;
+      return `<section class="conversation-project" data-project-id="${project.id}"><div class="conversation-project-heading"><button data-action="chat-project" data-id="${project.id}" aria-expanded="${expanded}" title="${escape(project.name)}">${chatFolderIcon}<span>${escape(project.name)}</span><small>${threads.length}</small></button><button class="icon-button" data-action="chat-project-new-thread" data-id="${project.id}" aria-label="New conversation in ${escape(project.name)}" title="New conversation">${browserAddIcon}</button><button class="icon-button" data-action="chat-project-edit" data-id="${project.id}" aria-label="Settings for ${escape(project.name)}" title="Project settings">⋯</button></div>${expanded ? `<div class="conversation-project-threads">${threads.map(renderThread).join('') || '<p>No conversations yet.</p>'}</div>` : ''}</section>`;
+    })
+    .join('');
   const today = new Date();
   today.setHours(0, 0, 0, 0);
   let previousGroup = '';
-  return `<aside id="conversation-sidebar" class="conversation-sidebar ${C.sidebar ? 'open' : ''}" aria-label="Conversation threads"><div class="conversation-sidebar-heading"><h2>Conversations</h2><button class="icon-button conversation-sidebar-collapse" data-action="chat-collapse-threads" aria-label="Collapse sidebar" title="Collapse sidebar" aria-controls="conversation-sidebar" aria-expanded="true">${chatSidebarIcon}</button></div><button class="new-conversation" data-action="chat-new"><span aria-hidden="true">＋</span>New conversation</button><input id="chat-search" type="search" placeholder="Search conversations" aria-label="Search conversations" value="${escape(C.search)}"><div class="conversation-thread-list">${
-    items.length
-      ? items
-          .map((thread) => {
-            const age = Date.parse(thread.updatedAt),
-              group =
-                age >= today.getTime()
-                  ? 'Today'
-                  : age >= today.getTime() - 7 * 86400000
-                    ? 'Previous 7 days'
-                    : 'Earlier';
-            const heading = previousGroup !== group ? `<h3>${group}</h3>` : '';
-            previousGroup = group;
-            const selected = thread.agentId === S.agent && thread.laneId === S.lane,
-              busy = S.state.lanes.some(
-                (lane) =>
-                  lane.agentId === thread.agentId &&
-                  lane.laneId === thread.laneId &&
-                  ['starting', 'running'].includes(lane.state),
-              ),
-              waiting = pendingApprovals().some(
-                (entry) => entry.agentId === thread.agentId && entry.laneId === thread.laneId,
-              );
-            return (
-              heading +
-              `<button class="conversation-thread ${selected ? 'selected' : ''}" data-action="chat-open" data-id="${thread.id}" ${selected ? 'aria-current="true"' : ''} title="${escape(thread.title)}"><span>${escape(thread.title)}</span><small>${escape(name(thread.agentId))}${waiting ? ' · Waiting for you' : busy ? ' · Working' : ''}</small><span class="chat-delete-thread" data-action="chat-delete" data-id="${thread.id}" role="button" tabindex="0" aria-label="Delete ${escape(thread.title)}">×</span>${waiting ? '<i aria-label="Approval waiting">!</i>' : busy ? '<i class="working" aria-label="Working"></i>' : ''}</button>`
-            );
-          })
-          .join('')
-      : `<p class="conversation-no-results">${query ? 'No matching conversations.' : 'Your conversations will appear here.'}</p>`
-  }</div><div class="conversation-sidebar-footer"><span>Private · saved on this computer</span></div></aside>`;
+  const unfiled = items
+    .filter((thread) => !thread.projectId)
+    .map((thread) => {
+      const age = Date.parse(thread.updatedAt),
+        group =
+          age >= today.getTime()
+            ? 'Today'
+            : age >= today.getTime() - 7 * 86400000
+              ? 'Previous 7 days'
+              : 'Earlier';
+      const heading = previousGroup !== group ? `<h3>${group}</h3>` : '';
+      previousGroup = group;
+      return heading + renderThread(thread);
+    })
+    .join('');
+  return `<aside id="conversation-sidebar" class="conversation-sidebar ${C.sidebar ? 'open' : ''}" aria-label="Conversation threads"><div class="conversation-sidebar-heading"><h2>Conversations</h2><button class="icon-button conversation-sidebar-collapse" data-action="chat-collapse-threads" aria-label="Collapse sidebar" title="Collapse sidebar" aria-controls="conversation-sidebar" aria-expanded="true">${chatSidebarIcon}</button></div><button class="new-conversation" data-action="chat-new"><span aria-hidden="true">＋</span>New conversation</button><input id="chat-search" type="search" placeholder="Search conversations" aria-label="Search conversations" value="${escape(C.search)}"><div class="conversation-thread-list"><div class="conversation-project-label"><h3>Projects</h3><button class="icon-button" data-action="chat-project-new" aria-label="New project" title="New project">${browserAddIcon}</button></div>${groups || (query ? '' : '<p class="conversation-no-results">Group your conversations in a project.</p>')}${projects.length ? `<button class="conversation-unfiled" data-action="chat-project" data-id="" aria-pressed="${!C.project}">Other conversations</button>` : ''}${unfiled}${query && !items.length && !groups ? '<p class="conversation-no-results">No matching conversations.</p>' : ''}</div><div class="conversation-sidebar-footer"><span>Private · saved on this computer</span></div></aside>`;
 }
 function renderRecentConversations() {
   const threads = C.data.conversations
@@ -398,6 +425,7 @@ document.addEventListener('click', async (event) => {
     if (action === 'chat-open' && !event.target.closest('[data-action="chat-delete"]')) {
       const thread = C.data.conversations.find((thread) => thread.id === button.dataset.id);
       if (thread) {
+        chatProject(thread.projectId);
         selectAgent(thread.agentId, thread.laneId);
         C.sidebar = false;
       }
@@ -413,6 +441,44 @@ document.addEventListener('click', async (event) => {
       }
       draw();
       $(opening ? '.conversation-sidebar-collapse' : '.conversation-thread-toggle')?.focus();
+    }
+    if (action === 'chat-project') {
+      chatProject(C.project === button.dataset.id ? null : button.dataset.id);
+      draw();
+    }
+    if (action === 'chat-project-new-thread') await chatNew(button.dataset.id);
+    if (action === 'chat-project-new' || action === 'chat-project-edit') {
+      openProjectEditor(
+        action === 'chat-project-edit' ? button.dataset.id : undefined,
+        async (project) => {
+          chatProject(project.id);
+          if (action === 'chat-project-new') await chatNew(project.id);
+        },
+      );
+    }
+    if (action === 'chat-move') {
+      const thread = C.data.conversations.find((thread) => thread.id === button.dataset.id);
+      if (thread && !thread.projectInherited)
+        openForm(
+          'Move conversation',
+          field('Project', 'projectId', thread.projectId || '', {
+            options: [
+              ['', 'No project'],
+              ...S.state.projects.map((project) => [project.id, project.name]),
+            ],
+          }),
+          async (form) => {
+            const projectId = form.get('projectId') || null;
+            const saved = await patch('/conversations/' + thread.id, {
+              projectId,
+              revision: thread.revision,
+            });
+            if (S.messages?.conversation.id === saved.id) S.messages.conversation = saved;
+            chatProject(projectId);
+            toast('Conversation moved');
+          },
+          'Move conversation',
+        );
     }
     if (action === 'chat-model') await chatModel();
     if (action === 'chat-model-provider') await chatModel(button.dataset.id);
@@ -515,6 +581,15 @@ document.addEventListener('change', (event) => {
   }
 });
 document.addEventListener('keydown', (event) => {
+  if (
+    ['Enter', ' '].includes(event.key) &&
+    event.target.matches('.chat-move-thread,.chat-delete-thread')
+  ) {
+    event.preventDefault();
+    event.stopPropagation();
+    event.target.click();
+    return;
+  }
   if (event.key === 'Escape' && C.sidebar && !$('#dialog').open) {
     C.sidebar = false;
     draw();

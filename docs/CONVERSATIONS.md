@@ -28,6 +28,20 @@ finish or be stopped before changing models. Earlier replies show their recorded
 provider/model. Personal sessions have history and browser/connector tools but
 no KRU teammate messaging, task instructions or automatic bot memory injection.
 
+## Shared projects
+
+The conversation sidebar and Work use the same project records and project editor.
+Create a project from either view; names and settings update in both. Expand a
+project to see its conversations, use its plus button to start another chat, or
+use a conversation's folder action to move it to a project (or back to No project).
+Search also matches project names. Moving keeps the thread's history, model,
+attachments, and context.
+
+Migration 14 adds an optional project link to existing conversation settings.
+Legacy chats stay unfiled. Work-run conversations derive their project from the
+Work item, including earlier stage runs. Project links are recorded in the event
+log and preserved through replay and restarts.
+
 ## How context survives
 
 KRU's logical thread is independent from Codex and Claude's native sessions.

@@ -6,6 +6,7 @@ import { effortValues } from '../providers/models';
 
 export interface ConversationRow {
   thread_id: string;
+  project_id?: string | null;
   title: string;
   provider: string | null;
   model: string | null;
@@ -17,6 +18,7 @@ export interface ConversationRow {
 export const conversationPatch = z
   .object({
     title: z.string().trim().min(1).max(160).optional(),
+    projectId: z.string().min(1).nullable().optional(),
     provider: z.enum(['codex', 'claude', 'fake']).nullable().optional(),
     model: z.string().trim().min(1).max(200).nullable().optional(),
     revision: z.number().int().min(0),
@@ -76,16 +78,28 @@ export class Conversations {
       config.promptProfile = 'coding';
     return { ...agent, provider: settings.provider, config };
   }
+  private workProject(lane: string | null) {
+    return lane?.startsWith('task:')
+      ? this.store.db
+          .query<{ project_id: string }, [string]>(
+            'SELECT w.project_id FROM work_runs r JOIN work_items w ON w.id=r.item_id WHERE r.task_id=?',
+          )
+          .get(lane.slice(5))
+      : null;
+  }
   current(agentId: string, lane: string | null) {
     this.assertOpen(agentId, lane);
     const agent = new AgentRegistry(this.store).get(agentId);
     if (!agent) throw new Error('Unknown teammate');
     const thread = this.threads.ensure(agentId, lane),
       settings = this.settings(thread.id),
-      effective = this.effective(agent, lane);
+      effective = this.effective(agent, lane),
+      workProject = this.workProject(lane);
     return {
       ...thread,
       title: settings?.title || '',
+      projectId: workProject?.project_id ?? settings?.project_id ?? null,
+      projectInherited: !!workProject,
       provider: effective.provider,
       model: effective.config.model ?? null,
       effort: effective.config.reasoningEffort ?? null,
@@ -93,11 +107,14 @@ export class Conversations {
       revision: settings?.revision ?? 0,
     };
   }
-  create(agentId: string, key: string) {
+  create(agentId: string, key: string, projectId: string | null = null) {
     return this.store.command(
       'conversation.create',
-      () => this.current(agentId, 'chat:' + crypto.randomUUID()),
-      { id: 'conversation:' + key, input: { agentId } },
+      () => {
+        const conversation = this.current(agentId, 'chat:' + crypto.randomUUID());
+        return projectId ? this.save(conversation.id, { projectId, revision: 0 }) : conversation;
+      },
+      { id: 'conversation:' + key, input: projectId ? { agentId, projectId } : { agentId } },
     );
   }
   save(id: string, input: unknown) {
@@ -123,6 +140,15 @@ export class Conversations {
       )
         throw new Error('Finish or stop the current reply before changing models');
       const current = this.current(thread.agent_id, thread.lane_key || null);
+      if (data.projectId !== undefined) {
+        if (current.projectInherited && data.projectId !== current.projectId)
+          throw new Error('Work conversations inherit their work item’s project');
+        if (
+          data.projectId &&
+          !this.store.db.query('SELECT 1 FROM work_projects WHERE id=?').get(data.projectId)
+        )
+          throw new Error('Project not found');
+      }
       const provider =
         data.provider === undefined
           ? data.model !== undefined && !old?.provider
@@ -149,6 +175,7 @@ export class Conversations {
         row: {
           thread_id: id,
           title: data.title ?? old?.title ?? '',
+          project_id: data.projectId === undefined ? (old?.project_id ?? null) : data.projectId,
           provider,
           model,
           effort,
@@ -182,6 +209,7 @@ export class Conversations {
         row: {
           thread_id: id,
           title: old?.title ?? '',
+          project_id: old?.project_id ?? null,
           provider: old?.provider ?? null,
           model: old?.model ?? null,
           effort: old?.effort ?? null,
@@ -203,6 +231,9 @@ export class Conversations {
           lane_key: string;
           created_at: string;
           title: string | null;
+          project_id: string | null;
+          work_project_id: string | null;
+          revision: number | null;
           lane_title: string | null;
           first_text: string | null;
           updated_at: string;
@@ -210,14 +241,16 @@ export class Conversations {
         },
         []
       >(
-        `SELECT t.*,s.title,
+        `SELECT t.*,s.title,s.project_id,s.revision,wi.project_id AS work_project_id,
       CASE WHEN t.lane_key LIKE 'task:%' THEN (SELECT json_extract(w.data_json,'$.title') FROM workspace_records w WHERE w.id=substr(t.lane_key,6) AND w.kind='task' AND w.agent_id=t.agent_id)
       WHEN t.lane_key LIKE 'workflow:%' THEN (SELECT r.name FROM workflow_runs r WHERE r.id=substr(t.lane_key,10) AND r.agent_id=t.agent_id)
       WHEN t.lane_key LIKE 'routine:%' THEN (SELECT json_extract(w.data_json,'$.name') FROM workspace_records w WHERE w.id=substr(t.lane_key,9) AND w.kind='routine' AND w.agent_id=t.agent_id) END AS lane_title,
       (SELECT substr(m.text,1,160) FROM deliveries d JOIN messages m ON m.id=d.message_id WHERE d.recipient_id=t.agent_id AND coalesce(d.lane_id,'')=t.lane_key AND m.sender_kind='user' ORDER BY d.seq LIMIT 1) AS first_text,
       max(t.created_at,coalesce(s.updated_at,''),coalesce((SELECT max(d.updated_at) FROM deliveries d WHERE d.recipient_id=t.agent_id AND coalesce(d.lane_id,'')=t.lane_key),'')) AS updated_at,
       (SELECT count(*) FROM deliveries d WHERE d.recipient_id=t.agent_id AND coalesce(d.lane_id,'')=t.lane_key) AS message_count
-      FROM threads t LEFT JOIN conversation_settings s ON s.thread_id=t.id WHERE s.deleted_at IS NULL ORDER BY updated_at DESC,t.id DESC`,
+      FROM threads t LEFT JOIN conversation_settings s ON s.thread_id=t.id
+      LEFT JOIN work_runs wr ON t.lane_key LIKE 'task:%' AND wr.task_id=substr(t.lane_key,6)
+      LEFT JOIN work_items wi ON wi.id=wr.item_id WHERE s.deleted_at IS NULL ORDER BY updated_at DESC,t.id DESC`,
       )
       .all();
     return rows
@@ -226,6 +259,9 @@ export class Conversations {
         id: row.id,
         agentId: row.agent_id,
         laneId: row.lane_key || null,
+        projectId: row.work_project_id ?? row.project_id ?? null,
+        projectInherited: !!row.work_project_id,
+        revision: row.revision ?? 0,
         title:
           row.title ||
           row.lane_title ||

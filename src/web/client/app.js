@@ -85,7 +85,8 @@ async function refresh() {
         generation = W.generation;
       const workData = await api('/work');
       if (generation === W.generation) {
-        W.data = workData;
+        W.data = { items: workData.items };
+        S.state.projects = workData.projects;
         if (W.project === requestedProject && W.project && !workProject(W.project)) W.project = '';
       } else S.refreshAgain = true;
       const selected = W.selected;

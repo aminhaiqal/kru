@@ -237,13 +237,16 @@ export function createWebServer(options: {
             });
           if (request.method === 'POST' && path.length === 2) {
             const input = z
-              .object({ agentId: z.string().min(1).optional() })
+              .object({
+                agentId: z.string().min(1).optional(),
+                projectId: z.string().min(1).nullable().optional(),
+              })
               .strict()
               .parse(await body(request));
             const agentId = input.agentId || conversations.personal().id;
             requireAgent(agentId);
             const key = z.string().min(1).max(200).parse(request.headers.get('idempotency-key'));
-            return json(conversations.create(agentId, key), 201);
+            return json(conversations.create(agentId, key, input.projectId), 201);
           }
           if (request.method === 'PATCH' && path.length === 3) {
             const input = conversationPatch.parse(await body(request));
@@ -426,6 +429,7 @@ export function createWebServer(options: {
           return json({
             agents: allAgents,
             personal,
+            projects: workspace.work.projects(),
             providers: daemon.connections.snapshot(),
             lanes: daemon.scheduler.status(),
             activeTurns: daemon.scheduler.activeTurns,

@@ -67,6 +67,7 @@ export function replay(events: StoredEvent[]): Database {
       '011-work.sql',
       '012-workflows.sql',
       '013-conversations.sql',
+      '014-conversation-projects.sql',
     ])
       db.exec(readMigration(file));
     db.transaction(() => {
